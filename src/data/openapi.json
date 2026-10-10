@@ -64,7 +64,7 @@
     },
     {
       "name": "Workspaces",
-      "description": "Read-only access to your own workspaces, for scripts that need a workspace's name, id or status. Served at `https://api.nan.builders/api/workspaces`, outside `/v1`. Creating, starting, stopping and deleting workspaces is done from the platform, not from this API. Guide: [Workspaces](https://nan.builders/docs/workspaces)."
+      "description": "Read-only access to your own workspaces, for scripts that need a workspace's name, id or status. Served at `https://api.nan.builders/api/workspaces`, outside `/v1`, to bearer credentials only (no cookies, no browser CORS). Creating, starting, stopping and deleting workspaces is done from the platform, not from this API. Guide: [Workspaces](https://nan.builders/docs/workspaces)."
     }
   ],
   "paths": {
@@ -2498,7 +2498,7 @@
             "platformToken": []
           }
         ],
-        "description": "Your own workspaces, and only yours. No keys, environment values or agent configuration are ever included. Use it to find the `name` or `workspace_uuid` to pass as `workspace` when you create a run.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`). The key that lives inside a workspace is not accepted.",
+        "description": "Your own workspaces, and only yours. No keys, environment values or agent configuration are ever included. Use it to find the `name` or `workspace_uuid` to pass as `workspace` when you create a run.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`). The key that lives inside a workspace is not accepted.\n\nOn `api.nan.builders` this route takes a bearer credential only: cookies are ignored, and there is no browser CORS support (`OPTIONS` answers `404`), so call it from a server or a script, not from a web page.",
         "responses": {
           "200": {
             "description": "Your workspaces (a JSON array, empty if you have none).",
@@ -2553,7 +2553,7 @@
             }
           },
           "401": {
-            "description": "No credentials (`unauthorized`), an unknown, revoked or expired one (`invalid session`), or the key that lives inside a workspace (`session_required`).",
+            "description": "No credentials (`unauthorized`); an unknown, revoked or expired API key or platform token (`invalid session`); or the key that lives inside a workspace (`session_required`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2605,10 +2605,13 @@
         "summary": "Retrieve a workspace",
         "security": [
           {
+            "apiKey": []
+          },
+          {
             "platformToken": []
           }
         ],
-        "description": "One of your own workspaces, plus `env_var_keys`: the names (never the values) of the variables in its environment file. Only your own workspaces are returned: another member's workspace is never shown.\n\nAuthentication: a platform token (`nan_pat_...`). Member API keys (`sk-...`) are not accepted on this route: use the list instead.",
+        "description": "One of your own workspaces, plus `env_var_keys`: the names (never the values) of the variables in its environment file. Only your own workspaces are returned: another member's workspace answers `404`, exactly like an id that does not exist.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`). The key that lives inside a workspace is not accepted.\n\nOn `api.nan.builders` this route takes a bearer credential only: cookies are ignored, and there is no browser CORS support (`OPTIONS` answers `404`), so call it from a server or a script, not from a web page.",
         "parameters": [
           {
             "name": "id",
@@ -2618,7 +2621,7 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "The `workspace_uuid`."
+            "description": "The `workspace_uuid`, in lowercase. Anything else is answered `404` before it reaches the API."
           }
         ],
         "responses": {
@@ -2674,7 +2677,7 @@
             }
           },
           "401": {
-            "description": "No credentials (`unauthorized`), an unknown, revoked or expired one (`invalid session`), or an API key (`sk-...`), which this route does not accept (`session_required`).",
+            "description": "No credentials (`unauthorized`); an unknown, revoked or expired API key or platform token (`invalid session`); or the key that lives inside a workspace (`session_required`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2701,38 +2704,35 @@
               }
             }
           },
-          "403": {
-            "description": "The workspace belongs to another member (`forbidden`), or the id is not a UUID: a platform token is only accepted on a well-formed id (`token_scope_denied`).",
+          "404": {
+            "description": "No workspace of yours with that id: it does not exist, belongs to another member (the answer is identical), or the id is not a lowercase UUID (answered by the edge in the OpenAI error shape).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlatformError"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PlatformError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
                 },
                 "examples": {
-                  "forbidden": {
+                  "workspace_not_found": {
                     "value": {
-                      "error": "forbidden"
+                      "error": "workspace not found"
                     }
                   },
-                  "token_scope_denied": {
+                  "malformed_id": {
                     "value": {
-                      "error": "token_scope_denied",
-                      "message": "Platform tokens only work on the platform API (/v1/runs and GET /api/workspaces). Use a signed-in session or an inference API key for this endpoint."
+                      "error": {
+                        "message": "Not found.",
+                        "type": "invalid_request_error",
+                        "code": "404"
+                      }
                     }
                   }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No workspace with that id.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlatformError"
-                },
-                "example": {
-                  "error": "workspace not found"
                 }
               }
             }
@@ -2753,7 +2753,7 @@
       "apiKey": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Member API key (`sk-...`), from \"API Keys\" in your settings on the platform. Send it as `Authorization: Bearer <api-key>`. It works on every inference endpoint, on the Runs endpoints and on the workspace list. Personal and non-transferable. The key that lives inside a workspace (the one its agents use) is refused by the Runs endpoints with `403 workspace_key_not_allowed`."
+        "description": "Member API key (`sk-...`), from \"API Keys\" in your settings on the platform. Send it as `Authorization: Bearer <api-key>`. It works on every inference endpoint, on the Runs endpoints and on the two Workspaces endpoints. Personal and non-transferable. The key that lives inside a workspace (the one its agents use) is refused by the Runs endpoints with `403 workspace_key_not_allowed`."
       },
       "platformToken": {
         "type": "http",
@@ -3698,15 +3698,15 @@
       },
       "PlatformError": {
         "type": "object",
-        "description": "Error body of the Workspaces endpoints (outside `/v1`): a short `error` string, plus `message` on `token_scope_denied` and `session_required`.",
+        "description": "Error body of the Workspaces endpoints (outside `/v1`): a short `error` string, plus `message` on `session_required`.",
         "properties": {
           "error": {
             "type": "string",
-            "description": "Short error, for example `unauthorized`, `invalid session`, `session_required`, `forbidden`, `workspace not found` or `token_scope_denied`."
+            "description": "Short error: `unauthorized`, `invalid session`, `session_required` or `workspace not found`."
           },
           "message": {
             "type": "string",
-            "description": "Present on `token_scope_denied` and `session_required`: what the credential can be used for."
+            "description": "Present on `session_required`: what the credential can be used for."
           }
         },
         "required": [

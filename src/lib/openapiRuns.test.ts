@@ -146,10 +146,12 @@ describe('openapi.json: credentials', () => {
     expect(op(path, method).description).toContain('a member API key (`sk-...`) or a platform token (`nan_pat_...`)');
   });
 
-  it('the workspace list accepts both, one workspace by id only a platform token', () => {
-    expect(op('/api/workspaces', 'get').security).toEqual([{ apiKey: [] }, { platformToken: [] }]);
-    expect(op('/api/workspaces/{id}', 'get').security).toEqual([{ platformToken: [] }]);
-    expect(op('/api/workspaces/{id}', 'get').description).toMatch(/API keys \(`sk-\.\.\.`\) are not accepted/);
+  it('both Workspaces operations accept an API key or a platform token, never a workspace key (cloud-api #325)', () => {
+    for (const [path, method] of WS_OPS) {
+      expect(op(path, method).security).toEqual([{ apiKey: [] }, { platformToken: [] }]);
+      expect(op(path, method).description).toContain('a member API key (`sk-...`) or a platform token (`nan_pat_...`)');
+      expect(op(path, method).description).toMatch(/key that lives inside a workspace is not accepted/);
+    }
   });
 
   it('the overview explains platform tokens', () => {
@@ -281,15 +283,43 @@ describe('openapi.json: the Workspaces contract (cloud-api)', () => {
     expect(JSON.stringify(s)).not.toContain('cloud-api.nan.builders');
   });
 
-  it('GET /api/workspaces/{id} with a token: 403 forbidden or token_scope_denied, never the handler 400', () => {
+  it('GET /api/workspaces/{id}: a foreign workspace is the same 404 as an unknown one, never 403 (cloud-api #324)', () => {
     const r = op('/api/workspaces/{id}', 'get').responses;
-    expect(Object.keys(r).sort()).toEqual(['200', '401', '403', '404']);
-    expect(Object.keys(r['403'].content['application/json'].examples)).toEqual(['forbidden', 'token_scope_denied']);
+    expect(Object.keys(r).sort()).toEqual(['200', '401', '404']);
+    expect(r['404'].content['application/json'].examples.workspace_not_found.value).toEqual({ error: 'workspace not found' });
+    expect(r['404'].description).toMatch(/belongs to another member \(the answer is identical\)/);
+    // A non-UUID id never reaches the API on api.nan.builders: the edge answers 404 in the OpenAI shape.
+    expect(r['404'].content['application/json'].examples.malformed_id.value).toEqual({
+      error: { message: 'Not found.', type: 'invalid_request_error', code: '404' },
+    });
+    expect(JSON.stringify(s.paths['/api/workspaces/{id}'])).not.toMatch(/forbidden|token_scope_denied/);
+  });
+
+  /**
+   * The 401 bodies of cloud-api's /api Auth (internal/middleware/auth.go),
+   * byte for byte: no credential, a credential that resolves to nobody, and a
+   * key the route refuses (the workspace key).
+   */
+  it.each(WS_OPS)('%s %s: the 401 examples are the real bodies', (path, method) => {
+    const ex = op(path, method).responses['401'].content['application/json'].examples;
+    expect(Object.keys(ex)).toEqual(['unauthorized', 'invalid_session', 'session_required']);
+    expect(ex.unauthorized.value).toEqual({ error: 'unauthorized' });
+    expect(ex.invalid_session.value).toEqual({ error: 'invalid session' });
+    expect(ex.session_required.value).toEqual({
+      error: 'session_required',
+      message: 'This endpoint requires a signed-in session. API keys only work for inference (https://api.nan.builders/v1).',
+    });
+  });
+
+  it.each(WS_OPS)('%s %s: says api.nan.builders is bearer-only with no browser CORS', (path, method) => {
+    const d = op(path, method).description;
+    expect(d).toMatch(/bearer credential only: cookies are ignored/);
+    expect(d).toMatch(/no browser CORS support \(`OPTIONS` answers `404`\)/);
   });
 
   it('only the caller\'s own workspaces, and never a secret', () => {
     expect(op('/api/workspaces', 'get').description).toMatch(/Your own workspaces, and only yours/);
-    expect(op('/api/workspaces/{id}', 'get').description).toMatch(/Only your own workspaces are returned/);
+    expect(op('/api/workspaces/{id}', 'get').description).toMatch(/Only your own workspaces are returned: another member's workspace answers `404`/);
     const props = Object.keys(s.components.schemas.Workspace.properties);
     for (const secret of ['agent_configs', 'hermes_env', 'member_uuid', 'api_key', 'token']) {
       expect(props).not.toContain(secret);
