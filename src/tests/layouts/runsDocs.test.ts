@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { parseFrontmatter } from '@astrojs/markdown-remark';
@@ -38,6 +38,43 @@ const CONCURRENCY: [string, number][] = [
 const EXIT_CODES = ['0', '1', '2', '3', '4', '64', '65', '69', '75'];
 
 const INTERNAL = /firecracker|micro-?vms?\b|\bvm\b|\bkvm\b|kubernetes|\bk8s\b|\br2\b|nan-vmd|systemd|litellm|cgroup/i;
+
+const pub = resolve(src, '../public');
+/** The portal captures, in the order the guide shows them. */
+const SHOTS = ['runs-01-tab', 'runs-02-new-run', 'runs-03-run-page'];
+/** Things that must never be published: full run or workspace ids (UUIDs) and private addresses. */
+const PRIVATE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}|\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|\bws-[0-9a-f]{8}\b/i;
+
+interface Shot {
+  src: string;
+  alt: string;
+  caption: string;
+  width: number;
+  height: number;
+}
+
+/** Every <Screenshot .../> of a page, in order. */
+function screenshots(body: string): Shot[] {
+  return [...body.matchAll(/<Screenshot\s([^>]*?)\/>/g)].map((m) => {
+    const attr = (name: string) => new RegExp(`${name}="([^"]*)"`).exec(m[1])?.[1] ?? '';
+    const num = (name: string) => Number(new RegExp(`${name}=\\{(\\d+)\\}`).exec(m[1])?.[1]);
+    return { src: attr('src'), alt: attr('alt'), caption: attr('caption'), width: num('width'), height: num('height') };
+  });
+}
+
+/** Pixel size of a WebP (lossy VP8, lossless VP8L or extended VP8X). */
+function webpSize(file: string): { width: number; height: number } {
+  const b = readFileSync(file);
+  expect(b.toString('ascii', 0, 4)).toBe('RIFF');
+  expect(b.toString('ascii', 8, 12)).toBe('WEBP');
+  const chunk = b.toString('ascii', 12, 16);
+  if (chunk === 'VP8 ') return { width: b.readUInt16LE(26) & 0x3fff, height: b.readUInt16LE(28) & 0x3fff };
+  if (chunk === 'VP8L') {
+    const bits = b.readUInt32LE(21);
+    return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+  }
+  return { width: b.readUIntLE(24, 3) + 1, height: b.readUIntLE(27, 3) + 1 };
+}
 
 const strip = (raw: string) => raw.replace(/^---[\s\S]*?\n---\n/, '');
 
@@ -83,6 +120,19 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
     expect(body).toContain('**New run**');
     expect(body).toContain('nan run');
     expect(body).toContain('https://api.nan.builders/v1/runs');
+  });
+
+  test('uses the labels the portal shows', () => {
+    for (const label of ['Agent runs', 'New run', 'Agent', 'Task', 'Folder', 'Separate branch', 'Auto', 'On', 'Off', 'Time limit', 'Start run', 'Cancel run', 'Output', 'Tool call', 'Tool result']) {
+      expect(body, label).toContain(`**${label}**`);
+    }
+    // The old names of the form fields are gone from the portal copy.
+    expect(body).not.toMatch(/\| (Prompt|Working directory|Worktree|Timeout) \|/);
+  });
+
+  test('maps the portal labels to the CLI flags and the API fields', () => {
+    expect(flat).toMatch(/\*\*Folder\*\* (is|es) `--cwd`, \*\*Separate branch\*\* (is|es) `--worktree` \/ `--no-worktree` (and|y) \*\*Time limit\*\* (is|es) `--timeout`/);
+    expect(flat).toMatch(/\*\*Task\*\* (is|es) `prompt`, \*\*Folder\*\* (is|es) `cwd`, \*\*Separate branch\*\* (is|es) `git_isolation` (and|y) \*\*Time limit\*\* (is|es) `timeout_seconds`/);
   });
 
   test('describes the portal form with its limits', () => {
@@ -195,15 +245,26 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
     }
   });
 
-  test('marks where the screenshots go, without shipping broken images', () => {
-    expect(body).not.toContain('<Screenshot');
-    expect(body.match(/\{\/\* SCREENSHOT: [^*]+\*\/\}/g)).toHaveLength(3);
+  test('shows the three portal captures, in order, and no placeholder is left', () => {
+    expect(screenshots(body).map((s) => s.src)).toEqual(SHOTS.map((n) => `/docs/runs/${n}.webp`));
+    expect(body).not.toContain('SCREENSHOT');
+  });
+
+  test.each(SHOTS)('screenshot %s: file exists, size matches, alt and caption present', (name) => {
+    const shot = screenshots(body).find((s) => s.src === `/docs/runs/${name}.webp`)!;
+    const file = resolve(pub, `docs/runs/${name}.webp`);
+    expect(existsSync(file)).toBe(true);
+    expect(webpSize(file)).toEqual({ width: shot.width, height: shot.height });
+    expect(shot.alt.length).toBeGreaterThan(30);
+    expect(shot.caption.length).toBeGreaterThan(5);
+    expect(`${shot.src} ${shot.alt} ${shot.caption}`).not.toMatch(PRIVATE);
+    expect(`${shot.alt} ${shot.caption}`).not.toMatch(INTERNAL);
   });
 
   test('is served by /api/docs without errors, and the placeholders are not', async () => {
     const text = await mdxToText(body);
     expect(text).toContain(page.title);
-    expect(text).not.toContain('SCREENSHOT');
+    expect(text).toContain('/docs/runs/runs-01-tab.webp');
   });
 
   test('no em-dashes in the copy', () => {
@@ -225,5 +286,15 @@ describe('agent runs guide, both locales', () => {
     const count = (b: string, re: RegExp) => (b.match(re) ?? []).length;
     expect(count(es, /```bash/g)).toBe(count(en, /```bash/g));
     expect(count(es, /<Details /g)).toBe(count(en, /<Details /g));
+  });
+
+  test('both locales show the same pictures with translated alt text', () => {
+    const [en, es] = [pages.en, pages.es].map((p) => screenshots(strip(read(p.dir + 'runs.mdx'))));
+    expect(es.map((s) => s.src)).toEqual(en.map((s) => s.src));
+    en.forEach((shot, i) => expect(es[i].alt).not.toBe(shot.alt));
+  });
+
+  test('only the published screenshots live in the folder (no raw captures)', () => {
+    expect(readdirSync(resolve(pub, 'docs/runs')).sort()).toEqual(SHOTS.map((n) => `${n}.webp`).sort());
   });
 });

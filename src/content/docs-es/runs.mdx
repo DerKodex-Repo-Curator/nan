@@ -8,6 +8,7 @@ group: Guías
 import Steps from '../../components/docs/Steps.astro';
 import Details from '../../components/docs/Details.astro';
 import Callout from '../../components/docs/Callout.astro';
+import Screenshot from '../../components/docs/Screenshot.astro';
 
 # Runs de agentes.
 
@@ -32,48 +33,50 @@ Puedes lanzar un run de tres formas, y las tres ven los mismos runs:
 
 ### Abre la pestaña Runs
 
-Entra en [cloud.nan.builders/workspaces](https://cloud.nan.builders/workspaces) y abre un workspace. Junto a **Overview**, **Console**, **SSH keys**, **Events** y **Backups** tienes la pestaña **Runs**, con el historial de runs de ese workspace, del más reciente al más antiguo.
+Entra en [cloud.nan.builders/workspaces](https://cloud.nan.builders/workspaces) y abre un workspace. Junto a **Overview**, **Console**, **SSH keys**, **Events** y **Backups** tienes la pestaña **Runs**. Su tarjeta **Agent runs** lista los runs de ese workspace, del más reciente al más antiguo, cada uno con su estado, el agente, la tarea, cuándo empezó, cuánto duró y los tokens que gastó.
 
-{/* SCREENSHOT: pestaña Runs, el historial de runs de un workspace con el botón New run */}
+<Screenshot src="/docs/runs/runs-01-tab.webp" alt="Pestaña Runs de un workspace: la tarjeta Agent runs con el botón New run y una lista de runs, cada uno con su estado, agente, tarea, fecha, duración y tokens" width={1400} height={760} caption="La pestaña Runs, con el historial y New run." />
 
 ### Rellena el formulario
 
-Pulsa **New run** y rellena el formulario:
+Pulsa **New run** y rellena el formulario (el portal está en inglés):
 
 | Campo | Qué es |
 |---|---|
-| Agent | Pi o Hermes, el que tengas instalado en el workspace. |
-| Prompt | La tarea, con tus palabras, como se la escribirías al agente en un chat. Hasta 32 KiB. |
-| Working directory | La carpeta en la que trabaja el agente. Por defecto es `/home/nan` y tiene que estar dentro de ella. |
-| Worktree | `auto` (por defecto), `on` u `off`. Consulta [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
-| Timeout | 15, 30, 60 o 120 minutos. El run se para al llegar a ese límite. |
+| **Agent** | El agente: Pi o Hermes, el que tengas instalado en el workspace. |
+| **Task** | La tarea, con tus palabras, como se la escribirías al agente en un chat. Hasta 32 KiB (el contador bajo la caja te dice los bytes que llevas). |
+| **Folder** | La carpeta donde trabaja el agente. Por defecto es `/home/nan` y tiene que estar dentro de ella. |
+| **Separate branch** | Rama aparte: **Auto** (por defecto), **On** u **Off**. En un repositorio git, el agente trabaja en su propia rama y tu checkout se queda como está. Consulta [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
+| **Time limit** | El tiempo máximo: 15, 30, 60 o 120 minutos. El run se para al llegar a él. |
 
-{/* SCREENSHOT: formulario de nuevo run, con agente, prompt, carpeta de trabajo, worktree y timeout */}
+Pulsa **Start run**, o `Ctrl+Enter` (`⌘+Enter` en un Mac) desde la caja de la tarea.
+
+<Screenshot src="/docs/runs/runs-02-new-run.webp" alt="Formulario New run con el selector Agent, la caja Task y su contador de bytes, el campo Folder, el selector Separate branch en Auto, el selector Time limit y el botón Start run" width={1046} height={1500} caption="El formulario New run." />
 
 ### Síguelo en directo
 
-Haz clic en un run de la lista para abrir su página. El log se va llenando mientras el agente trabaja: lo que dice, las herramientas que usa y lo que le responden. Cuando el run termina, la página muestra cómo ha acabado, el resumen del agente y, si la hay, la rama con sus cambios.
+Haz clic en un run de la lista para abrir su página. Arriba ves su estado, el workspace, el agente, la carpeta, cuánto lleva, los tokens que ha gastado, su tiempo máximo y la tarea. Debajo, en **Output**, el log se va llenando en directo mientras el agente trabaja: lo que dice, las herramientas que usa y lo que le responden. Haz clic en una línea **Tool call** o **Tool result** para desplegarla. Cuando el run termina, la página muestra cómo ha acabado, el resumen del agente y, si la hay, la rama con sus cambios.
 
 Puedes cerrar la página cuando quieras. El run sigue, y su página estará ahí cuando vuelvas.
 
-{/* SCREENSHOT: página de un run con el log en directo, el estado y el botón Cancel */}
+<Screenshot src="/docs/runs/runs-03-run-page.webp" alt="Página de un run en marcha: el estado Running, el botón Cancel run, el workspace, agente, carpeta, duración, tokens, tiempo máximo y tarea, y el Output en directo con una llamada a la herramienta bash y su resultado" width={1400} height={710} caption="Un run en marcha, con su salida en directo." />
 
 ### Cancélalo, si hace falta
 
-**Cancel** para el run en unos segundos. El portal te pide confirmación antes.
+**Cancel run** para el run en unos segundos. El portal te pide confirmación antes.
 
 </Steps>
 
 ## Dónde trabaja el agente
 
-Lo que pasa con tus archivos depende de la carpeta que elijas y de la opción **worktree**.
+Lo que pasa con tus archivos depende de la carpeta (**Folder**) que elijas y de la opción **Separate branch**.
 
-| La carpeta... | Worktree `auto` (por defecto) | Worktree `on` | Worktree `off` |
+| La carpeta... | **Auto** (por defecto) | **On** | **Off** |
 |---|---|---|---|
-| está dentro de un repositorio git | Worktree y rama aparte | Worktree y rama aparte | Directamente en la carpeta |
+| está dentro de un repositorio git | Rama aparte | Rama aparte | Directamente en la carpeta |
 | no es un repositorio git | Directamente en la carpeta | El run falla con un error de configuración | Directamente en la carpeta |
 
-**Con worktree**, el agente no toca tu checkout. Trabaja en una copia aparte del repositorio, en una rama nueva que se llama `nan-run/` seguido de los 8 primeros caracteres del id del run, por ejemplo `nan-run/6f1c2a9b`. Cuando el agente acaba, todo lo que ha cambiado queda en un commit en esa rama. El run **nunca hace push**: la rama se queda en el repositorio dentro de tu workspace y tú decides qué hacer con ella. Si el agente no ha cambiado nada, la rama se borra.
+**Con rama aparte**, el agente no toca tu checkout. Trabaja en una copia aparte del repositorio (un git worktree), en una rama nueva que se llama `nan-run/` seguido de los 8 primeros caracteres del id del run, por ejemplo `nan-run/6f1c2a9b`. Cuando el agente acaba, todo lo que ha cambiado queda en un commit en esa rama. El run **nunca hace push**: la rama se queda en el repositorio dentro de tu workspace y tú decides qué hacer con ella. Si el agente no ha cambiado nada, la rama se borra.
 
 Para revisar los cambios e incorporarlos, abre una terminal en tu workspace ([por SSH o desde la pestaña Console](/es/docs/workspaces#conectarte)) y, desde el repositorio:
 
@@ -82,9 +85,9 @@ git log -p HEAD..nan-run/6f1c2a9b
 git merge nan-run/6f1c2a9b
 ```
 
-**Sin worktree**, el agente trabaja directamente en la carpeta y no hay rama. Úsalo con carpetas que no son repositorios, o cuando quieras los cambios ahí mismo.
+**Sin rama aparte**, el agente trabaja directamente en la carpeta y no hay rama. Úsalo con carpetas que no son repositorios, o cuando quieras los cambios ahí mismo.
 
-La carpeta de trabajo tiene que estar dentro de `/home/nan`, tu carpeta personal en el workspace.
+La carpeta tiene que estar dentro de `/home/nan`, tu carpeta personal en el workspace.
 
 ## Estados de un run
 
@@ -94,11 +97,13 @@ La carpeta de trabajo tiene que estar dentro de `/home/nan`, tu carpeta personal
 | `starting` | Se está preparando en el workspace. |
 | `running` | El agente está trabajando. |
 | `succeeded` | El agente ha terminado su tarea. |
-| `failed` | El agente se ha parado con un error, o el run no ha podido empezar (por ejemplo, worktree `on` en una carpeta que no es un repositorio). |
+| `failed` | El agente se ha parado con un error, o el run no ha podido empezar (por ejemplo, **Separate branch** en **On** en una carpeta que no es un repositorio). |
 | `cancelled` | Lo has cancelado tú. |
-| `timed_out` | Ha llegado a su timeout y se ha parado. |
+| `timed_out` | Ha llegado a su tiempo máximo y se ha parado. |
 
-Desde la CLI y la API el timeout va de 60 segundos a 2 horas. El portal ofrece 15, 30, 60 y 120 minutos.
+El portal muestra los mismos estados en inglés y con mayúscula, por ejemplo **Running**, **Succeeded** o **Cancelled**.
+
+Desde la CLI y la API el tiempo máximo va de 60 segundos a 2 horas. El portal ofrece 15, 30, 60 y 120 minutos.
 
 ## Cuántos runs a la vez
 
@@ -160,7 +165,7 @@ Otras formas de lanzarlo:
 # Un workspace, un agente y una carpeta concretos
 nan run --ws develop --agent hermes --cwd /home/nan/projects/api "revisa los TODO pendientes"
 
-# El prompt desde un archivo, o desde stdin
+# La tarea desde un archivo, o desde stdin
 nan run -f tarea.md
 git diff | nan run -
 
@@ -173,13 +178,15 @@ nan run --detach "actualiza las dependencias"
 | `--ws NAME` | tu único workspace | El workspace donde se ejecuta. Si tienes más de uno y no lo pones, la CLI te los lista y sale con código 64. |
 | `--agent pi\|hermes` | `pi` | El agente. |
 | `--model M` | el del agente | El modelo que usa el agente. |
-| `--cwd PATH` | `/home/nan` | La carpeta de trabajo en el workspace. |
-| `--worktree` / `--no-worktree` | auto | Fuerza el worktree a on u off. Consulta [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
-| `--timeout D` | `30m` | Cuándo pararlo, de `1m` a `2h`. |
+| `--cwd PATH` | `/home/nan` | La carpeta en el workspace. |
+| `--worktree` / `--no-worktree` | auto | Fuerza la rama aparte a on u off. Consulta [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
+| `--timeout D` | `30m` | El tiempo máximo, de `1m` a `2h`. |
 | `--detach` | | Lanza el run, imprime su id y vuelve. |
 | `--idempotency-key K` | | Si un reintento manda la misma clave y la misma petición, recibes el run ya creado en lugar de uno nuevo. |
 | `--json` | | Imprime los eventos como líneas JSON y después el run terminado. |
-| `-f FILE` | | Lee el prompt de un archivo, o de stdin con `-`. |
+| `-f FILE` | | Lee la tarea de un archivo, o de stdin con `-`. |
+
+Los flags equivalen al formulario del portal: **Folder** es `--cwd`, **Separate branch** es `--worktree` / `--no-worktree` y **Time limit** es `--timeout`. La tarea es el texto entre comillas.
 
 Mientras se muestra el log, **Ctrl-C una vez** te desconecta del log: el run sigue y la CLI te dice cómo retomarlo. **Ctrl-C dos veces en menos de 2 segundos** lo cancela.
 
@@ -202,7 +209,7 @@ nan runs cancel <id>
 |---|---|
 | 0 | terminado con éxito |
 | 1 | fallido |
-| 2 | timeout |
+| 2 | se agotó el tiempo máximo |
 | 3 | cancelado |
 | 4 | el workspace no está listo: agente no instalado, sin clave de inferencia o configuración incorrecta |
 | 64 | error de uso, también tener más de un workspace y no pasar `--ws` |
@@ -268,9 +275,11 @@ curl https://api.nan.builders/v1/runs \
 | `workspace` | Sí | Nombre o id del workspace. |
 | `agent` | Sí | `pi` o `hermes`. |
 | `prompt` | Sí | La tarea, hasta 32 KiB. |
-| `cwd` | No | Carpeta de trabajo, `/home/nan` por defecto. |
-| `git_isolation` | No | `null` para auto (por defecto), `true` para worktree on, `false` para off. |
-| `timeout_seconds` | No | De 60 a 7200. 1800 (30 minutos) por defecto. |
+| `cwd` | No | La carpeta, `/home/nan` por defecto. |
+| `git_isolation` | No | Rama aparte: `null` para auto (por defecto), `true` para on, `false` para off. |
+| `timeout_seconds` | No | El tiempo máximo, de 60 a 7200. 1800 (30 minutos) por defecto. |
+
+Los campos equivalen al formulario del portal: **Task** es `prompt`, **Folder** es `cwd`, **Separate branch** es `git_isolation` y **Time limit** es `timeout_seconds`.
 | `model` | No | El modelo del agente. Por defecto, el suyo. |
 
 La respuesta es el run, con su `id` y su `state`. La cabecera `Idempotency-Key` es opcional: si un reintento manda la misma clave con el mismo cuerpo, recibes el run que ya se creó en lugar de uno nuevo.
@@ -341,7 +350,7 @@ Los errores usan el mismo formato que la API de inferencia:
 
 <Details summary="¿Un run sube mi código a algún sitio?">
 
-No. Con worktree, los cambios se quedan en una rama `nan-run/...` del repositorio dentro de tu workspace. Hacer push, merge o descartarlos es cosa tuya.
+No. Con rama aparte, los cambios se quedan en una rama `nan-run/...` del repositorio dentro de tu workspace. Hacer push, merge o descartarlos es cosa tuya.
 
 </Details>
 
