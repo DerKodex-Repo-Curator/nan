@@ -128,7 +128,7 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
     expect(body).toContain('0.1.24');
     expect(body).toContain('curl -fsSL https://nan.builders/install | bash');
     expect(body).toContain('nan auth login');
-    for (const flag of ['--ws', '--agent', '--model', '--cwd', '--worktree', '--no-worktree', '--timeout', '--detach', '--json', '-f']) {
+    for (const flag of ['--ws', '--agent', '--model', '--cwd', '--worktree', '--no-worktree', '--timeout', '--detach', '--json', '--idempotency-key', '-f']) {
       expect(body, flag).toContain(`\`${flag}`);
     }
     for (const cmd of ['nan runs ls', 'nan runs show', 'nan runs logs <id> -f', 'nan runs cancel', 'nan runs logs <id> --json']) {
@@ -150,6 +150,7 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
     expect(body).toContain('Last-Event-ID');
     expect(body).toContain('next_cursor');
     expect(body).toContain('"error": {"message"');
+    for (const code of ['400 invalid_request', '404', '409 idempotency_conflict', '429 run_queue_full', '429 rate_limited']) expect(body, code).toContain(`| \`${code}\` |`);
   });
 
   test('the create example is valid JSON with the documented fields', () => {
@@ -167,6 +168,7 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
     expect(flat).toMatch(/\*\*10\*\*/);
     expect(flat).toMatch(/\*\*30, 90 (or|o) 365/);
     expect(body).toContain('workspace_key_not_allowed');
+    expect(flat).toMatch(/(spend your plan|gastan tu plan)/);
   });
 
   test('never shows a real-looking secret', () => {

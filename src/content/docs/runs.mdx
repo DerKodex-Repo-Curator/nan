@@ -36,7 +36,7 @@ Go to [cloud.nan.builders/workspaces](https://cloud.nan.builders/workspaces) and
 
 {/* SCREENSHOT: runs tab, the run history of a workspace with the New run button */}
 
-### Fill in the new run
+### Fill in the form
 
 Press **New run** and fill in the form:
 
@@ -75,7 +75,7 @@ What happens to your files depends on the folder you choose and on the **worktre
 
 **With a worktree**, the agent does not touch your checkout. It works in a separate copy of the repository, on a new branch called `nan-run/` followed by the first 8 characters of the run id, for example `nan-run/6f1c2a9b`. When the agent ends, whatever it changed is committed on that branch. The run **never pushes**: the branch stays in the repository inside your workspace, and you decide what to do with it. If the agent changed nothing, the branch is deleted.
 
-To review the changes and bring them in, from the repository inside your workspace:
+To review the changes and bring them in, open a terminal in your workspace ([over SSH or the Console tab](/docs/workspaces#connect)) and, from the repository:
 
 ```bash
 git log -p HEAD..nan-run/6f1c2a9b
@@ -86,7 +86,7 @@ git merge nan-run/6f1c2a9b
 
 The working directory must be inside `/home/nan`, your home in the workspace.
 
-## How a run ends
+## Run states
 
 | State | What it means |
 |---|---|
@@ -122,7 +122,7 @@ Each run works in its own process inside the workspace, with its own share of CP
 
 Runs use the inference key of the workspace, the same one its agents use when you work with them by hand. Their requests count against your plan's usage like any other.
 
-The values in your workspace's environment file, such as that inference key or a Telegram bot token, are shown as `***` in run logs and results. You can share a log without leaking them.
+Secrets in your workspace's environment file, such as that inference key or a Telegram bot token, are shown as `***` in run logs and results, so a log does not leak them.
 
 ## From the terminal: `nan run`
 
@@ -177,10 +177,11 @@ nan run --detach "upgrade the dependencies"
 | `--worktree` / `--no-worktree` | auto | Force a worktree on or off. See [Where the agent works](#where-the-agent-works). |
 | `--timeout D` | `30m` | When to stop it, from `1m` to `2h`. |
 | `--detach` | | Start the run, print its id and return. |
+| `--idempotency-key K` | | If a retry sends the same key and request, you get the run already created instead of a second one. |
 | `--json` | | Print events as JSON lines, then the finished run. |
 | `-f FILE` | | Read the prompt from a file, or from stdin with `-`. |
 
-While it streams, **Ctrl-C once** detaches: the run keeps going and the CLI tells you how to pick it up again. **Ctrl-C twice within 2 seconds** cancels it.
+While it streams, **Ctrl-C once** stops following the log: the run keeps going and the CLI tells you how to pick it up again. **Ctrl-C twice within 2 seconds** cancels it.
 
 ### Manage your runs
 
@@ -230,7 +231,7 @@ Two kinds of credentials work with the runs API. Both are in your [settings on t
 | Platform API (runs, your workspaces) | Yes | Yes |
 | Who can create them | Plans with inference | Any member with an active subscription |
 
-A **token** is the one to give a script that only manages runs: it cannot be used to call the models, so it is not worth stealing for that. Create it under **Settings → Tokens**:
+A **token** is the one to give a script that only manages runs. It cannot call the models directly, but it can start runs that spend your plan, so keep it as private as an API key and revoke it if it leaks. Create it under **Settings → Tokens**:
 
 - It is shown **once**, when you create it. Copy it then.
 - You can have up to **10** active tokens.
@@ -240,7 +241,7 @@ A **token** is the one to give a script that only manages runs: it cannot be use
 Creating runs still needs a plan with inference, whatever credential you use.
 
 <Callout title="An agent cannot launch runs by itself" variant="warning">
-The key inside a workspace, the one its agents use for inference, cannot manage runs: the API answers it with `403`. An agent working in your workspace cannot start new runs on its own.
+The key inside a workspace, the one its agents use for inference, cannot manage runs: the API answers it with `403`. An agent working in your workspace cannot start new runs on its own, unless you give it one of your own API keys or tokens.
 </Callout>
 
 ### Create a run
@@ -290,7 +291,7 @@ Each frame is one of these:
 - `event: state`: the run changed state.
 - `event: end`: the run is over and its log has been sent in full. The data is the finished run. The stream closes after it.
 
-Every 15 seconds the stream sends a comment line to keep the connection open. Without the `Accept` header, the same endpoint answers pages of JSON instead: pass the `next_after` of each page as `?after=` to get the next one.
+Every 15 seconds the stream sends a comment line to keep the connection open. A stream lasts 30 minutes at most: if it closes before the `end`, reconnect with `Last-Event-ID` and carry on. Without the `Accept` header, the same endpoint answers pages of JSON instead: pass the `next_after` of each page as `?after=` to get the next one.
 
 To see how it ended:
 
@@ -325,8 +326,11 @@ Errors use the same format as the inference API:
 
 | Status and code | What to do |
 |---|---|
+| `400 invalid_request` | A field is wrong. `param` says which one. |
 | `403 tier_restricted` | Your plan does not include inference. Upgrade it to create runs. |
 | `403 workspace_key_not_allowed` | You used the key from inside a workspace. Use an API key or a token. |
+| `404` | The workspace or the run does not exist, or is not yours. |
+| `409 idempotency_conflict` | You reused an `Idempotency-Key` with a different body. Use a new key. |
 | `409 workspace_not_running` | Start the workspace first. |
 | `409 agent_not_installed` | Install the agent from the **Software** panel, or pick the other one. |
 | `409 no_inference_key` | The workspace has no inference key. Check that your plan includes inference. |

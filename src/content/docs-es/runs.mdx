@@ -11,7 +11,7 @@ import Callout from '../../components/docs/Callout.astro';
 
 # Runs de agentes.
 
-Un **run** le da una tarea a un agente dentro de uno de tus [workspaces](/es/docs/workspaces) y le deja trabajar solo. Escribes lo que quieres que haga, eliges el agente (Pi o Hermes, el que tengas instalado en ese workspace) y la carpeta, y el run se encarga del resto. Sigue adelante aunque cierres la página o la terminal.
+Un **run** le da una tarea a un agente dentro de uno de tus [workspaces](/es/docs/workspaces) y lo deja trabajar solo. Escribes lo que quieres que haga, eliges el agente (Pi o Hermes, el que tengas instalado en ese workspace) y la carpeta, y el run se encarga del resto. Sigue adelante aunque cierres la página o la terminal.
 
 Mientras trabaja, sigues su log en directo. Cuando termina tienes su resultado y, si la carpeta es un repositorio git, una rama con sus cambios lista para que la revises.
 
@@ -24,7 +24,7 @@ Puedes lanzar un run de tres formas, y las tres ven los mismos runs:
 ## Antes de empezar
 
 - **Un workspace encendido**, con Pi o Hermes instalado. Puedes instalar cualquiera de los dos desde el panel de **Software** del workspace.
-- **Un plan con inferencia.** Un run usa la clave de inferencia del propio workspace, y lo que gasta el agente cuenta en el uso de tu plan como cualquier otra petición. Si tu plan no incluye inferencia no puedes crear runs: el portal te enseña las opciones para mejorarlo.
+- **Un plan con inferencia.** Un run usa la clave de inferencia del propio workspace, y lo que gasta el agente cuenta para el uso de tu plan como cualquier otra petición. Si tu plan no incluye inferencia no puedes crear runs: el portal te enseña las opciones para mejorarlo.
 
 ## Lanza un run desde el portal
 
@@ -36,7 +36,7 @@ Entra en [cloud.nan.builders/workspaces](https://cloud.nan.builders/workspaces) 
 
 {/* SCREENSHOT: pestaña Runs, el historial de runs de un workspace con el botón New run */}
 
-### Rellena el nuevo run
+### Rellena el formulario
 
 Pulsa **New run** y rellena el formulario:
 
@@ -45,7 +45,7 @@ Pulsa **New run** y rellena el formulario:
 | Agent | Pi o Hermes, el que tengas instalado en el workspace. |
 | Prompt | La tarea, con tus palabras, como se la escribirías al agente en un chat. Hasta 32 KiB. |
 | Working directory | La carpeta en la que trabaja el agente. Por defecto es `/home/nan` y tiene que estar dentro de ella. |
-| Worktree | `auto` (por defecto), `on` u `off`. Mira [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
+| Worktree | `auto` (por defecto), `on` u `off`. Consulta [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
 | Timeout | 15, 30, 60 o 120 minutos. El run se para al llegar a ese límite. |
 
 {/* SCREENSHOT: formulario de nuevo run, con agente, prompt, carpeta de trabajo, worktree y timeout */}
@@ -75,7 +75,7 @@ Lo que pasa con tus archivos depende de la carpeta que elijas y de la opción **
 
 **Con worktree**, el agente no toca tu checkout. Trabaja en una copia aparte del repositorio, en una rama nueva que se llama `nan-run/` seguido de los 8 primeros caracteres del id del run, por ejemplo `nan-run/6f1c2a9b`. Cuando el agente acaba, todo lo que ha cambiado queda en un commit en esa rama. El run **nunca hace push**: la rama se queda en el repositorio dentro de tu workspace y tú decides qué hacer con ella. Si el agente no ha cambiado nada, la rama se borra.
 
-Para revisar los cambios e incorporarlos, desde el repositorio dentro de tu workspace:
+Para revisar los cambios e incorporarlos, abre una terminal en tu workspace ([por SSH o desde la pestaña Console](/es/docs/workspaces#conectarte)) y, desde el repositorio:
 
 ```bash
 git log -p HEAD..nan-run/6f1c2a9b
@@ -84,13 +84,13 @@ git merge nan-run/6f1c2a9b
 
 **Sin worktree**, el agente trabaja directamente en la carpeta y no hay rama. Úsalo con carpetas que no son repositorios, o cuando quieras los cambios ahí mismo.
 
-La carpeta de trabajo tiene que estar dentro de `/home/nan`, tu home en el workspace.
+La carpeta de trabajo tiene que estar dentro de `/home/nan`, tu carpeta personal en el workspace.
 
-## Cómo termina un run
+## Estados de un run
 
 | Estado | Qué significa |
 |---|---|
-| `queued` | Esperando un hueco libre. Mira [Cuántos runs a la vez](#cuántos-runs-a-la-vez). |
+| `queued` | Esperando un hueco libre. Consulta [Cuántos runs a la vez](#cuántos-runs-a-la-vez). |
 | `starting` | Se está preparando en el workspace. |
 | `running` | El agente está trabajando. |
 | `succeeded` | El agente ha terminado su tarea. |
@@ -120,9 +120,9 @@ Cada run trabaja en su propio proceso dentro del workspace, con su parte de CPU 
 
 ## Inferencia y secretos
 
-Los runs usan la clave de inferencia del workspace, la misma que usan sus agentes cuando trabajas con ellos a mano. Sus peticiones cuentan en el uso de tu plan como cualquier otra.
+Los runs usan la clave de inferencia del workspace, la misma que usan sus agentes cuando trabajas con ellos a mano. Sus peticiones cuentan para el uso de tu plan como cualquier otra.
 
-Los valores del archivo de entorno de tu workspace, como esa clave de inferencia o un token de bot de Telegram, aparecen como `***` en los logs y resultados de los runs. Puedes compartir un log sin filtrarlos.
+Los secretos del archivo de entorno de tu workspace, como esa clave de inferencia o un token de bot de Telegram, aparecen como `***` en los logs y resultados de los runs, así que un log no los filtra.
 
 ## Desde la terminal: `nan run`
 
@@ -174,13 +174,14 @@ nan run --detach "actualiza las dependencias"
 | `--agent pi\|hermes` | `pi` | El agente. |
 | `--model M` | el del agente | El modelo que usa el agente. |
 | `--cwd PATH` | `/home/nan` | La carpeta de trabajo en el workspace. |
-| `--worktree` / `--no-worktree` | auto | Fuerza el worktree a on u off. Mira [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
+| `--worktree` / `--no-worktree` | auto | Fuerza el worktree a on u off. Consulta [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
 | `--timeout D` | `30m` | Cuándo pararlo, de `1m` a `2h`. |
 | `--detach` | | Lanza el run, imprime su id y vuelve. |
+| `--idempotency-key K` | | Si un reintento manda la misma clave y la misma petición, recibes el run ya creado en lugar de uno nuevo. |
 | `--json` | | Imprime los eventos como líneas JSON y después el run terminado. |
 | `-f FILE` | | Lee el prompt de un archivo, o de stdin con `-`. |
 
-Mientras se muestra el log, **Ctrl-C una vez** te desengancha: el run sigue y la CLI te dice cómo retomarlo. **Ctrl-C dos veces en menos de 2 segundos** lo cancela.
+Mientras se muestra el log, **Ctrl-C una vez** te desconecta del log: el run sigue y la CLI te dice cómo retomarlo. **Ctrl-C dos veces en menos de 2 segundos** lo cancela.
 
 ### Gestiona tus runs
 
@@ -225,12 +226,12 @@ Hay dos tipos de credenciales que sirven para la API de runs. Las dos están en 
 
 | | **API Keys** | **Tokens** |
 |---|---|---|
-| Aspecto | `sk-...` | `nan_pat_...` |
+| Formato | `sk-...` | `nan_pat_...` |
 | Inferencia (modelos) | Sí | **No, nunca** |
 | API de la plataforma (runs, tus workspaces) | Sí | Sí |
 | Quién puede crearlas | Planes con inferencia | Cualquier miembro con una suscripción activa |
 
-Un **token** es lo que conviene darle a un script que solo gestiona runs: no sirve para llamar a los modelos, así que robarlo no da acceso a la inferencia. Créalo en **Settings → Tokens**:
+Un **token** es lo que conviene darle a un script que solo gestiona runs. No sirve para llamar a los modelos directamente, pero sí para lanzar runs que gastan tu plan: guárdalo igual de bien que una API key y revócalo si se filtra. Créalo en **Settings → Tokens**:
 
 - Se muestra **una sola vez**, al crearlo. Cópialo en ese momento.
 - Puedes tener hasta **10** tokens activos.
@@ -240,7 +241,7 @@ Un **token** es lo que conviene darle a un script que solo gestiona runs: no sir
 Para crear runs sigue haciendo falta un plan con inferencia, uses la credencial que uses.
 
 <Callout title="Un agente no puede lanzar runs por su cuenta" variant="warning">
-La clave que hay dentro de un workspace, la que usan sus agentes para la inferencia, no puede gestionar runs: la API le responde con un `403`. Un agente que trabaja en tu workspace no puede lanzar runs nuevos por su cuenta.
+La clave que hay dentro de un workspace, la que usan sus agentes para la inferencia, no puede gestionar runs: la API le responde con un `403`. Un agente que trabaja en tu workspace no puede lanzar runs nuevos por su cuenta, salvo que le des una de tus propias API keys o tokens.
 </Callout>
 
 ### Crea un run
@@ -284,13 +285,13 @@ curl -N https://api.nan.builders/v1/runs/$RUN_ID/events \
   -H "Accept: text/event-stream"
 ```
 
-Cada frame es uno de estos:
+Cada evento del stream es uno de estos:
 
 - `event: run_event`, con una línea `id:`: un evento del log (un mensaje, una llamada a una herramienta, su resultado...). Manda el último `id` que hayas visto en la cabecera `Last-Event-ID` para retomar tras un corte, sin perder ni repetir nada.
 - `event: state`: el run ha cambiado de estado.
 - `event: end`: el run ha terminado y su log se ha enviado entero. Los datos son el run terminado. El stream se cierra después.
 
-Cada 15 segundos el stream manda una línea de comentario para mantener la conexión abierta. Sin la cabecera `Accept`, el mismo endpoint responde con páginas de JSON: pasa el `next_after` de cada página como `?after=` para pedir la siguiente.
+Cada 15 segundos el stream manda una línea de comentario para mantener la conexión abierta. Un stream dura como mucho 30 minutos: si se cierra antes del `end`, vuelve a conectarte con `Last-Event-ID` y sigue donde lo dejaste. Sin la cabecera `Accept`, el mismo endpoint responde con páginas de JSON: pasa el `next_after` de cada página como `?after=` para pedir la siguiente.
 
 Para ver cómo ha terminado:
 
@@ -325,8 +326,11 @@ Los errores usan el mismo formato que la API de inferencia:
 
 | Estado y código | Qué hacer |
 |---|---|
+| `400 invalid_request` | Hay un campo incorrecto. `param` te dice cuál. |
 | `403 tier_restricted` | Tu plan no incluye inferencia. Mejóralo para crear runs. |
 | `403 workspace_key_not_allowed` | Has usado la clave de dentro de un workspace. Usa una API key o un token. |
+| `404` | El workspace o el run no existe, o no es tuyo. |
+| `409 idempotency_conflict` | Has repetido una `Idempotency-Key` con otro cuerpo. Usa una clave nueva. |
 | `409 workspace_not_running` | Enciende primero el workspace. |
 | `409 agent_not_installed` | Instala el agente desde el panel de **Software**, o elige el otro. |
 | `409 no_inference_key` | El workspace no tiene clave de inferencia. Comprueba que tu plan incluye inferencia. |
@@ -337,7 +341,7 @@ Los errores usan el mismo formato que la API de inferencia:
 
 <Details summary="¿Un run sube mi código a algún sitio?">
 
-No. Con worktree, los cambios se quedan en una rama `nan-run/...` del repositorio dentro de tu workspace. Hacer push, merge o tirarlos es cosa tuya.
+No. Con worktree, los cambios se quedan en una rama `nan-run/...` del repositorio dentro de tu workspace. Hacer push, merge o descartarlos es cosa tuya.
 
 </Details>
 
