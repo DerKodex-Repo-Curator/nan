@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { parseFrontmatter } from '@astrojs/markdown-remark';
 import { mdxToText } from '../../lib/mdxToText';
+import openapi from '../../data/openapi.json';
 
 /**
  * The Agent runs guide: what members read before they start their first run,
@@ -174,7 +175,7 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
   });
 
   test('says runs need inference, count as usage and mask secrets', () => {
-    expect(body).toContain('tier_restricted');
+    expect(flat).toMatch(/\*\*(A plan with inference|Un plan con inferencia)\.\*\*/);
     expect(body).toContain('`***`');
   });
 
@@ -194,29 +195,34 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
     expect(flat).toMatch(/2 (seconds|segundos)/);
   });
 
-  test('documents the API with working curl examples: create, follow, cancel', () => {
-    expect(body).toContain('-H "Idempotency-Key:');
+  test('keeps one end-to-end API example: create a run, then follow it with curl -N', () => {
+    expect(body).toContain('curl -s https://api.nan.builders/v1/runs');
+    expect(body).toContain('| jq -r .id)');
     expect(body).toContain('curl -N https://api.nan.builders/v1/runs/$RUN_ID/events');
     expect(body).toContain('-H "Accept: text/event-stream"');
-    expect(body).toContain('curl -X POST https://api.nan.builders/v1/runs/$RUN_ID/cancel');
-    // One table, rows back to back: a paragraph between two rows splits it and
-    // turns the rest into loose text with pipes.
-    const rows = ['workspace', 'agent', 'prompt', 'cwd', 'git_isolation', 'timeout_seconds', 'model'];
-    const table = rows.map((f) => `\\| \`${f}\` \\|[^\\n]*`).join('\\n');
-    expect(body).toMatch(new RegExp(table));
-    for (const frame of ['event: run_event', 'event: state', 'event: end']) expect(body).toContain(frame);
-    expect(body).toContain('Last-Event-ID');
-    expect(body).toContain('next_cursor');
-    expect(body).toContain('"error": {"message"');
-    for (const code of ['400 invalid_request', '404', '409 idempotency_conflict', '429 run_queue_full', '429 rate_limited']) expect(body, code).toContain(`| \`${code}\` |`);
+    for (const frame of ['`run_event`', '`state`', '`end`']) expect(body).toContain(frame);
   });
 
-  test('the create example is valid JSON with the documented fields', () => {
+  test('the create example is valid JSON that the API reference schema accepts', () => {
     const json = /-d '(\{[\s\S]*?\})'/.exec(body)![1];
     const req = JSON.parse(json);
-    expect(Object.keys(req).sort()).toEqual(['agent', 'cwd', 'git_isolation', 'prompt', 'timeout_seconds', 'workspace']);
-    expect(req.timeout_seconds).toBeGreaterThanOrEqual(60);
-    expect(req.timeout_seconds).toBeLessThanOrEqual(7200);
+    const schema = (openapi as any).components.schemas.CreateRunRequest;
+    for (const key of schema.required) expect(req, key).toHaveProperty(key);
+    for (const key of Object.keys(req)) expect(schema.properties, key).toHaveProperty(key);
+    expect(schema.properties.agent.enum).toContain(req.agent);
+  });
+
+  test('sends readers to the API reference for the full Runs and Workspaces contract', () => {
+    expect(body).toContain(`(${page.prefix}/docs/api#tag/runs)`);
+    expect(body).toContain(`(${page.prefix}/docs/api#tag/workspaces)`);
+    expect(body).toContain(`(${page.prefix}/docs/api#description/platform-tokens)`);
+  });
+
+  test('leaves the endpoint, error and event tables to the reference', () => {
+    expect(body).not.toMatch(/^### (Errors|Errores|Cancel it|Cancélalo|List your runs|Lista tus runs)$/m);
+    expect(body).not.toMatch(/^\| `(400 invalid_request|409 idempotency_conflict|429 run_queue_full)` \|/m);
+    expect(body).not.toMatch(/^\| `timeout_seconds` \|/m);
+    expect(body).not.toContain('curl -X POST https://api.nan.builders/v1/runs/$RUN_ID/cancel');
   });
 
   test('explains API keys vs tokens', () => {
@@ -225,7 +231,6 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
     expect(flat).toMatch(/\*\*(No, never|No, nunca)\*\*/);
     expect(flat).toMatch(/\*\*10\*\*/);
     expect(flat).toMatch(/\*\*30, 90 (or|o) 365/);
-    expect(body).toContain('workspace_key_not_allowed');
     expect(flat).toMatch(/(spend your plan|gastan tu plan)/);
   });
 
@@ -357,5 +362,26 @@ describe.each(Object.entries(pages))('CLI authentication for runs (%s)', (locale
     expect(cli).toContain('v0.1.25');
     expect(cli).not.toContain('v0.1.24');
     expect(cli).toContain('`NAN_TOKEN`, `--token-file` o'.replace(' o', locale === 'en' ? ' or' : ' o'));
+  });
+});
+
+describe('the API reference documents what the guide links to', () => {
+  const spec = openapi as any;
+
+  test('the Runs and Workspaces tags exist', () => {
+    const tags = spec.tags.map((t: any) => t.name);
+    expect(tags).toEqual(expect.arrayContaining(['Runs', 'Workspaces']));
+  });
+
+  test('every runs operation is in the reference', () => {
+    expect(spec.paths['/runs'].post.operationId).toBe('createRun');
+    expect(spec.paths['/runs'].get.operationId).toBe('listRuns');
+    expect(spec.paths['/runs/{id}'].get.operationId).toBe('getRun');
+    expect(spec.paths['/runs/{id}/events'].get.operationId).toBe('getRunEvents');
+    expect(spec.paths['/runs/{id}/cancel'].post.operationId).toBe('cancelRun');
+  });
+
+  test('the overview has the Platform tokens section the guide links to', () => {
+    expect(spec.info.description).toContain('### Platform tokens');
   });
 });
