@@ -47,7 +47,7 @@ Pulsa **New run** y rellena el formulario (el portal está en inglés):
 | **Task** | La tarea, con tus palabras, como se la escribirías al agente en un chat. Hasta 32 KiB (el contador bajo la caja te dice los bytes que llevas). |
 | **Folder** | La carpeta donde trabaja el agente. Por defecto es `/home/nan` y tiene que estar dentro de ella. |
 | **Separate branch** | Rama aparte: **Auto** (por defecto), **On** u **Off**. En un repositorio git, el agente trabaja en su propia rama y tu checkout se queda como está. Consulta [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
-| **Time limit** | El tiempo máximo: 15, 30, 60 o 120 minutos. El run se para al llegar a él. |
+| **Time limit** | El tiempo máximo: **30 min** por defecto, igual que en la CLI y la API. Las opciones son 15 min, 30 min, 1 hour y 2 hours (1 hora y 2 horas). El run se para al llegar a él. |
 
 Pulsa **Start run**, o `Ctrl+Enter` (`⌘+Enter` en un Mac) desde la caja de la tarea.
 
@@ -103,7 +103,7 @@ La carpeta tiene que estar dentro de `/home/nan`, tu carpeta personal en el work
 
 El portal muestra los mismos estados en inglés y con mayúscula, por ejemplo **Running**, **Succeeded** o **Cancelled**.
 
-Desde la CLI y la API el tiempo máximo va de 60 segundos a 2 horas. El portal ofrece 15, 30, 60 y 120 minutos.
+Desde la CLI y la API el tiempo máximo va de 60 segundos a 2 horas. El portal ofrece 15 min, 30 min, 1 hora y 2 horas, con 30 min por defecto.
 
 ## Cuántos runs a la vez
 

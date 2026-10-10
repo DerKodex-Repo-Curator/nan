@@ -47,7 +47,7 @@ Press **New run** and fill in the form:
 | **Task** | What you want done, in your own words, as you would write it to the agent in a chat. Up to 32 KiB (the counter under the box shows the bytes used). |
 | **Folder** | Where the agent works. It defaults to `/home/nan` and must be inside it. |
 | **Separate branch** | **Auto** (the default), **On** or **Off**. In a git repository, the agent works on its own branch and your checkout stays as it is. See [Where the agent works](#where-the-agent-works). |
-| **Time limit** | 15, 30, 60 or 120 minutes. The run is stopped when it reaches it. |
+| **Time limit** | **30 min** by default, the same as the CLI and the API. The options are 15 min, 30 min, 1 hour and 2 hours. The run is stopped when it reaches it. |
 
 Press **Start run**, or `Ctrl+Enter` (`⌘+Enter` on a Mac) from the task box.
 
@@ -103,7 +103,7 @@ The folder must be inside `/home/nan`, your home in the workspace.
 
 The portal shows the same states with a capital letter, for example **Running**, **Succeeded** or **Cancelled**.
 
-Through the CLI and the API the time limit goes from 60 seconds to 2 hours. The portal offers 15, 30, 60 and 120 minutes.
+Through the CLI and the API the time limit goes from 60 seconds to 2 hours. The portal offers 15 min, 30 min, 1 hour and 2 hours, with 30 min by default.
 
 ## How many runs at once
 

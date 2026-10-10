@@ -138,7 +138,11 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
   test('describes the portal form with its limits', () => {
     expect(flat).toContain('32 KiB');
     expect(body).toContain('`/home/nan`');
-    expect(flat).toMatch(/15, 30, 60 (or|o) 120/);
+    // cloud-ui src/lib/runs.ts: DEFAULT_TIMEOUT_SECONDS = 1800, options 15 min / 30 min / 1 hour / 2 hours.
+    expect(flat).toMatch(/\| \*\*Time limit\*\* \|[^|]*\*\*30 min\*\* (by default|por defecto), (the same as|igual que en) (the CLI and the API|la CLI y la API)/);
+    expect(flat).toMatch(/15 min, 30 min, 1 hour (and|y) 2 hours/);
+    expect(flat).toMatch(/15 min, 30 min, 1 (hour|hora) (and|y) 2 (hours|horas), (with 30 min by default|con 30 min por defecto)/);
+    expect(flat).not.toMatch(/60 (or|o|and|y) 120 (minutes|minutos)/);
     for (const tab of ['Overview', 'Console', 'SSH keys', 'Events', 'Backups']) expect(body).toContain(`**${tab}**`);
   });
 
