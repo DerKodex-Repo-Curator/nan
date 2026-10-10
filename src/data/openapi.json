@@ -3,7 +3,7 @@
   "info": {
     "title": "NaN API",
     "version": "1.0.0",
-    "description": "Open models on a shared EU inference cluster. Zero logs.\n\nThe NaN API is OpenAI-compatible: predictable, resource-oriented URLs, JSON request and response bodies, and standard HTTP verbs and status codes. Point any OpenAI SDK at our base URL and your existing code keeps working. Change the base URL and the API key, and that's it.\n\nOne schema across every model, so you only learn the API once. Change the `model` field to switch models; everything else stays the same.\n\n- Base URL: `https://api.nan.builders/v1`\n- OpenAPI spec: this document. Import it into Postman, Insomnia, or your own tooling.\n\nIf you use the [Helmcode](https://helmcode.com) enterprise service, the base URL is `https://api.helmcode.com/v1` instead. Every other endpoint is identical.\n\n## Authentication\n\nEvery request authenticates with an API key, sent as a Bearer token:\n\n```\nAuthorization: Bearer $NAN_API_KEY\n```\n\nYou must be a NaN community member. Generate your key from user settings, under \"API Keys\", on the [platform](https://cloud.nan.builders/). The key is personal and non-transferable. Keep it secret: never embed one in client-side code or commit it to source control. Requests must go over HTTPS; calls over plain HTTP fail.\n\n## Making requests\n\nThe API is OpenAI-compatible, so point an official OpenAI SDK at our base URL and change nothing else:\n\n```python\nfrom openai import OpenAI\n\nclient = OpenAI(\n    api_key=\"$NAN_API_KEY\",\n    base_url=\"https://api.nan.builders/v1\",\n)\n\nresp = client.chat.completions.create(\n    model=\"deepseek-v4-flash\",\n    messages=[{\"role\": \"user\", \"content\": \"Hello\"}],\n)\nprint(resp.choices[0].message.content)\n```\n\n## Streaming\n\nChat responses can stream token-by-token. Set `\"stream\": true` on `/chat/completions` and the response arrives as Server-Sent Events: each event is a `data:` line carrying a `chat.completion.chunk`, with the new text in `choices[0].delta.content`. A final `data: [DONE]` line ends the stream. `/chat/completions` streams incrementally on every chat model. `/responses` streams incrementally only on `deepseek-v4-flash`; on `qwen3.6` and `gemma4` it holds the whole answer and sends it in one burst at the end.\n\n## Rate limits\n\n{{RATE_LIMITS}}\n\nImage endpoints run on their own budget, separate from the model endpoints: 20 requests per minute and 100 requests per month. The usage endpoint is metered separately too: {{USAGE_RATE_LIMIT}} requests per minute per member. Exceed any limit and you get a `429`.\n\n## Errors\n\nNaN uses conventional HTTP status codes: `2xx` on success, `4xx` for a problem with the request (a missing parameter, an invalid key, an unavailable model) and `5xx` for a server-side error. Every error returns a JSON body in the OpenAI shape:\n\n```json\n{\n  \"error\": {\n    \"message\": \"The model 'foo' does not exist.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"model\",\n    \"code\": \"model_not_found\"\n  }\n}\n```\n\n`message` is human-readable, `param` names the offending field when applicable, and `code` is a short machine-readable string you can branch on.\n\n| Status | Meaning | `code` |\n| --- | --- | --- |\n| `400` | Invalid or malformed parameter (`param` says which); content blocked by the safety filter; a `max_tokens` above what the model can generate (a generic \"Invalid request\" message today); or a request that does not fit the model's context window. On the models hosted on the cluster (`qwen3.6`, `gemma4`) the overflow message is \"Context length exceeded for model '...'\" with the model's limit; on the other models it is usually that text, but it can arrive as the generic \"Invalid request. Check your request parameters.\" | `\"400\"` (with `type: invalid_request_error`) · `content_policy_violation` |\n| `401` | Missing or invalid API key, or a key whose tier does not reach the requested model (`glm5.3`): \"This API key does not have access to the requested model\", `type: auth_error`. Measured 2026-09-12. | `invalid_api_key` |\n| `402` | The token allowance is spent on a model that carries one. Not retryable: the counter returns to zero when that model's quota period does, the calendar month for the models counted per month and your billing period for `glm5.3`. | `monthly_cap_reached` |\n| `403` | Your tier can't access this endpoint. Image generation requires inference membership. A model your tier cannot reach answers `401`, not this. | `tier_restricted` |\n| `404` | The requested model doesn't exist. | `model_not_found` |\n| `429` | Rate limit hit (`rpm_limit`, `max_parallel_requests`), the rolling 4h token budget of `glm5.3`, or a quota exhausted. | `rate_limit_exceeded` · `insufficient_quota` · `quota_exceeded` |\n| `500` | Something went wrong on our side (includes upstream model errors). | (none) |\n| `524` | Timeout, typical with large audio files on `/audio/transcriptions`. | (none) |\n\nRetry `429` and `5xx` responses with exponential backoff. Don't retry `400`, `401`, `403`, or `404` blindly (a context overflow is not retried automatically either: shorten the input or pick a model with a larger window): they'll fail the same way every time until you change the request. `402` cannot be fixed by repetition either: it clears when that model's quota period resets.\n\n## Model catalog\n\nEvery endpoint takes a `model` id. Capabilities vary by model:\n\n| Model | Use for | Capabilities |\n| --- | --- | --- |\n| `deepseek-v4-flash` | Chat, vision, reasoning | Streaming, tool calling, reasoning, image input, 1M-token context. 3B tokens/month per member |\n| `mimo-v2.6-flash` | Chat, vision, audio | Streaming, tool calling, reasoning, image input, audio input, 1M-token context. 1.0B tokens/month per member |\n| `qwen3.8-flash` | Chat, vision, agents | Streaming, tool calling, reasoning (on by default), vision, 1M-token context. 500M tokens/month per member |\n| `glm5.3-flash` | Chat, vision, agents | Streaming, tool calling, reasoning, vision, 1M-token context. 2B tokens/month per member |\n| `qwen3.6` | Chat, agents | Streaming, tool calling, vision, reasoning (opt-out, returns `reasoning_content`) |\n| `gemma4` | Chat, vision, agents | Streaming, tool calling, vision, reasoning (opt-in) |\n| `glm5.3` | Coding, long-horizon agents | Streaming, tool calling, reasoning trace, image, audio and video input, 1M-token context. Premium tier only |\n| `qwen3-embedding` | Embeddings | 4096-dimension vectors |\n| `rerank` | RAG reranking | Qwen3-Reranker-8B, 100+ languages |\n| `kokoro` | Text-to-speech | Multiple voices and audio formats |\n| `whisper` | Speech-to-text | Transcription with word/segment timestamps |\n| `flux-2-klein` | Image generation | Text-to-image and image-to-image |\n| `qwen-image-2.1` | Image generation (text→image) | 512-1280 px, 1-4 per request, seed 0-2147483647. 100 images/month per member (shared pool with flux-2-klein) |\n\n`glm5.3` is served only to keys on the GLM 5.3 premium tier; every other model is available to any inference member. Call [List models](#tag/Models) for the exact set available to your key.\n\n## Versioning & compatibility\n\nThe API tracks the OpenAI API surface, so OpenAI SDKs and tools work against `https://api.nan.builders/v1` unchanged. This reference documents the stable public `/v1` endpoints, and we add capabilities without breaking existing fields.",
+    "description": "Open models on a shared EU inference cluster. Zero logs.\n\nThe NaN API is OpenAI-compatible: predictable, resource-oriented URLs, JSON request and response bodies, and standard HTTP verbs and status codes. Point any OpenAI SDK at our base URL and your existing code keeps working. Change the base URL and the API key, and that's it.\n\nOne schema across every model, so you only learn the API once. Change the `model` field to switch models; everything else stays the same.\n\n- Base URL: `https://api.nan.builders/v1`\n- OpenAPI spec: this document. Import it into Postman, Insomnia, or your own tooling.\n\nIf you use the [Helmcode](https://helmcode.com) enterprise service, the base URL is `https://api.helmcode.com/v1` instead. Every other endpoint is identical.\n\n## Authentication\n\nEvery request authenticates with an API key, sent as a Bearer token:\n\n```\nAuthorization: Bearer $NAN_API_KEY\n```\n\nYou must be a NaN community member. Generate your key from user settings, under \"API Keys\", on the [platform](https://cloud.nan.builders/). The key is personal and non-transferable. Keep it secret: never embed one in client-side code or commit it to source control. Requests must go over HTTPS; calls over plain HTTP fail.\n\n### Platform tokens\n\nFor scripts that only manage [Runs](#tag/runs) and list your [Workspaces](#tag/workspaces), create a **platform token** (`nan_pat_...`) under \"Tokens\" in your settings, and send it the same way: `Authorization: Bearer $NAN_TOKEN`. A platform token never works for inference: the model endpoints refuse it. An API key works on both. Each endpoint lists the credentials it accepts.\n\n## Making requests\n\nThe API is OpenAI-compatible, so point an official OpenAI SDK at our base URL and change nothing else:\n\n```python\nfrom openai import OpenAI\n\nclient = OpenAI(\n    api_key=\"$NAN_API_KEY\",\n    base_url=\"https://api.nan.builders/v1\",\n)\n\nresp = client.chat.completions.create(\n    model=\"deepseek-v4-flash\",\n    messages=[{\"role\": \"user\", \"content\": \"Hello\"}],\n)\nprint(resp.choices[0].message.content)\n```\n\n## Streaming\n\nChat responses can stream token-by-token. Set `\"stream\": true` on `/chat/completions` and the response arrives as Server-Sent Events: each event is a `data:` line carrying a `chat.completion.chunk`, with the new text in `choices[0].delta.content`. A final `data: [DONE]` line ends the stream. `/chat/completions` streams incrementally on every chat model. `/responses` streams incrementally only on `deepseek-v4-flash`; on `qwen3.6` and `gemma4` it holds the whole answer and sends it in one burst at the end.\n\n## Rate limits\n\n{{RATE_LIMITS}}\n\nImage endpoints run on their own budget, separate from the model endpoints: 20 requests per minute and 100 requests per month. The usage endpoint is metered separately too: {{USAGE_RATE_LIMIT}} requests per minute per member. Exceed any limit and you get a `429`.\n\n## Errors\n\nNaN uses conventional HTTP status codes: `2xx` on success, `4xx` for a problem with the request (a missing parameter, an invalid key, an unavailable model) and `5xx` for a server-side error. Every error returns a JSON body in the OpenAI shape:\n\n```json\n{\n  \"error\": {\n    \"message\": \"The model 'foo' does not exist.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"model\",\n    \"code\": \"model_not_found\"\n  }\n}\n```\n\n`message` is human-readable, `param` names the offending field when applicable, and `code` is a short machine-readable string you can branch on.\n\n| Status | Meaning | `code` |\n| --- | --- | --- |\n| `400` | Invalid or malformed parameter (`param` says which); content blocked by the safety filter; a `max_tokens` above what the model can generate (a generic \"Invalid request\" message today); or a request that does not fit the model's context window. On the models hosted on the cluster (`qwen3.6`, `gemma4`) the overflow message is \"Context length exceeded for model '...'\" with the model's limit; on the other models it is usually that text, but it can arrive as the generic \"Invalid request. Check your request parameters.\" | `\"400\"` (with `type: invalid_request_error`) · `content_policy_violation` |\n| `401` | Missing or invalid API key, or a key whose tier does not reach the requested model (`glm5.3`): \"This API key does not have access to the requested model\", `type: auth_error`. Measured 2026-09-12. | `invalid_api_key` |\n| `402` | The token allowance is spent on a model that carries one. Not retryable: the counter returns to zero when that model's quota period does, the calendar month for the models counted per month and your billing period for `glm5.3`. | `monthly_cap_reached` |\n| `403` | Your tier can't access this endpoint. Image generation requires inference membership. A model your tier cannot reach answers `401`, not this. | `tier_restricted` |\n| `404` | The requested model doesn't exist. | `model_not_found` |\n| `429` | Rate limit hit (`rpm_limit`, `max_parallel_requests`), the rolling 4h token budget of `glm5.3`, or a quota exhausted. | `rate_limit_exceeded` · `insufficient_quota` · `quota_exceeded` |\n| `500` | Something went wrong on our side (includes upstream model errors). | (none) |\n| `524` | Timeout, typical with large audio files on `/audio/transcriptions`. | (none) |\n\nRetry `429` and `5xx` responses with exponential backoff. Don't retry `400`, `401`, `403`, or `404` blindly (a context overflow is not retried automatically either: shorten the input or pick a model with a larger window): they'll fail the same way every time until you change the request. `402` cannot be fixed by repetition either: it clears when that model's quota period resets.\n\n## Model catalog\n\nEvery endpoint takes a `model` id. Capabilities vary by model:\n\n| Model | Use for | Capabilities |\n| --- | --- | --- |\n| `deepseek-v4-flash` | Chat, vision, reasoning | Streaming, tool calling, reasoning, image input, 1M-token context. 3B tokens/month per member |\n| `mimo-v2.6-flash` | Chat, vision, audio | Streaming, tool calling, reasoning, image input, audio input, 1M-token context. 1.0B tokens/month per member |\n| `qwen3.8-flash` | Chat, vision, agents | Streaming, tool calling, reasoning (on by default), vision, 1M-token context. 500M tokens/month per member |\n| `glm5.3-flash` | Chat, vision, agents | Streaming, tool calling, reasoning, vision, 1M-token context. 2B tokens/month per member |\n| `qwen3.6` | Chat, agents | Streaming, tool calling, vision, reasoning (opt-out, returns `reasoning_content`) |\n| `gemma4` | Chat, vision, agents | Streaming, tool calling, vision, reasoning (opt-in) |\n| `glm5.3` | Coding, long-horizon agents | Streaming, tool calling, reasoning trace, image, audio and video input, 1M-token context. Premium tier only |\n| `qwen3-embedding` | Embeddings | 4096-dimension vectors |\n| `rerank` | RAG reranking | Qwen3-Reranker-8B, 100+ languages |\n| `kokoro` | Text-to-speech | Multiple voices and audio formats |\n| `whisper` | Speech-to-text | Transcription with word/segment timestamps |\n| `flux-2-klein` | Image generation | Text-to-image and image-to-image |\n| `qwen-image-2.1` | Image generation (text→image) | 512-1280 px, 1-4 per request, seed 0-2147483647. 100 images/month per member (shared pool with flux-2-klein) |\n\n`glm5.3` is served only to keys on the GLM 5.3 premium tier; every other model is available to any inference member. Call [List models](#tag/Models) for the exact set available to your key.\n\n## Versioning & compatibility\n\nThe API tracks the OpenAI API surface, so OpenAI SDKs and tools work against `https://api.nan.builders/v1` unchanged. This reference documents the stable public `/v1` endpoints, plus the two read-only [Workspaces](#tag/workspaces) endpoints under `/api/workspaces`, and we add capabilities without breaking existing fields.",
     "contact": {
       "name": "NaN",
       "url": "https://nan.builders"
@@ -57,6 +57,14 @@
     {
       "name": "Usage",
       "description": "Query your own token usage."
+    },
+    {
+      "name": "Runs",
+      "description": "Give an agent (Pi or Hermes) a task inside one of your workspaces and follow it. A run keeps going if the client disconnects. Accepts a member API key or a platform token. Guide: [Agent runs](https://nan.builders/docs/runs)."
+    },
+    {
+      "name": "Workspaces",
+      "description": "Read-only access to your own workspaces, for scripts that start runs by workspace name. Served at `https://api.nan.builders/api/workspaces`, outside `/v1`. Creating, starting, stopping and deleting workspaces is done from the platform, not from this API. Guide: [Workspaces](https://nan.builders/docs/workspaces)."
     }
   ],
   "paths": {
@@ -1578,6 +1586,1158 @@
           }
         ]
       }
+    },
+    "/runs": {
+      "post": {
+        "operationId": "createRun",
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Create a run",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Gives an agent a task in one of your workspaces. The run is queued and starts as soon as there is a free place: a workspace runs 1 (Micro and the free workspace), 2 (Nano), 3 (Basic), 5 (Medium) or 8 (Large) runs at once, and you can have at most 5 runs working across all your workspaces (8 on Premium). Extra runs wait, first in, first out.\n\nLimits: up to 20 queued runs per workspace and 50 in total (`429 run_queue_full`), and 60 new runs per rolling hour (`429 rate_limited`).\n\nCreating runs needs a plan with inference (`403 tier_restricted`): the run uses the workspace's inference key and counts against your plan's usage. The workspace must be `running` and have the agent installed.\n\n**Idempotency.** Send an `Idempotency-Key` header to make retries safe: the same key with the same body returns the run already created (`200`), the same key with a different body answers `409 idempotency_conflict`.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`).",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            },
+            "description": "Optional. 1 to 128 characters of `A-Z a-z 0-9 . _ : -`."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRunRequest"
+              },
+              "example": {
+                "workspace": "develop",
+                "agent": "pi",
+                "prompt": "add tests for the date parser and make them pass",
+                "cwd": "/home/nan/projects/api",
+                "git_isolation": null,
+                "timeout_seconds": 1800
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The run was created (`state: queued`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                },
+                "example": {
+                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                  "object": "run",
+                  "workspace": {
+                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                    "name": "develop"
+                  },
+                  "agent": "pi",
+                  "model": null,
+                  "trigger": "api",
+                  "state": "queued",
+                  "queue_position": 1,
+                  "prompt_preview": "add tests for the date parser and make them pass",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": null,
+                  "timeout_seconds": 1800,
+                  "cancel_requested": false,
+                  "exit_code": null,
+                  "error_code": null,
+                  "result": null,
+                  "usage": {
+                    "tokens_in": null,
+                    "tokens_out": null,
+                    "source": null
+                  },
+                  "last_seq": 0,
+                  "created_at": "2026-10-10T12:00:00Z",
+                  "started_at": null,
+                  "finished_at": null
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay: the run already created with this `Idempotency-Key` and body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                },
+                "example": {
+                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                  "object": "run",
+                  "workspace": {
+                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                    "name": "develop"
+                  },
+                  "agent": "pi",
+                  "model": null,
+                  "trigger": "api",
+                  "state": "queued",
+                  "queue_position": 1,
+                  "prompt_preview": "add tests for the date parser and make them pass",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": null,
+                  "timeout_seconds": 1800,
+                  "cancel_requested": false,
+                  "exit_code": null,
+                  "error_code": null,
+                  "result": null,
+                  "usage": {
+                    "tokens_in": null,
+                    "tokens_out": null,
+                    "source": null
+                  },
+                  "last_seq": 0,
+                  "created_at": "2026-10-10T12:00:00Z",
+                  "started_at": null,
+                  "finished_at": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A field is invalid; `param` names it (`workspace`, `agent`, `prompt`, `cwd`, `timeout_seconds`, `model`, `trigger`, `Idempotency-Key`, or an unknown field).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "must be between 60 and 7200",
+                    "type": "invalid_request_error",
+                    "param": "timeout_seconds",
+                    "code": "invalid_request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "`tier_restricted`: your plan does not include inference. `workspace_key_not_allowed`: the bearer is the key inside a workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "tier_restricted": {
+                    "value": {
+                      "error": {
+                        "message": "your membership does not include agent runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "tier_restricted"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No workspace with that name or id among yours.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "workspace not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workspace_not_running`: start the workspace first. `agent_not_installed`: install the agent from the workspace's Software panel. `no_inference_key`: the workspace has no inference key. `idempotency_conflict`: the `Idempotency-Key` was used with a different body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "the workspace is not running",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "workspace_not_running"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`run_queue_full`: 20 queued runs in the workspace or 50 in total. `rate_limited`: 60 runs created in the last hour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "too many queued runs",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "run_queue_full"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl https://api.nan.builders/v1/runs \\\n  -H \"Authorization: Bearer $NAN_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Idempotency-Key: fix-date-parser-1\" \\\n  -d '{ \"workspace\": \"develop\", \"agent\": \"pi\", \"prompt\": \"add tests for the date parser and make them pass\", \"cwd\": \"/home/nan/projects/api\" }'"
+          }
+        ]
+      },
+      "get": {
+        "operationId": "listRuns",
+        "tags": [
+          "Runs"
+        ],
+        "summary": "List runs",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Your runs, newest first, with optional filters. Reading, following and cancelling runs does not need a plan with inference.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`).",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only the runs of this workspace (name or id)."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "starting",
+                "running",
+                "succeeded",
+                "failed",
+                "cancelled",
+                "timed_out"
+              ]
+            },
+            "description": "Only the runs in this state. An unknown state answers `400`."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "Runs per page, 1 to 100. Out of range answers `400`."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque: the `next_cursor` of the previous page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of runs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunList"
+                },
+                "example": {
+                  "object": "list",
+                  "data": [
+                    {
+                      "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                      "object": "run",
+                      "workspace": {
+                        "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                        "name": "develop"
+                      },
+                      "agent": "pi",
+                      "model": null,
+                      "trigger": "api",
+                      "state": "queued",
+                      "queue_position": 1,
+                      "prompt_preview": "add tests for the date parser and make them pass",
+                      "cwd": "/home/nan/projects/api",
+                      "git_isolation": null,
+                      "timeout_seconds": 1800,
+                      "cancel_requested": false,
+                      "exit_code": null,
+                      "error_code": null,
+                      "result": null,
+                      "usage": {
+                        "tokens_in": null,
+                        "tokens_out": null,
+                        "source": null
+                      },
+                      "last_seq": 0,
+                      "created_at": "2026-10-10T12:00:00Z",
+                      "started_at": null,
+                      "finished_at": null
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filter or cursor; `param` names it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "limit must be between 1 and 100",
+                    "type": "invalid_request_error",
+                    "param": "limit",
+                    "code": "invalid_request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "The bearer is the key that lives inside a workspace. Agents cannot manage runs: use your API key or a platform token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "workspace keys cannot manage runs",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "workspace_key_not_allowed"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The `workspace` filter names no workspace of yours.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "workspace not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl \"https://api.nan.builders/v1/runs?workspace=develop&state=running&limit=20\" \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
+    },
+    "/runs/{id}": {
+      "get": {
+        "operationId": "getRun",
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Retrieve a run",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "One run, including the full `prompt`. Poll it, or follow the events stream, to see how it ends.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The run id. A malformed id answers `404`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                },
+                "example": {
+                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                  "object": "run",
+                  "workspace": {
+                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                    "name": "develop"
+                  },
+                  "agent": "pi",
+                  "model": null,
+                  "trigger": "api",
+                  "state": "succeeded",
+                  "queue_position": null,
+                  "prompt_preview": "add tests for the date parser and make them pass",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": null,
+                  "timeout_seconds": 1800,
+                  "cancel_requested": false,
+                  "exit_code": 0,
+                  "error_code": null,
+                  "result": {
+                    "status": "succeeded",
+                    "summary": "Added 6 tests for the date parser; all pass.",
+                    "branch": "nan-run/6f1c2a9b",
+                    "commit": "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+                    "changed_files": 2,
+                    "artifacts": []
+                  },
+                  "usage": {
+                    "tokens_in": 15234,
+                    "tokens_out": 1812,
+                    "source": "litellm"
+                  },
+                  "last_seq": 42,
+                  "created_at": "2026-10-10T12:00:00Z",
+                  "started_at": "2026-10-10T12:00:02Z",
+                  "finished_at": "2026-10-10T12:03:41Z",
+                  "prompt": "add tests for the date parser and make them pass"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "The bearer is the key that lives inside a workspace. Agents cannot manage runs: use your API key or a platform token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "workspace keys cannot manage runs",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "workspace_key_not_allowed"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No run with that id among yours (another member's run is also `404`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "run not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl https://api.nan.builders/v1/runs/$RUN_ID \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
+    },
+    "/runs/{id}/events": {
+      "get": {
+        "operationId": "getRunEvents",
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Follow a run's events",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "The run's log, as a live stream or as JSON pages.\n\n**Stream.** Send `Accept: text/event-stream` (with `curl`, add `-N`). The server first replays every stored event after your resume point, then sends new ones as they happen. Frames:\n\n- `id: <seq>` + `event: run_event` + `data: <RunEvent>`: one event of the log.\n- `event: state` + `data: {\"state\", \"error_code\"}`: the run changed state.\n- `event: end` + `data: <Run>`: the run is over and every event has been sent. The server closes the stream after it.\n- `: hb`: a comment line every 15 seconds that keeps the connection open. Ignore it.\n\nTo resume after a dropped connection, send the last `id` you received as the `Last-Event-ID` header (it wins over `after`): you get the rest without gaps or repeats. A stream lasts at most 30 minutes; if it closes before `end`, reconnect with `Last-Event-ID`. Up to 10 open streams per member (`429 too_many_streams`).\n\n**JSON pages.** Without that `Accept` header the same endpoint answers one page of events after `after`. Pass the page's `next_after` as `after` until `done` is `true`.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The run id. A malformed id answers `404`."
+          },
+          {
+            "name": "Accept",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "`text/event-stream` for the live stream; anything else for a JSON page."
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Stream only: resume after this `seq`. Wins over `after`."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Return the events with `seq` greater than this."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 500
+            },
+            "description": "JSON pages only: events per page, 1 to 1000."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The stream (`text/event-stream`) or one page of events (`application/json`).",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-sent events: `run_event`, `state` and `end` frames, and `: hb` comments."
+                },
+                "example": "id: 1\nevent: run_event\ndata: {\"seq\":1,\"ts\":\"2026-10-10T12:00:02.120Z\",\"type\":\"started\",\"data\":{\"agent\":\"pi\",\"agent_version\":\"1.0.2\",\"model\":null,\"cwd\":\"/home/nan/projects/api\",\"worktree\":null,\"branch\":null,\"unit\":\"nan-run-6f1c2a9b\"}}\n\nevent: state\ndata: {\"state\":\"running\",\"error_code\":null}\n\nid: 2\nevent: run_event\ndata: {\"seq\":2,\"ts\":\"2026-10-10T12:00:05.310Z\",\"type\":\"message\",\"data\":{\"role\":\"assistant\",\"text\":\"Looking at the parser\",\"final\":false}}\n\n: hb\n\nevent: end\ndata: {\"id\":\"6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c\",\"object\":\"run\",\"state\":\"succeeded\",...}\n\n"
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunEventPage"
+                },
+                "example": {
+                  "data": [
+                    {
+                      "seq": 1,
+                      "ts": "2026-10-10T12:00:02.120Z",
+                      "type": "started",
+                      "data": {
+                        "agent": "pi",
+                        "agent_version": "1.0.2",
+                        "model": null,
+                        "cwd": "/home/nan/projects/api",
+                        "worktree": null,
+                        "branch": null,
+                        "unit": "nan-run-6f1c2a9b"
+                      }
+                    },
+                    {
+                      "seq": 2,
+                      "ts": "2026-10-10T12:00:05.310Z",
+                      "type": "message",
+                      "data": {
+                        "role": "assistant",
+                        "text": "Looking at the parser",
+                        "final": false
+                      }
+                    }
+                  ],
+                  "next_after": 2,
+                  "done": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`after`, `limit` or `Last-Event-ID` is not a valid number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "after must be a non-negative integer",
+                    "type": "invalid_request_error",
+                    "param": "after",
+                    "code": "invalid_request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "The bearer is the key that lives inside a workspace. Agents cannot manage runs: use your API key or a platform token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "workspace keys cannot manage runs",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "workspace_key_not_allowed"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No run with that id among yours (another member's run is also `404`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "run not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 10 open streams for your account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "too many open run streams",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "too_many_streams"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL (stream)",
+            "source": "curl -N https://api.nan.builders/v1/runs/$RUN_ID/events \\\n  -H \"Authorization: Bearer $NAN_TOKEN\" \\\n  -H \"Accept: text/event-stream\""
+          }
+        ]
+      }
+    },
+    "/runs/{id}/cancel": {
+      "post": {
+        "operationId": "cancelRun",
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Cancel a run",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Stops the run. A queued run is cancelled at once; a running one stops within a few seconds and ends as `cancelled`. Safe to repeat.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The run id. A malformed id answers `404`."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Cancellation accepted (`cancel_requested: true`). Follow the run to see it end.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                },
+                "example": {
+                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                  "object": "run",
+                  "workspace": {
+                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                    "name": "develop"
+                  },
+                  "agent": "pi",
+                  "model": null,
+                  "trigger": "api",
+                  "state": "running",
+                  "queue_position": null,
+                  "prompt_preview": "add tests for the date parser and make them pass",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": null,
+                  "timeout_seconds": 1800,
+                  "cancel_requested": true,
+                  "exit_code": null,
+                  "error_code": null,
+                  "result": null,
+                  "usage": {
+                    "tokens_in": null,
+                    "tokens_out": null,
+                    "source": null
+                  },
+                  "last_seq": 0,
+                  "created_at": "2026-10-10T12:00:00Z",
+                  "started_at": "2026-10-10T12:00:02Z",
+                  "finished_at": null
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The run had already ended: nothing changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                },
+                "example": {
+                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                  "object": "run",
+                  "workspace": {
+                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                    "name": "develop"
+                  },
+                  "agent": "pi",
+                  "model": null,
+                  "trigger": "api",
+                  "state": "succeeded",
+                  "queue_position": null,
+                  "prompt_preview": "add tests for the date parser and make them pass",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": null,
+                  "timeout_seconds": 1800,
+                  "cancel_requested": false,
+                  "exit_code": 0,
+                  "error_code": null,
+                  "result": {
+                    "status": "succeeded",
+                    "summary": "Added 6 tests for the date parser; all pass.",
+                    "branch": "nan-run/6f1c2a9b",
+                    "commit": "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+                    "changed_files": 2,
+                    "artifacts": []
+                  },
+                  "usage": {
+                    "tokens_in": 15234,
+                    "tokens_out": 1812,
+                    "source": "litellm"
+                  },
+                  "last_seq": 42,
+                  "created_at": "2026-10-10T12:00:00Z",
+                  "started_at": "2026-10-10T12:00:02Z",
+                  "finished_at": "2026-10-10T12:03:41Z",
+                  "prompt": "add tests for the date parser and make them pass"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "The bearer is the key that lives inside a workspace. Agents cannot manage runs: use your API key or a platform token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "workspace keys cannot manage runs",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "workspace_key_not_allowed"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No run with that id among yours (another member's run is also `404`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "run not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl -X POST https://api.nan.builders/v1/runs/$RUN_ID/cancel \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
+    },
+    "/api/workspaces": {
+      "servers": [
+        {
+          "url": "https://api.nan.builders",
+          "description": "Production. These routes live outside `/v1`."
+        }
+      ],
+      "get": {
+        "operationId": "listWorkspaces",
+        "tags": [
+          "Workspaces"
+        ],
+        "summary": "List workspaces",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Your own workspaces, and only yours. No keys, environment values or agent configuration are ever included. Use it to find the `name` or `workspace_uuid` to pass as `workspace` when you create a run.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`). The key that lives inside a workspace is not accepted.",
+        "responses": {
+          "200": {
+            "description": "Your workspaces (a JSON array, empty if you have none).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Workspace"
+                  }
+                },
+                "example": [
+                  {
+                    "workspace_uuid": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                    "name": "develop",
+                    "agent_selection": [
+                      "pi",
+                      "hermes"
+                    ],
+                    "status": "running",
+                    "ssh_command": "ssh 3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15@ssh.nan.builders -p 30222",
+                    "vcpus": 2,
+                    "memory_mib": 4096,
+                    "disk_gib": 20,
+                    "base_image_ver": "2026.10.05-180da44",
+                    "tier": "nano",
+                    "created_at": "2026-10-01T09:30:00Z",
+                    "updated_at": "2026-10-10T08:12:00Z",
+                    "state_reason": null,
+                    "grace_until": null,
+                    "slot": {
+                      "id": 412,
+                      "tier": "nano",
+                      "status": "active",
+                      "cancel_at_period_end": false,
+                      "current_period_end": "2026-11-01T09:30:00Z"
+                    },
+                    "inference_attached": true,
+                    "rescue": {
+                      "allowed": false,
+                      "active_until": null,
+                      "reason": null,
+                      "rescues_left_today": null
+                    },
+                    "backup": {
+                      "status": "off",
+                      "stale": false
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformError"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl https://api.nan.builders/api/workspaces \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
+    },
+    "/api/workspaces/{id}": {
+      "servers": [
+        {
+          "url": "https://api.nan.builders",
+          "description": "Production. These routes live outside `/v1`."
+        }
+      ],
+      "get": {
+        "operationId": "getWorkspace",
+        "tags": [
+          "Workspaces"
+        ],
+        "summary": "Retrieve a workspace",
+        "security": [
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "One of your own workspaces, plus `env_var_keys`: the names (never the values) of the variables in its environment file. Only your own workspaces are returned: another member's workspace is never shown.\n\nAuthentication: a platform token (`nan_pat_...`). Member API keys (`sk-...`) are not accepted on this route: use the list instead.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The `workspace_uuid`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDetail"
+                },
+                "example": {
+                  "workspace_uuid": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                  "name": "develop",
+                  "agent_selection": [
+                    "pi",
+                    "hermes"
+                  ],
+                  "status": "running",
+                  "ssh_command": "ssh 3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15@ssh.nan.builders -p 30222",
+                  "vcpus": 2,
+                  "memory_mib": 4096,
+                  "disk_gib": 20,
+                  "base_image_ver": "2026.10.05-180da44",
+                  "tier": "nano",
+                  "created_at": "2026-10-01T09:30:00Z",
+                  "updated_at": "2026-10-10T08:12:00Z",
+                  "state_reason": null,
+                  "grace_until": null,
+                  "slot": {
+                    "id": 412,
+                    "tier": "nano",
+                    "status": "active",
+                    "cancel_at_period_end": false,
+                    "current_period_end": "2026-11-01T09:30:00Z"
+                  },
+                  "inference_attached": true,
+                  "rescue": {
+                    "allowed": false,
+                    "active_until": null,
+                    "reason": null,
+                    "rescues_left_today": null
+                  },
+                  "backup": {
+                    "status": "off",
+                    "stale": false
+                  },
+                  "env_var_keys": [
+                    "OPENAI_API_KEY",
+                    "TELEGRAM_BOT_TOKEN"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not a valid UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformError"
+                },
+                "example": {
+                  "error": "invalid workspace id"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformError"
+                },
+                "example": {
+                  "error": "unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The workspace belongs to another member.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformError"
+                },
+                "example": {
+                  "error": "forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No workspace with that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformError"
+                },
+                "example": {
+                  "error": "workspace not found"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl https://api.nan.builders/api/workspaces/$WORKSPACE_ID \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1585,7 +2745,13 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Personal, non-transferable API key. Send as `Authorization: Bearer <api-key>` on every request."
+        "description": "Member API key (`sk-...`), from \"API Keys\" in your settings on the platform. Send it as `Authorization: Bearer <api-key>`. It works on every inference endpoint, on the Runs endpoints and on the workspace list. Personal and non-transferable. The key that lives inside a workspace (the one its agents use) is refused by the Runs endpoints with `403 workspace_key_not_allowed`."
+      },
+      "platformToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "nan_pat_...",
+        "description": "Platform token (`nan_pat_...`), from \"Tokens\" in your settings on the platform. Send it as `Authorization: Bearer <token>`. It works ONLY on the platform API: the Runs endpoints (`/v1/runs...`) and the two Workspaces endpoints. It never works for inference: inference endpoints refuse it (`401`, or `403 token_scope_denied`). Shown once when you create it; up to 10 active; expires after 30, 90 or 365 days, or never; revocable at any time. Any member with an active subscription can create one; creating runs still needs a plan with inference."
       }
     },
     "schemas": {
@@ -2521,6 +3687,901 @@
             "description": "When the all-time summary was last computed, as an ISO 8601 UTC timestamp."
           }
         }
+      },
+      "PlatformError": {
+        "type": "object",
+        "description": "Error body of the Workspaces endpoints (outside `/v1`): a short `error` string, plus `message` on `token_scope_denied`.",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Short error, for example `unauthorized`, `forbidden`, `workspace not found` or `token_scope_denied`."
+          },
+          "message": {
+            "type": "string",
+            "description": "Present on `token_scope_denied`: what the token can be used for."
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "CreateRunRequest": {
+        "type": "object",
+        "description": "Body of `POST /v1/runs`. Unknown fields are refused with `400`.",
+        "required": [
+          "workspace",
+          "agent",
+          "prompt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "description": "Name or id of one of your workspaces.",
+            "example": "develop"
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "pi",
+              "hermes"
+            ],
+            "description": "The agent. It must be installed in the workspace, otherwise `409 agent_not_installed`."
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The task. 1 to 32768 bytes of UTF-8 (32 KiB), no NUL bytes. Called Task in the portal.",
+            "example": "add tests for the date parser and make them pass"
+          },
+          "cwd": {
+            "type": "string",
+            "default": "/home/nan",
+            "maxLength": 512,
+            "description": "Working directory: an absolute path inside `/home/nan`, without `.` or `..` segments. Called Folder in the portal."
+          },
+          "git_isolation": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null,
+            "description": "`null` (auto): when `cwd` is inside a git repository, the agent works on its own branch `nan-run/<first 8 characters of the run id>` in a separate worktree, commits its changes there and never pushes; outside a repository it works in the folder. `true`: always a separate branch (fails with `config_error` outside a repository). `false`: always in the folder. Called Separate branch in the portal."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 7200,
+            "default": 1800,
+            "description": "Time limit. The run is stopped (`timed_out`) when it reaches it. Called Time limit in the portal."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Za-z0-9._:/-]{1,128}$",
+            "default": null,
+            "description": "Model for the agent. `null` uses the agent's own default."
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "api",
+              "cli",
+              "ui"
+            ],
+            "default": "api",
+            "description": "Who started the run. Informational only."
+          }
+        }
+      },
+      "RunArtifact": {
+        "type": "object",
+        "description": "A file the agent left in its run's `artifacts/` folder.",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path relative to the run folder, under `artifacts/`.",
+            "example": "artifacts/report.md"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "RunResult": {
+        "type": "object",
+        "description": "How the run ended, written once it is over. Text from the agent is data: render it as plain text.",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "failed",
+              "cancelled",
+              "timed_out"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "description": "The agent's final answer, up to 4 KiB."
+          },
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `nan-run/...` branch with the agent's commit, when it worked on a separate branch and changed something. `null` otherwise (with no changes the branch is deleted).",
+            "example": "nan-run/6f1c2a9b"
+          },
+          "commit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The commit on `branch`."
+          },
+          "changed_files": {
+            "type": "integer"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunArtifact"
+            }
+          }
+        }
+      },
+      "Run": {
+        "type": "object",
+        "description": "A run. Every response returns this object; `prompt` (the full task) is only in `GET /v1/runs/{id}`.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "run"
+            ]
+          },
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "`null` once the workspace is deleted."
+              }
+            }
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "pi",
+              "hermes"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "api",
+              "cli",
+              "ui"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "starting",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "timed_out"
+            ],
+            "description": "`queued` waits for a free place (per-workspace and per-member limits), then `starting`, `running`, and one of the four final states."
+          },
+          "queue_position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "1-based position while `queued`, otherwise `null`."
+          },
+          "prompt_preview": {
+            "type": "string",
+            "description": "The first 200 characters of the task."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "The full task. Only in `GET /v1/runs/{id}`."
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "git_isolation": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "timeout_seconds": {
+            "type": "integer"
+          },
+          "cancel_requested": {
+            "type": "boolean"
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "unreachable",
+              "access_denied",
+              "admin_unavailable",
+              "host_key_mismatch",
+              "workspace_not_running",
+              "workspace_deleted",
+              "workspace_unavailable",
+              "not_entitled",
+              "no_inference_key",
+              "agent_not_installed",
+              "config_error",
+              "install_failed",
+              "busy",
+              "agent_failed",
+              "timed_out",
+              "cancelled",
+              "interrupted",
+              "protocol_error",
+              "executor_error",
+              null
+            ],
+            "description": "Why the run did not succeed, when there is a reason."
+          },
+          "result": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "usage": {
+            "type": "object",
+            "description": "Tokens the run used, once known (`null` until then).",
+            "properties": {
+              "tokens_in": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "tokens_out": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "litellm",
+                  "agent",
+                  null
+                ],
+                "description": "Where the counts come from: `litellm` (measured by the NaN gateway) or `agent` (reported by the agent)."
+              }
+            }
+          },
+          "last_seq": {
+            "type": "integer",
+            "description": "`seq` of the last stored event."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "RunList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "description": "Newest first. `prompt` is not included: use `prompt_preview`."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass it as `cursor` for the next page. `null` on the last page."
+          }
+        }
+      },
+      "RunEventDataStarted": {
+        "type": "object",
+        "description": "`data` of a `started` event. The run started.",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "enum": [
+              "pi",
+              "hermes"
+            ]
+          },
+          "agent_version": {
+            "type": "string"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Where the agent works (inside the worktree when there is one)."
+          },
+          "worktree": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The separate worktree, or `null` when the agent works in the folder."
+          },
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`nan-run/...` when there is a worktree, otherwise `null`."
+          },
+          "unit": {
+            "type": "string"
+          }
+        }
+      },
+      "RunEventDataLog": {
+        "type": "object",
+        "description": "`data` of a `log` event. A line of output that is not a message.",
+        "properties": {
+          "stream": {
+            "type": "string",
+            "enum": [
+              "agent_stdout",
+              "agent_stderr",
+              "nan-run"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "Up to 8 KiB."
+          }
+        }
+      },
+      "RunEventDataMessage": {
+        "type": "object",
+        "description": "`data` of a `message` event. Assistant text, sent incrementally: each event carries only its own chunk, and the last chunk of a message has `final: true` (its text may be empty). Concatenate the chunks to rebuild the message.",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "assistant"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "This chunk only, up to 16 KiB."
+          },
+          "final": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RunEventDataToolCall": {
+        "type": "object",
+        "description": "`data` of a `tool_call` event. The agent called a tool.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "args_preview": {
+            "type": "string",
+            "description": "Arguments, up to 2 KiB."
+          }
+        }
+      },
+      "RunEventDataToolResult": {
+        "type": "object",
+        "description": "`data` of a `tool_result` event. What a tool answered. `id` matches its `tool_call`.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "is_error": {
+            "type": "boolean"
+          },
+          "output_preview": {
+            "type": "string",
+            "description": "Output, up to 4 KiB."
+          }
+        }
+      },
+      "RunEventDataUsage": {
+        "type": "object",
+        "description": "`data` of a `usage` event. Tokens used so far, as the agent reports them (cumulative).",
+        "properties": {
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prompt_tokens": {
+            "type": "integer"
+          },
+          "completion_tokens": {
+            "type": "integer"
+          }
+        }
+      },
+      "RunEventDataError": {
+        "type": "object",
+        "description": "`data` of a `error` event. Something went wrong.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "unreachable",
+              "access_denied",
+              "admin_unavailable",
+              "host_key_mismatch",
+              "workspace_not_running",
+              "workspace_deleted",
+              "workspace_unavailable",
+              "not_entitled",
+              "no_inference_key",
+              "agent_not_installed",
+              "config_error",
+              "install_failed",
+              "busy",
+              "agent_failed",
+              "timed_out",
+              "cancelled",
+              "interrupted",
+              "protocol_error",
+              "executor_error"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Up to 2 KiB."
+          }
+        }
+      },
+      "RunEventDataTruncated": {
+        "type": "object",
+        "description": "`data` of a `truncated` event. The run hit its event limit (20000 events) or size limit (16 MiB): later events are dropped, except `artifact`, `error` and `finished`.",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "event_cap",
+              "size_cap"
+            ]
+          }
+        }
+      },
+      "RunEventDataFinished": {
+        "type": "object",
+        "description": "`data` of a `finished` event. The run ended. Always the last event.",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "failed",
+              "cancelled",
+              "timed_out"
+            ]
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "unreachable",
+              "access_denied",
+              "admin_unavailable",
+              "host_key_mismatch",
+              "workspace_not_running",
+              "workspace_deleted",
+              "workspace_unavailable",
+              "not_entitled",
+              "no_inference_key",
+              "agent_not_installed",
+              "config_error",
+              "install_failed",
+              "busy",
+              "agent_failed",
+              "timed_out",
+              "cancelled",
+              "interrupted",
+              "protocol_error",
+              "executor_error",
+              null
+            ]
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      },
+      "RunEvent": {
+        "type": "object",
+        "description": "One event of a run's log. `type` says what `data` holds. Everything in `data` comes from the agent inside your workspace: treat it as untrusted text, never as markup. Secrets from the workspace's environment file are masked as `***`.",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "description": "1, 2, 3... in order, per run. Use it to resume (`after`, `Last-Event-ID`)."
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "started",
+              "log",
+              "message",
+              "tool_call",
+              "tool_result",
+              "usage",
+              "artifact",
+              "error",
+              "truncated",
+              "finished"
+            ],
+            "description": "- `started`: The run started.\n- `log`: A line of output that is not a message.\n- `message`: Assistant text, sent incrementally: each event carries only its own chunk, and the last chunk of a message has `final: true` (its text may be empty). Concatenate the chunks to rebuild the message.\n- `tool_call`: The agent called a tool.\n- `tool_result`: What a tool answered. `id` matches its `tool_call`.\n- `usage`: Tokens used so far, as the agent reports them (cumulative).\n- `artifact`: A file the agent left in `artifacts/`.\n- `error`: Something went wrong.\n- `truncated`: The run hit its event limit (20000 events) or size limit (16 MiB): later events are dropped, except `artifact`, `error` and `finished`.\n- `finished`: The run ended. Always the last event."
+          },
+          "data": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunEventDataStarted"
+              },
+              {
+                "$ref": "#/components/schemas/RunEventDataLog"
+              },
+              {
+                "$ref": "#/components/schemas/RunEventDataMessage"
+              },
+              {
+                "$ref": "#/components/schemas/RunEventDataToolCall"
+              },
+              {
+                "$ref": "#/components/schemas/RunEventDataToolResult"
+              },
+              {
+                "$ref": "#/components/schemas/RunEventDataUsage"
+              },
+              {
+                "$ref": "#/components/schemas/RunArtifact"
+              },
+              {
+                "$ref": "#/components/schemas/RunEventDataError"
+              },
+              {
+                "$ref": "#/components/schemas/RunEventDataTruncated"
+              },
+              {
+                "$ref": "#/components/schemas/RunEventDataFinished"
+              }
+            ],
+            "description": "Depends on `type`."
+          }
+        },
+        "example": {
+          "seq": 4,
+          "ts": "2026-10-10T12:00:09.412Z",
+          "type": "tool_call",
+          "data": {
+            "id": "call_01",
+            "name": "bash",
+            "args_preview": "{\"command\":\"go test ./...\"}"
+          }
+        }
+      },
+      "RunEventPage": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunEvent"
+            }
+          },
+          "next_after": {
+            "type": "integer",
+            "description": "The last `seq` returned (or your `after` when the page is empty). Pass it as `after` for the next page."
+          },
+          "done": {
+            "type": "boolean",
+            "description": "`true` when the run is over and every event has been returned."
+          }
+        }
+      },
+      "WorkspaceSlot": {
+        "type": "object",
+        "description": "The purchased slot paying for the workspace.",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "tier": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "cancel_at_period_end": {
+            "type": "boolean"
+          },
+          "current_period_end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "Workspace": {
+        "type": "object",
+        "description": "One of your workspaces. Never carries keys, environment values or agent configuration.",
+        "properties": {
+          "workspace_uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The workspace id. Accepted by `workspace` in `POST /v1/runs`."
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique among your workspaces. Accepted by `workspace` in `POST /v1/runs`."
+          },
+          "agent_selection": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Agents and tools chosen for the workspace."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "provisioning",
+              "running",
+              "stopped",
+              "crashed",
+              "unknown"
+            ],
+            "description": "Runs can only be created while it is `running`."
+          },
+          "ssh_command": {
+            "type": "string",
+            "description": "The command to connect over SSH."
+          },
+          "vcpus": {
+            "type": "integer"
+          },
+          "memory_mib": {
+            "type": "integer"
+          },
+          "disk_gib": {
+            "type": "integer"
+          },
+          "base_image_ver": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "free",
+              "micro",
+              "nano",
+              "basic",
+              "medium",
+              "large"
+            ],
+            "description": "Size. `free` is the Micro-sized workspace included with Premium."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "dunning",
+              "canceled",
+              "disputed",
+              "churn",
+              "banned",
+              "pending_capacity",
+              "rescue",
+              null
+            ],
+            "description": "Why the workspace is not running normally, or `null`."
+          },
+          "grace_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When an open grace period ends (the data is deleted then), or `null`."
+          },
+          "slot": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceSlot"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` for the free workspace."
+          },
+          "inference_attached": {
+            "type": "boolean",
+            "description": "Whether the workspace has an inference key (never the key itself). Runs need it."
+          },
+          "rescue": {
+            "type": "object",
+            "description": "Rescue sessions during a grace period.",
+            "properties": {
+              "allowed": {
+                "type": "boolean"
+              },
+              "active_until": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rescues_left_today": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          },
+          "backup": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The backup add-on.",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "pending_payment",
+                  "active",
+                  "disabling",
+                  "disabled",
+                  "failed"
+                ]
+              },
+              "stale": {
+                "type": "boolean",
+                "description": "`true` when the last snapshot is older than expected."
+              }
+            }
+          }
+        }
+      },
+      "WorkspaceDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Workspace"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "env_var_keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Names of the variables in the workspace's environment file. Never the values."
+              }
+            }
+          }
+        ]
       }
     },
     "responses": {

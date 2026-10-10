@@ -17,13 +17,16 @@ import { DEFAULT_RATE_LIMITS, formatTokens, getRateLimitsConfig, USAGE_REQUESTS_
  * this mostly watches for is anything from there creeping back in.
  *
  * The endpoint surface was checked against the real backend by probing each
- * route: the 11 listed here answer 401 (they exist and want auth) while
- * /v1/moderations, /v1/batches and /v1/files answer 404 (not enabled on NaN).
+ * route: the 11 inference routes listed here answer 401 (they exist and want
+ * auth) while /v1/moderations, /v1/batches and /v1/files answer 404 (not
+ * enabled on NaN). The Runs and Workspaces operations come from cloud-api
+ * (internal/handlers/runs.go, PlatformTokenAPIRoutes) and are pinned in
+ * openapiRuns.test.ts.
  */
 
 const raw = JSON.stringify(spec);
 
-/** The 11 public routes verified against api.nan.builders. */
+/** The public operations: the 11 inference routes verified against api.nan.builders, plus Runs and Workspaces. */
 const PUBLIC_SURFACE: Array<[string, string]> = [
   ['/models', 'get'],
   ['/chat/completions', 'post'],
@@ -36,6 +39,13 @@ const PUBLIC_SURFACE: Array<[string, string]> = [
   ['/images/generations', 'post'],
   ['/images/edits', 'post'],
   ['/usage', 'get'],
+  ['/runs', 'post'],
+  ['/runs', 'get'],
+  ['/runs/{id}', 'get'],
+  ['/runs/{id}/events', 'get'],
+  ['/runs/{id}/cancel', 'post'],
+  ['/api/workspaces', 'get'],
+  ['/api/workspaces/{id}', 'get'],
 ];
 
 /** NaN's real catalogue (src/data/modelos.json + the API reference). */
@@ -104,7 +114,14 @@ describe('openapi.json: the surface is what the backend actually serves', () => 
     for (const absent of ['/moderations', '/batches', '/files']) {
       expect(documented).not.toContain(absent);
     }
-    expect(documented.length).toBe(PUBLIC_SURFACE.length);
+    // Every documented operation is on the list, and nothing else is.
+    const operations = Object.entries(spec.paths as Record<string, Record<string, unknown>>).flatMap(
+      ([path, item]) =>
+        Object.keys(item)
+          .filter((k) => ['get', 'post', 'put', 'patch', 'delete'].includes(k))
+          .map((method) => `${method} ${path}`),
+    );
+    expect(operations.sort()).toEqual(PUBLIC_SURFACE.map(([p, m]) => `${m} ${p}`).sort());
   });
 });
 
