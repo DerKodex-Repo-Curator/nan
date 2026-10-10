@@ -528,6 +528,11 @@ function isMdxExpression(t: string): boolean {
   return t === 'mdxFlowExpression' || t === 'mdxTextExpression';
 }
 
+/** True for an expression that is a single block comment and nothing else. */
+export function isCommentOnly(raw: string): boolean {
+  return /^\/\*[\s\S]*\*\/$/.test(raw) && raw.indexOf('*/') === raw.length - 2;
+}
+
 function promoteHeadingParagraphs(root: { children?: unknown[] }): void {
   if (!Array.isArray(root.children)) return;
   const out: unknown[] = [];
@@ -573,6 +578,9 @@ function transformTree(root: { children?: unknown[] }, rateLimits: RateLimitsCon
 
       if (isMdxExpression(child.type)) {
         const raw = ((child as unknown as { value?: string }).value ?? '').trim();
+        // An MDX comment (`{/* ... */}`) renders nothing, so it serves nothing.
+        // Anything else in braces is still refused: it would be code we cannot run.
+        if (isCommentOnly(raw)) continue;
         throw new Error(`Unexpected MDX expression: {${raw}}`);
       }
 
