@@ -31,5 +31,6 @@ Limits are per API key — a cap on requests per minute and a maximum number of 
 - [API reference](/docs/api): every endpoint, field by field.
 - [Models](/docs/models): the spec sheets and the limits.
 - [Workspaces](/docs/workspaces): your own cloud machine, over SSH and in the browser, with coding agents ready to use.
+- [Agent runs](/docs/runs): give an agent a task inside your workspace and let it work on its own.
 - [Examples](/docs/examples): snippets in Python, Node.js and curl.
 - Support: report issues in `#support` on Discord.

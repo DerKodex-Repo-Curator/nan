@@ -31,5 +31,6 @@ Los límites van por API key — un tope de peticiones por minuto y un máximo d
 - [Referencia de la API](/es/docs/api): todos los endpoints, campo a campo.
 - [Modelos](/es/docs/models): las fichas técnicas y los límites.
 - [Workspaces](/es/docs/workspaces): tu propia máquina en la nube, por SSH y en el navegador, con agentes de código listos para usar.
+- [Runs de agentes](/es/docs/runs): dale una tarea a un agente dentro de tu workspace y deja que trabaje solo.
 - [Ejemplos](/es/docs/examples): fragmentos en Python, Node.js y curl.
 - Soporte: reporta incidencias en `#support` de Discord.

@@ -215,6 +215,12 @@ gentle-shell is an add-on for Pi (memory between sessions with Engram), so it ne
 
 On an inference plan, the agents come set up to use NaN models with your membership. The setup guides for [Pi](/docs/pi) and [Hermes](/docs/hermes) explain how to change the model or the provider by hand.
 
+## Run agents on tasks
+
+You do not have to stay connected while an agent works. A **run** gives Pi or Hermes a task inside your workspace and lets it work on its own: you follow its log live, it keeps going when you close the page, and in a git repository its changes land on a branch for you to review. Start one from the **Runs** tab of the workspace, from your terminal with `nan run`, or from the API.
+
+How it works, the limits and the commands are in [Agent runs](/docs/runs).
+
 ## Backups
 
 Workspaces have **no backups** unless you turn on the **backup add-on** for that workspace, from its **Backups** tab.
