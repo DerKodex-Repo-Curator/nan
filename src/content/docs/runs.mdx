@@ -253,7 +253,7 @@ nan auth login --api-token < token.txt  # or pipe it in
 
 Never put a token on the command line itself: it would end up in your shell history and in `ps`.
 
-A platform token works for runs and nothing else (see [API keys and tokens](#api-keys-and-tokens)). `nan me`, `nan metrics usage` and the dashboard still need a session from `nan auth login`.
+In the CLI, a platform token only works for `nan run` and `nan runs` (see [API keys and tokens](#api-keys-and-tokens)). `nan me`, `nan metrics usage` and the dashboard still need a session from `nan auth login`.
 
 ### Use the CLI in CI or on a server
 
