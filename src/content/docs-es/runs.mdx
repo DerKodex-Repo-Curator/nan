@@ -186,7 +186,7 @@ nan run --detach "actualiza las dependencias"
 | `--json` | | Imprime los eventos como líneas JSON y después el run terminado. |
 | `-f FILE` | | Lee la tarea de un archivo, o de stdin con `-`. |
 
-Los flags equivalen al formulario del portal: **Folder** es `--cwd`, **Separate branch** es `--worktree` / `--no-worktree` y **Time limit** es `--timeout`. La tarea es el texto entre comillas.
+Los flags equivalen al formulario del portal: **Agent** es `--agent`, **Folder** es `--cwd`, **Separate branch** es `--worktree` / `--no-worktree` y **Time limit** es `--timeout`. La tarea es el texto entre comillas.
 
 Mientras se muestra el log, **Ctrl-C una vez** te desconecta del log: el run sigue y la CLI te dice cómo retomarlo. **Ctrl-C dos veces en menos de 2 segundos** lo cancela.
 
@@ -278,9 +278,9 @@ curl https://api.nan.builders/v1/runs \
 | `cwd` | No | La carpeta, `/home/nan` por defecto. |
 | `git_isolation` | No | Rama aparte: `null` para auto (por defecto), `true` para on, `false` para off. |
 | `timeout_seconds` | No | El tiempo máximo, de 60 a 7200. 1800 (30 minutos) por defecto. |
-
-Los campos equivalen al formulario del portal: **Task** es `prompt`, **Folder** es `cwd`, **Separate branch** es `git_isolation` y **Time limit** es `timeout_seconds`.
 | `model` | No | El modelo del agente. Por defecto, el suyo. |
+
+Los campos equivalen al formulario del portal: **Agent** es `agent`, **Task** es `prompt`, **Folder** es `cwd`, **Separate branch** es `git_isolation` y **Time limit** es `timeout_seconds`.
 
 La respuesta es el run, con su `id` y su `state`. La cabecera `Idempotency-Key` es opcional: si un reintento manda la misma clave con el mismo cuerpo, recibes el run que ya se creó en lugar de uno nuevo.
 

@@ -131,8 +131,8 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
   });
 
   test('maps the portal labels to the CLI flags and the API fields', () => {
-    expect(flat).toMatch(/\*\*Folder\*\* (is|es) `--cwd`, \*\*Separate branch\*\* (is|es) `--worktree` \/ `--no-worktree` (and|y) \*\*Time limit\*\* (is|es) `--timeout`/);
-    expect(flat).toMatch(/\*\*Task\*\* (is|es) `prompt`, \*\*Folder\*\* (is|es) `cwd`, \*\*Separate branch\*\* (is|es) `git_isolation` (and|y) \*\*Time limit\*\* (is|es) `timeout_seconds`/);
+    expect(flat).toMatch(/\*\*Agent\*\* (is|es) `--agent`, \*\*Folder\*\* (is|es) `--cwd`, \*\*Separate branch\*\* (is|es) `--worktree` \/ `--no-worktree` (and|y) \*\*Time limit\*\* (is|es) `--timeout`/);
+    expect(flat).toMatch(/\*\*Agent\*\* (is|es) `agent`, \*\*Task\*\* (is|es) `prompt`, \*\*Folder\*\* (is|es) `cwd`, \*\*Separate branch\*\* (is|es) `git_isolation` (and|y) \*\*Time limit\*\* (is|es) `timeout_seconds`/);
   });
 
   test('describes the portal form with its limits', () => {
@@ -193,9 +193,11 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
     expect(body).toContain('curl -N https://api.nan.builders/v1/runs/$RUN_ID/events');
     expect(body).toContain('-H "Accept: text/event-stream"');
     expect(body).toContain('curl -X POST https://api.nan.builders/v1/runs/$RUN_ID/cancel');
-    for (const field of ['workspace', 'agent', 'prompt', 'cwd', 'git_isolation', 'timeout_seconds', 'model']) {
-      expect(body, field).toContain(`| \`${field}\` |`);
-    }
+    // One table, rows back to back: a paragraph between two rows splits it and
+    // turns the rest into loose text with pipes.
+    const rows = ['workspace', 'agent', 'prompt', 'cwd', 'git_isolation', 'timeout_seconds', 'model'];
+    const table = rows.map((f) => `\\| \`${f}\` \\|[^\\n]*`).join('\\n');
+    expect(body).toMatch(new RegExp(table));
     for (const frame of ['event: run_event', 'event: state', 'event: end']) expect(body).toContain(frame);
     expect(body).toContain('Last-Event-ID');
     expect(body).toContain('next_cursor');
