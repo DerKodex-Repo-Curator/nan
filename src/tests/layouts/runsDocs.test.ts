@@ -179,10 +179,12 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
   });
 
   test('documents the CLI: version, flags, Ctrl-C and every exit code', () => {
-    expect(body).toContain('0.1.24');
+    expect(body).toContain('**0.1.25**');
+    expect(body).not.toContain('0.1.24');
+    expect(body).toContain('`nan --version` ');
     expect(body).toContain('curl -fsSL https://nan.builders/install | bash');
     expect(body).toContain('nan auth login');
-    for (const flag of ['--ws', '--agent', '--model', '--cwd', '--worktree', '--no-worktree', '--timeout', '--detach', '--json', '--idempotency-key', '-f']) {
+    for (const flag of ['--ws', '--agent', '--model', '--cwd', '--worktree', '--no-worktree', '--timeout', '--detach', '--json', '--idempotency-key', '-f', '--token-file']) {
       expect(body, flag).toContain(`\`${flag}`);
     }
     for (const cmd of ['nan runs ls', 'nan runs show', 'nan runs logs <id> -f', 'nan runs cancel', 'nan runs logs <id> --json']) {
@@ -302,5 +304,58 @@ describe('agent runs guide, both locales', () => {
 
   test('only the published screenshots live in the folder (no raw captures)', () => {
     expect(readdirSync(resolve(pub, 'docs/runs')).sort()).toEqual(SHOTS.map((n) => `${n}.webp`).sort());
+  });
+
+});
+
+describe.each(Object.entries(pages))('CLI authentication for runs (%s)', (locale, page) => {
+  const body = strip(read(page.dir + 'runs.mdx'));
+  const flat = body.replace(/\s+/g, ' ');
+
+  test('lists the sources in the order the CLI (v0.1.25) uses them', () => {
+    const list = /^1\. \*\*`NAN_TOKEN`\*\*[\s\S]*?^5\. [^\n]*$/m.exec(body)![0];
+    const order = [
+      '1. **`NAN_TOKEN`**',
+      '2. **`--token-file PATH`**',
+      locale === 'en' ? '3. **A saved token**, from `nan auth login --api-token`' : '3. **Un token guardado**, con `nan auth login --api-token`',
+      locale === 'en' ? '4. **Your session**, from `nan auth login`' : '4. **Tu sesión**, de `nan auth login`',
+      locale === 'en' ? '5. **A saved API key**' : '5. **Una API key guardada**',
+    ];
+    const at = order.map((o) => list.indexOf(o));
+    at.forEach((i, n) => expect(i, order[n]).toBeGreaterThan(-1));
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+  });
+
+  test('states the safety rules of each source', () => {
+    expect(flat).toMatch(/(never written to disk|nunca se escribe en disco)/);
+    expect(body).toContain('`chmod 600`');
+    expect(body).toContain('`0600`');
+    expect(body).toContain('nan auth login --api-token < token.txt');
+    expect(flat).toMatch(/(never copies a platform token|nunca copia un token de plataforma)/);
+    expect(flat).toMatch(/(shell history|historial de tu shell)/);
+  });
+
+  test('says platform tokens only work for runs, not for nan me / metrics / the dashboard', () => {
+    expect(flat).toContain('`nan me`, `nan metrics usage`');
+  });
+
+  test('shows the GitHub Actions example from the CLI README, with a secret and a warning', () => {
+    expect(body).toContain('NAN_TOKEN: ${{ secrets.NAN_TOKEN }}');
+    expect(body).toContain('nan run --ws ci --timeout 20m -f .github/review-task.md');
+    expect(body).toMatch(/nan run --ws ci --detach "[^"]+" \|\| \[ \$\? -eq 75 \]/);
+    expect(body).toMatch(/<Callout title="(Keep the token secret|Guarda el token como secreto)" variant="warning">/);
+  });
+
+  test('lists the main event types of nan runs logs --json', () => {
+    for (const t of ['started', 'message', 'tool_call', 'tool_result', 'log', 'usage', 'error', 'finished']) {
+      expect(body, t).toContain(`\`${t}\``);
+    }
+  });
+
+  test('the NaN CLI guide points at v0.1.25 and the token options', () => {
+    const cli = read(page.dir + 'nan-cli.mdx');
+    expect(cli).toContain('v0.1.25');
+    expect(cli).not.toContain('v0.1.24');
+    expect(cli).toContain('`NAN_TOKEN`, `--token-file` o'.replace(' o', locale === 'en' ? ' or' : ' o'));
   });
 });

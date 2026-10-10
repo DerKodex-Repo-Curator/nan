@@ -131,7 +131,7 @@ Los secretos del archivo de entorno de tu workspace, como esa clave de inferenci
 
 ## Desde la terminal: `nan run`
 
-La [CLI de NaN](/es/docs/nan-cli) lanza y sigue runs desde tu propia terminal. Necesitas la versión **0.1.24** o posterior.
+La [CLI de NaN](/es/docs/nan-cli) lanza y sigue runs desde tu propia terminal. Necesitas la versión **0.1.25** o posterior: `nan --version` imprime `nan <versión>`.
 
 <Steps>
 
@@ -147,7 +147,7 @@ curl -fsSL https://nan.builders/install | bash
 nan auth login --email tu@correo
 ```
 
-Te llega por correo un enlace de acceso. Cópialo y pégalo de vuelta en el comando sin abrirlo antes en el navegador: solo funciona una vez. Tienes los detalles en la [guía de la CLI](/es/docs/nan-cli). Los comandos de runs usan esa sesión, o la API key de la pestaña Setup de la CLI si no hay sesión.
+Te llega por correo un enlace de acceso. Cópialo y pégalo de vuelta en el comando sin abrirlo antes en el navegador: solo funciona una vez. Tienes los detalles en la [guía de la CLI](/es/docs/nan-cli). Para scripts, CI o un servidor, usa mejor un token: consulta [Autenticación](#autenticación).
 
 ### Lanza un run
 
@@ -185,6 +185,7 @@ nan run --detach "actualiza las dependencias"
 | `--idempotency-key K` | | Si un reintento manda la misma clave y la misma petición, recibes el run ya creado en lugar de uno nuevo. |
 | `--json` | | Imprime los eventos como líneas JSON y después el run terminado. |
 | `-f FILE` | | Lee la tarea de un archivo, o de stdin con `-`. |
+| `--token-file PATH` | | Se autentica con el token de la primera línea de un archivo. Consulta [Autenticación](#autenticación). |
 
 Los flags equivalen al formulario del portal: **Agent** es `--agent`, **Folder** es `--cwd`, **Separate branch** es `--worktree` / `--no-worktree` y **Time limit** es `--timeout`. La tarea es el texto entre comillas.
 
@@ -199,7 +200,17 @@ nan runs logs <id> -f      # sigue el log hasta que termine
 nan runs cancel <id>
 ```
 
-`nan runs logs <id> --json` imprime un evento JSON por línea, cómodo para scripts.
+`nan runs logs <id> --json` imprime un evento JSON por línea, cómodo para scripts. Cada evento tiene un `type`; estos son los principales:
+
+| Tipo | Qué es |
+|---|---|
+| `started` | El run ha empezado: agente, modelo, carpeta y, si la hay, la rama. |
+| `message` | Texto del agente. |
+| `tool_call` / `tool_result` | Una herramienta que ha usado el agente, y lo que le ha respondido. |
+| `log` | Una línea de salida que no es un mensaje. |
+| `usage` | Los tokens gastados hasta ahora. |
+| `error` | Algo ha ido mal, con un código. |
+| `finished` | El run ha terminado: su estado y el resumen del agente. |
 
 ### Códigos de salida
 
@@ -222,6 +233,52 @@ Con `set -e`, ten en cuenta el 75 de `--detach`:
 ```bash
 id=$(nan run --detach "actualiza las dependencias") || [ $? -eq 75 ]
 ```
+
+### Autenticación
+
+`nan run` y `nan runs` usan lo primero que encuentren de esta lista:
+
+1. **`NAN_TOKEN`**: una variable de entorno con un token de plataforma (`nan_pat_...`) o una API key (`sk-...`). Se lee en cada comando y nunca se escribe en disco.
+2. **`--token-file PATH`**: el token en la primera línea de un archivo. El archivo tiene que ser privado (`chmod 600`): en macOS y Linux, si otros usuarios pueden leerlo o escribirlo, se rechaza.
+3. **Un token guardado**, con `nan auth login --api-token`.
+4. **Tu sesión**, de `nan auth login` (el enlace de acceso por correo).
+5. **Una API key guardada**, desde la pestaña Setup (o una clave `sk-...` guardada con `nan auth login --api-token`).
+
+`nan auth login --api-token` lee el token solo de stdin, oculto mientras lo pegas, lo comprueba contra nan.builders y lo guarda con permisos `0600`. Lo guarda aparte de la API key, así que la pestaña Setup nunca copia un token de plataforma en la configuración de tus herramientas:
+
+```bash
+nan auth login --api-token              # pégalo cuando te lo pida
+nan auth login --api-token < token.txt  # o pásalo por stdin
+```
+
+No pongas nunca un token en la propia línea de comandos: acabaría en el historial de tu shell y en `ps`.
+
+Un token de plataforma sirve para los runs y para nada más (consulta [API keys y tokens](#api-keys-y-tokens)). `nan me`, `nan metrics usage` y el panel siguen necesitando una sesión de `nan auth login`.
+
+### Usa la CLI en CI o en un servidor
+
+Crea un [token](#api-keys-y-tokens), guárdalo en los secretos de tu CI y pásalo como `NAN_TOKEN`. Por ejemplo, en GitHub Actions:
+
+```yaml
+- name: Review the PR with an agent
+  env:
+    NAN_TOKEN: ${{ secrets.NAN_TOKEN }}
+  run: |
+    curl -fsSL https://nan.builders/install | bash
+    nan run --ws ci --timeout 20m -f .github/review-task.md
+```
+
+Ese paso espera al run y falla si el run falla. Para lanzarlo y seguir sin esperar, usa `--detach` y ten en cuenta su código de salida 75:
+
+```bash
+nan run --ws ci --detach "actualiza las dependencias" || [ $? -eq 75 ]
+```
+
+<Callout title="Guarda el token como secreto" variant="warning">
+Guarda el token solo como secreto (`secrets.NAN_TOKEN` en GitHub Actions), nunca en el repositorio ni en el archivo del workflow. Puede lanzar runs que gastan tu plan.
+</Callout>
+
+En un servidor que configuras una vez, guárdalo mejor con `nan auth login --api-token`.
 
 ## Desde la API
 

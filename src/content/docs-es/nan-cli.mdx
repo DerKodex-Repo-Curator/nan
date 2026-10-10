@@ -158,7 +158,7 @@ En Linux con bash, el mismo comando pero contra `~/.bashrc`.
 
 ## Runs
 
-Desde la v0.1.24 la CLI también pone a trabajar agentes en tareas dentro de tus [workspaces](/es/docs/workspaces), y los sigue desde tu terminal:
+Desde la v0.1.25 la CLI también pone a trabajar agentes en tareas dentro de tus [workspaces](/es/docs/workspaces), y los sigue desde tu terminal:
 
 ```bash
 nan run "añade tests al parser de fechas y haz que pasen"
@@ -166,7 +166,7 @@ nan runs ls
 nan runs logs <id> -f
 ```
 
-El run se ejecuta en el workspace, no en tu máquina, así que sigue aunque cierres la terminal. Los comandos de runs usan tu sesión de `nan auth login`. Todos los flags, los códigos de salida y la API están en [Runs de agentes](/es/docs/runs).
+El run se ejecuta en el workspace, no en tu máquina, así que sigue aunque cierres la terminal. Los comandos de runs usan tu sesión de `nan auth login`, o un token de plataforma desde `NAN_TOKEN`, `--token-file` o `nan auth login --api-token` para scripts, CI y servidores. Todos los flags, el orden de autenticación, los códigos de salida y la API están en [Runs de agentes](/es/docs/runs).
 
 ## Actualizar
 
