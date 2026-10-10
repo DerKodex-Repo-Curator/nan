@@ -18,7 +18,7 @@
   ],
   "security": [
     {
-      "bearerAuth": []
+      "apiKey": []
     }
   ],
   "tags": [
@@ -1596,7 +1596,7 @@
         "summary": "Create a run",
         "security": [
           {
-            "bearerAuth": []
+            "apiKey": []
           },
           {
             "platformToken": []
@@ -1838,7 +1838,7 @@
         "summary": "List runs",
         "security": [
           {
-            "bearerAuth": []
+            "apiKey": []
           },
           {
             "platformToken": []
@@ -2014,7 +2014,7 @@
         "summary": "Retrieve a run",
         "security": [
           {
-            "bearerAuth": []
+            "apiKey": []
           },
           {
             "platformToken": []
@@ -2140,7 +2140,7 @@
         "summary": "Follow a run's events",
         "security": [
           {
-            "bearerAuth": []
+            "apiKey": []
           },
           {
             "platformToken": []
@@ -2339,7 +2339,7 @@
         "summary": "Cancel a run",
         "security": [
           {
-            "bearerAuth": []
+            "apiKey": []
           },
           {
             "platformToken": []
@@ -2511,7 +2511,7 @@
         "summary": "List workspaces",
         "security": [
           {
-            "bearerAuth": []
+            "apiKey": []
           },
           {
             "platformToken": []
@@ -2742,7 +2742,7 @@
   },
   "components": {
     "securitySchemes": {
-      "bearerAuth": {
+      "apiKey": {
         "type": "http",
         "scheme": "bearer",
         "description": "Member API key (`sk-...`), from \"API Keys\" in your settings on the platform. Send it as `Authorization: Bearer <api-key>`. It works on every inference endpoint, on the Runs endpoints and on the workspace list. Personal and non-transferable. The key that lives inside a workspace (the one its agents use) is refused by the Runs endpoints with `403 workspace_key_not_allowed`."

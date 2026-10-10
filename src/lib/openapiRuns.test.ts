@@ -126,15 +126,15 @@ describe('openapi.json: credentials', () => {
   const schemes = s.components.securitySchemes;
 
   it('documents the API key and the platform token as two bearer schemes', () => {
-    expect(schemes.bearerAuth).toMatchObject({ type: 'http', scheme: 'bearer' });
-    expect(schemes.bearerAuth.description).toContain('`sk-...`');
+    expect(schemes.apiKey).toMatchObject({ type: 'http', scheme: 'bearer' });
+    expect(schemes.apiKey.description).toContain('`sk-...`');
     expect(schemes.platformToken).toMatchObject({ type: 'http', scheme: 'bearer', bearerFormat: 'nan_pat_...' });
     expect(schemes.platformToken.description).toMatch(/never works for inference/);
     expect(schemes.platformToken.description).toContain('token_scope_denied');
   });
 
   it('inference operations take the API key only (the global default)', () => {
-    expect(s.security).toEqual([{ bearerAuth: [] }]);
+    expect(s.security).toEqual([{ apiKey: [] }]);
     for (const [path, item] of Object.entries(s.paths) as Array<[string, any]>) {
       if (path.startsWith('/runs') || path.startsWith('/api/')) continue;
       for (const method of ['get', 'post']) if (item[method]) expect(item[method].security, path).toBeUndefined();
@@ -142,12 +142,12 @@ describe('openapi.json: credentials', () => {
   });
 
   it.each(RUN_OPS)('%s %s accepts an API key or a platform token', (path, method) => {
-    expect(op(path, method).security).toEqual([{ bearerAuth: [] }, { platformToken: [] }]);
+    expect(op(path, method).security).toEqual([{ apiKey: [] }, { platformToken: [] }]);
     expect(op(path, method).description).toContain('a member API key (`sk-...`) or a platform token (`nan_pat_...`)');
   });
 
   it('the workspace list accepts both, one workspace by id only a platform token', () => {
-    expect(op('/api/workspaces', 'get').security).toEqual([{ bearerAuth: [] }, { platformToken: [] }]);
+    expect(op('/api/workspaces', 'get').security).toEqual([{ apiKey: [] }, { platformToken: [] }]);
     expect(op('/api/workspaces/{id}', 'get').security).toEqual([{ platformToken: [] }]);
     expect(op('/api/workspaces/{id}', 'get').description).toMatch(/API keys \(`sk-\.\.\.`\) are not accepted/);
   });
