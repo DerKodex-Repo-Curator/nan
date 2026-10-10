@@ -193,6 +193,33 @@ describe('openapi.json: the Runs contract (cloud-api)', () => {
     expect(create.description).toMatch(/60 new runs per rolling hour/);
   });
 
+  it('only GET /runs/{id} returns the full prompt (the handler renders it nowhere else)', () => {
+    for (const [path, method] of RUN_OPS) {
+      for (const [status, r] of Object.entries(op(path, method).responses) as Array<[string, any]>) {
+        const ex = r.content?.['application/json']?.example;
+        if (!ex || typeof ex !== 'object') continue;
+        const runs = Array.isArray(ex.data) ? ex.data : [ex];
+        for (const run of runs) {
+          if (run?.object !== 'run') continue;
+          expect('prompt' in run, `${method} ${path} ${status}`).toBe(path === '/runs/{id}' && method === 'get');
+        }
+      }
+    }
+  });
+
+  it('GET /runs: an unknown workspace filter is an empty page, not a 404', () => {
+    expect(op('/runs', 'get').responses['404']).toBeUndefined();
+    const ws = op('/runs', 'get').parameters.find((p: any) => p.name === 'workspace');
+    expect(ws.description).toMatch(/empty page/);
+  });
+
+  it('runs 401s describe both credentials', () => {
+    for (const [path, method] of RUN_OPS) {
+      expect(op(path, method).responses['401']).toEqual({ $ref: '#/components/responses/RunsUnauthorized' });
+    }
+    expect(s.components.responses.RunsUnauthorized.description).toMatch(/API key or platform token/);
+  });
+
   it('GET /runs: filters and the list object', () => {
     const params = Object.fromEntries(op('/runs', 'get').parameters.map((p: any) => [p.name, p]));
     expect(Object.keys(params)).toEqual(['workspace', 'state', 'limit', 'cursor']);
@@ -252,6 +279,12 @@ describe('openapi.json: the Workspaces contract (cloud-api)', () => {
       expect(Object.keys(s.paths[p]).filter((k) => k !== 'servers')).toEqual(['get']);
     }
     expect(JSON.stringify(s)).not.toContain('cloud-api.nan.builders');
+  });
+
+  it('GET /api/workspaces/{id} with a token: 403 forbidden or token_scope_denied, never the handler 400', () => {
+    const r = op('/api/workspaces/{id}', 'get').responses;
+    expect(Object.keys(r).sort()).toEqual(['200', '401', '403', '404']);
+    expect(Object.keys(r['403'].content['application/json'].examples)).toEqual(['forbidden', 'token_scope_denied']);
   });
 
   it('only the caller\'s own workspaces, and never a secret', () => {

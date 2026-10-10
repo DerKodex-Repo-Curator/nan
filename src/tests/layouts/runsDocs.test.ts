@@ -133,7 +133,7 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
 
   test('maps the portal labels to the CLI flags and the API fields', () => {
     expect(flat).toMatch(/\*\*Agent\*\* (is|es) `--agent`, \*\*Folder\*\* (is|es) `--cwd`, \*\*Separate branch\*\* (is|es) `--worktree` \/ `--no-worktree` (and|y) \*\*Time limit\*\* (is|es) `--timeout`/);
-    expect(flat).toMatch(/\*\*Agent\*\* (is|es) `agent`, \*\*Task\*\* (is|es) `prompt`, \*\*Folder\*\* (is|es) `cwd`, \*\*Separate branch\*\* (is|es) `git_isolation` (and|y) \*\*Time limit\*\* (is|es) `timeout_seconds`/);
+    expect(flat).toMatch(/\*\*Agent\*\* (is|es) `agent`, \*\*Task\*\* (is|es) `prompt`, \*\*Folder\*\* (is|es) `cwd`, (and the optional|y los opcionales) \*\*Separate branch\*\* (and|y) \*\*Time limit\*\* (are|son) `git_isolation` (and|y) `timeout_seconds`/);
   });
 
   test('describes the portal form with its limits', () => {
@@ -196,8 +196,10 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
   });
 
   test('keeps one end-to-end API example: create a run, then follow it with curl -N', () => {
-    expect(body).toContain('curl -s https://api.nan.builders/v1/runs');
-    expect(body).toContain('| jq -r .id)');
+    expect(body).toContain('RESP=$(curl -s https://api.nan.builders/v1/runs');
+    // A failed create must show its error, not follow /runs/null/events.
+    expect(body).toContain(`RUN_ID=$(echo "$RESP" | jq -r '.id // empty')`);
+    expect(body).toContain('[ -n "$RUN_ID" ] || { echo "$RESP"; exit 1; }');
     expect(body).toContain('curl -N https://api.nan.builders/v1/runs/$RUN_ID/events');
     expect(body).toContain('-H "Accept: text/event-stream"');
     for (const frame of ['`run_event`', '`state`', '`end`']) expect(body).toContain(frame);

@@ -302,7 +302,7 @@ Un **token** es lo que conviene darle a un script que solo gestiona runs. No sir
 - Cada uno caduca a los **30, 90 o 365 días**, o nunca.
 - Puedes revocar cualquiera en cualquier momento.
 
-Para crear runs sigue haciendo falta un plan con inferencia, uses la credencial que uses. Qué credencial acepta cada endpoint está en la [referencia de la API](/es/docs/api#description/platform-tokens).
+Para crear runs sigue haciendo falta un plan con inferencia, uses la credencial que uses. La [referencia de la API](/es/docs/api#description/platform-tokens) indica qué credencial acepta cada endpoint.
 
 <Callout title="Un agente no puede lanzar runs por su cuenta" variant="warning">
 La clave que hay dentro de un workspace, la que usan sus agentes para la inferencia, no puede gestionar runs: la API le responde con un `403`. Un agente que trabaja en tu workspace no puede lanzar runs nuevos por su cuenta, salvo que le des una de tus propias API keys o tokens.
@@ -310,12 +310,12 @@ La clave que hay dentro de un workspace, la que usan sus agentes para la inferen
 
 ### Crea un run y síguelo
 
-Un ejemplo de principio a fin: crea un run, guarda su `id` (con [`jq`](https://jqlang.org/)) y sigue su log en directo hasta que termine.
+Un ejemplo de principio a fin: crea un run, guarda su `id` (con [`jq`](https://jqlang.org/)) y sigue su log en directo hasta que termine. Si el run no se puede crear, el script muestra el error y se para.
 
 ```bash
 export NAN_TOKEN="nan_pat_..."
 
-RUN_ID=$(curl -s https://api.nan.builders/v1/runs \
+RESP=$(curl -s https://api.nan.builders/v1/runs \
   -H "Authorization: Bearer $NAN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -323,14 +323,16 @@ RUN_ID=$(curl -s https://api.nan.builders/v1/runs \
     "agent": "pi",
     "prompt": "añade tests al parser de fechas y haz que pasen",
     "cwd": "/home/nan/projects/api"
-  }' | jq -r .id)
+  }')
+RUN_ID=$(echo "$RESP" | jq -r '.id // empty')
+[ -n "$RUN_ID" ] || { echo "$RESP"; exit 1; }
 
 curl -N https://api.nan.builders/v1/runs/$RUN_ID/events \
   -H "Authorization: Bearer $NAN_TOKEN" \
   -H "Accept: text/event-stream"
 ```
 
-Los campos equivalen al formulario del portal: **Agent** es `agent`, **Task** es `prompt`, **Folder** es `cwd`, **Separate branch** es `git_isolation` y **Time limit** es `timeout_seconds`.
+Los campos equivalen al formulario del portal: **Agent** es `agent`, **Task** es `prompt`, **Folder** es `cwd`, y los opcionales **Separate branch** y **Time limit** son `git_isolation` y `timeout_seconds`.
 
 El stream manda un frame `run_event` por cada evento del log, un frame `state` cuando el run cambia de estado y un frame `end` con el run terminado, y después se cierra.
 
