@@ -302,106 +302,43 @@ Un **token** es lo que conviene darle a un script que solo gestiona runs. No sir
 - Cada uno caduca a los **30, 90 o 365 días**, o nunca.
 - Puedes revocar cualquiera en cualquier momento.
 
-Para crear runs sigue haciendo falta un plan con inferencia, uses la credencial que uses.
+Para crear runs sigue haciendo falta un plan con inferencia, uses la credencial que uses. La [referencia de la API](/es/docs/api#description/platform-tokens) indica qué credencial acepta cada endpoint.
 
 <Callout title="Un agente no puede lanzar runs por su cuenta" variant="warning">
 La clave que hay dentro de un workspace, la que usan sus agentes para la inferencia, no puede gestionar runs: la API le responde con un `403`. Un agente que trabaja en tu workspace no puede lanzar runs nuevos por su cuenta, salvo que le des una de tus propias API keys o tokens.
 </Callout>
 
-### Crea un run
+### Crea un run y síguelo
+
+Un ejemplo de principio a fin: crea un run, guarda su `id` (con [`jq`](https://jqlang.org/)) y sigue su log en directo hasta que termine. Si el run no se puede crear, muestra el error en lugar de seguir el log.
 
 ```bash
 export NAN_TOKEN="nan_pat_..."
 
-curl https://api.nan.builders/v1/runs \
+RESP=$(curl -s https://api.nan.builders/v1/runs \
   -H "Authorization: Bearer $NAN_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: fix-date-parser-1" \
   -d '{
     "workspace": "develop",
     "agent": "pi",
     "prompt": "añade tests al parser de fechas y haz que pasen",
-    "cwd": "/home/nan/projects/api",
-    "git_isolation": null,
-    "timeout_seconds": 1800
-  }'
+    "cwd": "/home/nan/projects/api"
+  }')
+RUN_ID=$(echo "$RESP" | jq -r '.id // empty')
+if [ -z "$RUN_ID" ]; then
+  echo "$RESP"
+else
+  curl -N "https://api.nan.builders/v1/runs/$RUN_ID/events" \
+    -H "Authorization: Bearer $NAN_TOKEN" \
+    -H "Accept: text/event-stream"
+fi
 ```
 
-| Campo | Obligatorio | Qué es |
-|---|---|---|
-| `workspace` | Sí | Nombre o id del workspace. |
-| `agent` | Sí | `pi` o `hermes`. |
-| `prompt` | Sí | La tarea, hasta 32 KiB. |
-| `cwd` | No | La carpeta, `/home/nan` por defecto. |
-| `git_isolation` | No | Rama aparte: `null` para auto (por defecto), `true` para on, `false` para off. |
-| `timeout_seconds` | No | El tiempo máximo, de 60 a 7200. 1800 (30 minutos) por defecto. |
-| `model` | No | El modelo del agente. Por defecto, el suyo. |
+Los campos equivalen al formulario del portal: **Agent** es `agent`, **Task** es `prompt`, **Folder** es `cwd`, y los opcionales **Separate branch** y **Time limit** son `git_isolation` y `timeout_seconds`.
 
-Los campos equivalen al formulario del portal: **Agent** es `agent`, **Task** es `prompt`, **Folder** es `cwd`, **Separate branch** es `git_isolation` y **Time limit** es `timeout_seconds`.
+El stream manda un frame `run_event` por cada evento del log, un frame `state` cuando el run cambia de estado y un frame `end` con el run terminado, y después se cierra.
 
-La respuesta es el run, con su `id` y su `state`. La cabecera `Idempotency-Key` es opcional: si un reintento manda la misma clave con el mismo cuerpo, recibes el run que ya se creó en lugar de uno nuevo.
-
-### Síguelo
-
-Los eventos de un run llegan como un stream de server-sent events cuando pides `text/event-stream`. Con `curl -N` los ves según llegan:
-
-```bash
-curl -N https://api.nan.builders/v1/runs/$RUN_ID/events \
-  -H "Authorization: Bearer $NAN_TOKEN" \
-  -H "Accept: text/event-stream"
-```
-
-Cada evento del stream es uno de estos:
-
-- `event: run_event`, con una línea `id:`: un evento del log (un mensaje, una llamada a una herramienta, su resultado...). Manda el último `id` que hayas visto en la cabecera `Last-Event-ID` para retomar tras un corte, sin perder ni repetir nada.
-- `event: state`: el run ha cambiado de estado.
-- `event: end`: el run ha terminado y su log se ha enviado entero. Los datos son el run terminado. El stream se cierra después.
-
-Cada 15 segundos el stream manda una línea de comentario para mantener la conexión abierta. Un stream dura como mucho 30 minutos: si se cierra antes del `end`, vuelve a conectarte con `Last-Event-ID` y sigue donde lo dejaste. Sin la cabecera `Accept`, el mismo endpoint responde con páginas de JSON: pasa el `next_after` de cada página como `?after=` para pedir la siguiente.
-
-Para ver cómo ha terminado:
-
-```bash
-curl https://api.nan.builders/v1/runs/$RUN_ID \
-  -H "Authorization: Bearer $NAN_TOKEN"
-```
-
-### Cancélalo
-
-```bash
-curl -X POST https://api.nan.builders/v1/runs/$RUN_ID/cancel \
-  -H "Authorization: Bearer $NAN_TOKEN"
-```
-
-### Lista tus runs
-
-```bash
-curl "https://api.nan.builders/v1/runs?workspace=develop&state=running&limit=20" \
-  -H "Authorization: Bearer $NAN_TOKEN"
-```
-
-Todos los filtros son opcionales. Si hay más runs de los que caben en una página, la respuesta trae un `next_cursor`: pásalo como `?cursor=` para pedir la siguiente.
-
-### Errores
-
-Los errores usan el mismo formato que la API de inferencia:
-
-```json
-{"error": {"message": "...", "type": "...", "param": null, "code": "tier_restricted"}}
-```
-
-| Estado y código | Qué hacer |
-|---|---|
-| `400 invalid_request` | Hay un campo incorrecto. `param` te dice cuál. |
-| `403 tier_restricted` | Tu plan no incluye inferencia. Mejóralo para crear runs. |
-| `403 workspace_key_not_allowed` | Has usado la clave de dentro de un workspace. Usa una API key o un token. |
-| `404` | El workspace o el run no existe, o no es tuyo. |
-| `409 idempotency_conflict` | Has repetido una `Idempotency-Key` con otro cuerpo. Usa una clave nueva. |
-| `409 workspace_not_running` | Enciende primero el workspace. |
-| `409 agent_not_installed` | Instala el agente desde el panel de **Software**, o elige el otro. |
-| `409 no_inference_key` | El workspace no tiene clave de inferencia. Comprueba que tu plan incluye inferencia. |
-| `429 run_queue_full` | La cola está llena (20 por workspace, 50 en total). Espera a que terminen algunos runs. |
-| `429 rate_limited` | Más de 60 runs en la última hora. Vuelve a intentarlo más tarde. |
+Referencia completa: [Referencia de la API → Runs](/es/docs/api#tag/runs). Ahí están todos los endpoints (listar, consultar, cancelar), los campos de cada petición y respuesta, los tipos de evento, cómo retomar un stream, los reintentos idempotentes y todos los códigos de error. Para sacar el nombre o el id de un workspace desde un script, consulta [Referencia de la API → Workspaces](/es/docs/api#tag/workspaces).
 
 ## Preguntas frecuentes
 
