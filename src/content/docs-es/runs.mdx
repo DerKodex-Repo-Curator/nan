@@ -310,7 +310,7 @@ La clave que hay dentro de un workspace, la que usan sus agentes para la inferen
 
 ### Crea un run y síguelo
 
-Un ejemplo de principio a fin: crea un run, guarda su `id` (con [`jq`](https://jqlang.org/)) y sigue su log en directo hasta que termine. Si el run no se puede crear, el script muestra el error y se para.
+Un ejemplo de principio a fin: crea un run, guarda su `id` (con [`jq`](https://jqlang.org/)) y sigue su log en directo hasta que termine. Si el run no se puede crear, muestra el error en lugar de seguir el log.
 
 ```bash
 export NAN_TOKEN="nan_pat_..."
@@ -325,11 +325,13 @@ RESP=$(curl -s https://api.nan.builders/v1/runs \
     "cwd": "/home/nan/projects/api"
   }')
 RUN_ID=$(echo "$RESP" | jq -r '.id // empty')
-[ -n "$RUN_ID" ] || { echo "$RESP"; exit 1; }
-
-curl -N https://api.nan.builders/v1/runs/$RUN_ID/events \
-  -H "Authorization: Bearer $NAN_TOKEN" \
-  -H "Accept: text/event-stream"
+if [ -z "$RUN_ID" ]; then
+  echo "$RESP"
+else
+  curl -N "https://api.nan.builders/v1/runs/$RUN_ID/events" \
+    -H "Authorization: Bearer $NAN_TOKEN" \
+    -H "Accept: text/event-stream"
+fi
 ```
 
 Los campos equivalen al formulario del portal: **Agent** es `agent`, **Task** es `prompt`, **Folder** es `cwd`, y los opcionales **Separate branch** y **Time limit** son `git_isolation` y `timeout_seconds`.

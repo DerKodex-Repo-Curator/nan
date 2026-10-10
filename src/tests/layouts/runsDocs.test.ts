@@ -199,8 +199,10 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
     expect(body).toContain('RESP=$(curl -s https://api.nan.builders/v1/runs');
     // A failed create must show its error, not follow /runs/null/events.
     expect(body).toContain(`RUN_ID=$(echo "$RESP" | jq -r '.id // empty')`);
-    expect(body).toContain('[ -n "$RUN_ID" ] || { echo "$RESP"; exit 1; }');
-    expect(body).toContain('curl -N https://api.nan.builders/v1/runs/$RUN_ID/events');
+    // Safe to paste into an interactive shell: no `exit` that would close it.
+    expect(body).toContain('if [ -z "$RUN_ID" ]; then\n  echo "$RESP"\nelse');
+    expect(body).not.toMatch(/\bexit 1\b/);
+    expect(body).toContain('curl -N "https://api.nan.builders/v1/runs/$RUN_ID/events"');
     expect(body).toContain('-H "Accept: text/event-stream"');
     for (const frame of ['`run_event`', '`state`', '`end`']) expect(body).toContain(frame);
   });

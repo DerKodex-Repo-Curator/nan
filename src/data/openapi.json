@@ -2553,14 +2553,24 @@
             }
           },
           "401": {
-            "description": "Missing or invalid credentials.",
+            "description": "Missing or invalid credentials (`unauthorized`), or the key that lives inside a workspace (`session_required`).",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PlatformError"
                 },
-                "example": {
-                  "error": "unauthorized"
+                "examples": {
+                  "unauthorized": {
+                    "value": {
+                      "error": "unauthorized"
+                    }
+                  },
+                  "session_required": {
+                    "value": {
+                      "error": "session_required",
+                      "message": "This endpoint requires a signed-in session. API keys only work for inference (https://api.nan.builders/v1)."
+                    }
+                  }
                 }
               }
             }
@@ -2659,14 +2669,24 @@
             }
           },
           "401": {
-            "description": "Missing or invalid credentials.",
+            "description": "Missing or invalid credentials (`unauthorized`), or an API key (`sk-...`), which this route does not accept (`session_required`).",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PlatformError"
                 },
-                "example": {
-                  "error": "unauthorized"
+                "examples": {
+                  "unauthorized": {
+                    "value": {
+                      "error": "unauthorized"
+                    }
+                  },
+                  "session_required": {
+                    "value": {
+                      "error": "session_required",
+                      "message": "This endpoint requires a signed-in session. API keys only work for inference (https://api.nan.builders/v1)."
+                    }
+                  }
                 }
               }
             }
@@ -3668,15 +3688,15 @@
       },
       "PlatformError": {
         "type": "object",
-        "description": "Error body of the Workspaces endpoints (outside `/v1`): a short `error` string, plus `message` on `token_scope_denied`.",
+        "description": "Error body of the Workspaces endpoints (outside `/v1`): a short `error` string, plus `message` on `token_scope_denied` and `session_required`.",
         "properties": {
           "error": {
             "type": "string",
-            "description": "Short error, for example `unauthorized`, `forbidden`, `workspace not found` or `token_scope_denied`."
+            "description": "Short error, for example `unauthorized`, `session_required`, `forbidden`, `workspace not found` or `token_scope_denied`."
           },
           "message": {
             "type": "string",
-            "description": "Present on `token_scope_denied`: what the token can be used for."
+            "description": "Present on `token_scope_denied` and `session_required`: what the credential can be used for."
           }
         },
         "required": [
@@ -4622,7 +4642,7 @@
         }
       },
       "RunsUnauthorized": {
-        "description": "Missing or invalid credentials: no `Authorization` header, an unknown or revoked API key or platform token, or an expired one (`invalid_api_key`).",
+        "description": "Missing or invalid credentials: no `Authorization` header, an unknown or revoked API key or platform token, or an expired one (`invalid_api_key`). The message may vary.",
         "content": {
           "application/json": {
             "schema": {
