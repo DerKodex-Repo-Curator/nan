@@ -28,12 +28,21 @@ interface Spec {
   info?: { title?: string; description?: string; version?: string };
   servers?: Array<{ url?: string; description?: string }>;
   tags?: Array<{ name?: string; description?: string }>;
-  paths?: Record<string, Record<string, Operation>>;
+  paths?: Record<string, PathItem>;
   components?: {
     schemas?: Record<string, SchemaLike>;
     responses?: Record<string, ResponseOrRef>;
   };
 }
+
+/**
+ * A Path Item: its operations keyed by HTTP method, plus an optional
+ * path-level `servers` override (OpenAPI 3: e.g. /api/workspaces lives on
+ * https://api.nan.builders, outside the spec-wide /v1 base URL).
+ */
+type PathItem = { servers?: Array<{ url?: string; description?: string }> } & {
+  [method: string]: Operation | Array<{ url?: string; description?: string }> | undefined;
+};
 
 interface Operation {
   operationId?: string;
@@ -196,11 +205,19 @@ function responseDescription(spec: Spec, res: ResponseOrRef | undefined): string
   return '';
 }
 
-function renderOperation(spec: Spec, path: string, method: string, op: Operation): string {
+function renderOperation(
+  spec: Spec,
+  path: string,
+  method: string,
+  op: Operation,
+  pathServer?: string,
+): string {
   const out: string[] = [];
   const title = op.summary || op.operationId || `${method.toUpperCase()} ${path}`;
 
   out.push(`### ${method.toUpperCase()} ${path}: ${title}`);
+  // A path-level server overrides the spec-wide base URL for this operation.
+  if (pathServer && pathServer !== spec.servers?.[0]?.url) out.push(`Base URL: \`${pathServer}\``);
   if (op.deprecated) out.push('**Deprecated.**');
   // The operation is a `###`, so its subsections drop to `#####` so they do
   // not compete with the `####` this same function emits (Parameters, etc.).
@@ -297,15 +314,16 @@ export function openapiToText(spec: Spec): string {
   const tagOrder: string[] = (spec.tags ?? []).map((t) => t.name ?? '').filter(Boolean);
 
   for (const [path, item] of Object.entries(spec.paths ?? {})) {
+    const pathServer = item?.servers?.[0]?.url;
     for (const method of HTTP_METHODS) {
-      const op = item?.[method];
-      if (!op) continue;
+      const op = item?.[method] as Operation | undefined;
+      if (!op || Array.isArray(op)) continue;
       const tag = op.tags?.[0] || 'Endpoints';
       if (!byTag.has(tag)) {
         byTag.set(tag, []);
         if (!tagOrder.includes(tag)) tagOrder.push(tag);
       }
-      byTag.get(tag)!.push(renderOperation(spec, path, method, op));
+      byTag.get(tag)!.push(renderOperation(spec, path, method, op, pathServer));
     }
   }
 
