@@ -2553,7 +2553,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid credentials (`unauthorized`), or the key that lives inside a workspace (`session_required`).",
+            "description": "No credentials (`unauthorized`), an unknown, revoked or expired one (`invalid session`), or the key that lives inside a workspace (`session_required`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2563,6 +2563,11 @@
                   "unauthorized": {
                     "value": {
                       "error": "unauthorized"
+                    }
+                  },
+                  "invalid_session": {
+                    "value": {
+                      "error": "invalid session"
                     }
                   },
                   "session_required": {
@@ -2669,7 +2674,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid credentials (`unauthorized`), or an API key (`sk-...`), which this route does not accept (`session_required`).",
+            "description": "No credentials (`unauthorized`), an unknown, revoked or expired one (`invalid session`), or an API key (`sk-...`), which this route does not accept (`session_required`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2679,6 +2684,11 @@
                   "unauthorized": {
                     "value": {
                       "error": "unauthorized"
+                    }
+                  },
+                  "invalid_session": {
+                    "value": {
+                      "error": "invalid session"
                     }
                   },
                   "session_required": {
@@ -3692,7 +3702,7 @@
         "properties": {
           "error": {
             "type": "string",
-            "description": "Short error, for example `unauthorized`, `session_required`, `forbidden`, `workspace not found` or `token_scope_denied`."
+            "description": "Short error, for example `unauthorized`, `invalid session`, `session_required`, `forbidden`, `workspace not found` or `token_scope_denied`."
           },
           "message": {
             "type": "string",
