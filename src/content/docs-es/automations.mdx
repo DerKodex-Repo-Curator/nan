@@ -195,7 +195,7 @@ Pulsa **Review** para abrir la propuesta: cada acción, con sus textos completos
 
 Si nadie decide antes de que caduque, la propuesta se descarta y el run termina como `cancelled`.
 
-Las acciones las aplica un **run de aplicación** aparte: aparece en la pestaña **Runs** del workspace, sin agente y sin gastar tokens, y su log tiene una línea por acción. El run propio de la automatización termina en cuanto su propuesta queda resuelta, antes de que se apliquen las acciones:
+Las acciones las aplica un **run de aplicación** aparte: aparece en la pestaña **Runs** del workspace, sin agente y sin gastar inferencia, y su log muestra cada acción cuando empieza y cuando termina. El run propio de la automatización termina en cuanto su propuesta queda resuelta, antes de que se apliquen las acciones:
 
 | La propuesta... | El run de la automatización termina como | Y después |
 |---|---|---|
@@ -221,10 +221,10 @@ Qué cuenta como "lo mismo" depende de qué lanzó el run:
 
 | Lanzado por | Lo mismo es |
 |---|---|
-| Un evento de GitHub de pull request o issue | Esa pull request o issue. |
+| Un evento de GitHub sobre una pull request o una issue (abierta, comentada, revisada...) | Esa pull request o issue. |
 | Un evento `workflow_run` de GitHub | El mismo repositorio y la misma rama: un fallo nuevo en esa rama se descarta mientras haya un run activo para ella, aunque venga de otra ejecución de workflow. |
 | Un evento de Stripe | El mismo objeto de Stripe (`data.object.id`). |
-| Cualquier otro evento (emisores NaN, otros eventos de GitHub) | Cualquier evento de la automatización: un run cada vez. |
+| Cualquier otro evento (emisores NaN, otros eventos de GitHub) | Cualquier otro evento de ese tipo: un run de ese tipo a la vez por automatización. |
 | Una programación | La automatización. |
 
 Los runs que lanzas tú nunca se descartan.

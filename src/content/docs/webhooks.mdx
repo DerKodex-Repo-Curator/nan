@@ -223,7 +223,7 @@ Webhook bodies are capped at 1 MiB.
 | `429` | Too many deliveries for now, the automation reached its runs per hour, or your queue is full. Retry later (`Retry-After`). | Empty |
 | `500`, `503` | Something failed on our side, or temporarily unavailable. Retry later. | Empty |
 
-A `200` is final: the sender should not retry it. A `429` or a `503` is not recorded, so a retry or a redelivery is processed as new.
+A `200` is final: the sender should not retry it. A `429`, `500` or `503` is not recorded, so a retry or a redelivery is processed as new.
 
 ## Deliveries
 
@@ -291,7 +291,7 @@ Each schedule shows its next run and how the last one went:
 | **Skipped: too many runs waiting** | Your run queue is full. |
 | **Skipped: automation disabled** | The automation is not enabled. |
 | **Skipped: workspace deleted** | Its workspace no longer exists. |
-| **Not accepted: your membership does not include runs** | The run could not be created: your plan has no inference, or the workspace is stopped, deleted or not ready for the agent. |
+| **Not accepted: your membership does not include runs** | The run could not be created: your plan has no inference, or the workspace is stopped or not ready for the agent. |
 | **Missed (more than 15 minutes late)** | It could not start in time and was skipped. |
 | **Error** | Something failed on our side. |
 

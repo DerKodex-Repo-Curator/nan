@@ -223,7 +223,7 @@ Los cuerpos de los webhooks tienen un tope de 1 MiB.
 | `429` | Demasiadas entregas de momento, la automatización ha llegado a sus runs por hora, o tu cola está llena. Reintenta más tarde (`Retry-After`). | Vacío |
 | `500`, `503` | Algo ha fallado en nuestro lado, o no disponible temporalmente. Reintenta más tarde. | Vacío |
 
-Un `200` es definitivo: el emisor no debería reintentarlo. Un `429` o un `503` no se registra, así que un reintento o un reenvío se procesa como nuevo.
+Un `200` es definitivo: el emisor no debería reintentarlo. Un `429`, `500` o `503` no se registra, así que un reintento o un reenvío se procesa como nuevo.
 
 ## Entregas
 
@@ -291,7 +291,7 @@ Cada programación muestra su próxima ejecución y cómo fue la última:
 | **Skipped: too many runs waiting** | Tu cola de runs está llena. |
 | **Skipped: automation disabled** | La automatización no está activada. |
 | **Skipped: workspace deleted** | Su workspace ya no existe. |
-| **Not accepted: your membership does not include runs** | No se ha podido crear el run: tu plan no tiene inferencia, o el workspace está parado, borrado o no está listo para el agente. |
+| **Not accepted: your membership does not include runs** | No se ha podido crear el run: tu plan no tiene inferencia, o el workspace está parado o no está listo para el agente. |
 | **Missed (more than 15 minutes late)** | No pudo arrancar a tiempo y se ha saltado. |
 | **Error** | Algo ha fallado en nuestro lado. |
 

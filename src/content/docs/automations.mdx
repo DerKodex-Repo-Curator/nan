@@ -195,7 +195,7 @@ Press **Review** to open the proposal: each action, with its texts in full, the 
 
 If nobody decides before it expires, the proposal is dropped and the run ends as `cancelled`.
 
-The actions are applied by a separate **apply run**: it appears in the workspace's **Runs** tab, with no agent and no tokens used, and its log has one line per action. The automation's own run ends as soon as its proposal is settled, before the actions are applied:
+The actions are applied by a separate **apply run**: it appears in the workspace's **Runs** tab, with no agent and no inference used, and its log shows each action as it starts and ends. The automation's own run ends as soon as its proposal is settled, before the actions are applied:
 
 | The proposal... | The automation's run ends as | And then |
 |---|---|---|
@@ -221,10 +221,10 @@ What counts as "the same thing" depends on what started the run:
 
 | Started by | The same thing is |
 |---|---|
-| A GitHub pull request or issue event | That pull request or issue. |
+| A GitHub event about a pull request or an issue (opened, commented, reviewed...) | That pull request or issue. |
 | A GitHub `workflow_run` event | The same repository and branch: a new failure on that branch is skipped while a run for it is active, even from another workflow run. |
 | A Stripe event | The same Stripe object (`data.object.id`). |
-| Any other event (NaN senders, other GitHub events) | Any event of the automation: one run at a time. |
+| Any other event (NaN senders, other GitHub events) | Every other event of that kind: one such run at a time per automation. |
 | A schedule | The automation. |
 
 Runs you start yourself are never skipped.
