@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "approval_kinds": [
+        "github_pr_review"
+      ],
+      "description": "Reviews PRs",
+      "event_filter": {
+        "events": [
+          "pull_request"
+        ]
+      },
+      "id": "pr_review",
+      "instructions": "Review.",
+      "name": "PR review",
+      "requires_github_repo": true,
+      "secret_slots": [
+        {
+          "env": "GITHUB_TOKEN",
+          "exposure": "actions",
+          "help": "write token",
+          "optional": false
+        }
+      ],
+      "signature_scheme": "github",
+      "suggested_concurrency": "skip_if_active",
+      "trigger_kind": "webhook"
+    }
+  ],
+  "object": "list"
+}
