@@ -197,8 +197,8 @@ describe('every package a snippet imports is a package the page installs', () =>
     'os', 'path', 'process', 'readline', 'stream', 'url', 'util', 'zlib',
   ]);
   const PY_STDLIB = new Set([
-    'base64', 'dataclasses', 'io', 'json', 'os', 'pathlib', 're', 'sys', 'textwrap',
-    'time', 'typing', 'wave',
+    'base64', 'dataclasses', 'hashlib', 'hmac', 'io', 'json', 'os', 'pathlib', 're', 'sys',
+    'textwrap', 'time', 'typing', 'urllib', 'wave',
   ]);
 
   /** `@scope/pkg/sub` -> `@scope/pkg`, `openai/shims` -> `openai`. */

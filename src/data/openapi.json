@@ -3,7 +3,7 @@
   "info": {
     "title": "NaN API",
     "version": "1.0.0",
-    "description": "Open models on a shared EU inference cluster. Zero logs.\n\nThe NaN API is OpenAI-compatible: predictable, resource-oriented URLs, JSON request and response bodies, and standard HTTP verbs and status codes. Point any OpenAI SDK at our base URL and your existing code keeps working. Change the base URL and the API key, and that's it.\n\nOne schema across every model, so you only learn the API once. Change the `model` field to switch models; everything else stays the same.\n\n- Base URL: `https://api.nan.builders/v1`\n- OpenAPI spec: this document. Import it into Postman, Insomnia, or your own tooling.\n\nIf you use the [Helmcode](https://helmcode.com) enterprise service, the base URL is `https://api.helmcode.com/v1` instead. Every other endpoint is identical.\n\n## Authentication\n\nEvery inference request authenticates with an API key, sent as a Bearer token:\n\n```\nAuthorization: Bearer $NAN_API_KEY\n```\n\nYou must be a NaN community member. Generate your key from user settings, under \"API Keys\", on the [platform](https://cloud.nan.builders/). The key is personal and non-transferable. Keep it secret: never embed one in client-side code or commit it to source control. Requests must go over HTTPS; calls over plain HTTP fail.\n\n### Platform tokens\n\nFor scripts that only manage [Runs](#tag/runs) and list your [Workspaces](#tag/workspaces), create a **platform token** (`nan_pat_...`) under \"Tokens\" in your settings, and send it the same way: `Authorization: Bearer $NAN_TOKEN`. A platform token never works for inference: the model endpoints refuse it. An API key works on both. Each endpoint lists the credentials it accepts.\n\n## Making requests\n\nThe API is OpenAI-compatible, so point an official OpenAI SDK at our base URL and change nothing else:\n\n```python\nfrom openai import OpenAI\n\nclient = OpenAI(\n    api_key=\"$NAN_API_KEY\",\n    base_url=\"https://api.nan.builders/v1\",\n)\n\nresp = client.chat.completions.create(\n    model=\"deepseek-v4-flash\",\n    messages=[{\"role\": \"user\", \"content\": \"Hello\"}],\n)\nprint(resp.choices[0].message.content)\n```\n\n## Streaming\n\nChat responses can stream token-by-token. Set `\"stream\": true` on `/chat/completions` and the response arrives as Server-Sent Events: each event is a `data:` line carrying a `chat.completion.chunk`, with the new text in `choices[0].delta.content`. A final `data: [DONE]` line ends the stream. `/chat/completions` streams incrementally on every chat model. `/responses` streams incrementally only on `deepseek-v4-flash`; on `qwen3.6` and `gemma4` it holds the whole answer and sends it in one burst at the end.\n\n## Rate limits\n\n{{RATE_LIMITS}}\n\nImage endpoints run on their own budget, separate from the model endpoints: 20 requests per minute and 100 requests per month. The usage endpoint is metered separately too: {{USAGE_RATE_LIMIT}} requests per minute per member. Exceed any limit and you get a `429`.\n\n## Errors\n\nNaN uses conventional HTTP status codes: `2xx` on success, `4xx` for a problem with the request (a missing parameter, an invalid key, an unavailable model) and `5xx` for a server-side error. Every error returns a JSON body in the OpenAI shape:\n\n```json\n{\n  \"error\": {\n    \"message\": \"The model 'foo' does not exist.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"model\",\n    \"code\": \"model_not_found\"\n  }\n}\n```\n\n`message` is human-readable, `param` names the offending field when applicable, and `code` is a short machine-readable string you can branch on.\n\n| Status | Meaning | `code` |\n| --- | --- | --- |\n| `400` | Invalid or malformed parameter (`param` says which); content blocked by the safety filter; a `max_tokens` above what the model can generate (a generic \"Invalid request\" message today); or a request that does not fit the model's context window. On the models hosted on the cluster (`qwen3.6`, `gemma4`) the overflow message is \"Context length exceeded for model '...'\" with the model's limit; on the other models it is usually that text, but it can arrive as the generic \"Invalid request. Check your request parameters.\" | `\"400\"` (with `type: invalid_request_error`) · `content_policy_violation` |\n| `401` | Missing or invalid API key, or a key whose tier does not reach the requested model (`glm5.3`): \"This API key does not have access to the requested model\", `type: auth_error`. Measured 2026-09-12. | `invalid_api_key` |\n| `402` | The token allowance is spent on a model that carries one. Not retryable: the counter returns to zero when that model's quota period does, the calendar month for the models counted per month and your billing period for `glm5.3`. | `monthly_cap_reached` |\n| `403` | Your tier can't access this endpoint. Image generation requires inference membership. A model your tier cannot reach answers `401`, not this. | `tier_restricted` |\n| `404` | The requested model doesn't exist. | `model_not_found` |\n| `429` | Rate limit hit (`rpm_limit`, `max_parallel_requests`), the rolling 4h token budget of `glm5.3`, or a quota exhausted. | `rate_limit_exceeded` · `insufficient_quota` · `quota_exceeded` |\n| `500` | Something went wrong on our side (includes upstream model errors). | (none) |\n| `524` | Timeout, typical with large audio files on `/audio/transcriptions`. | (none) |\n\nRetry `429` and `5xx` responses with exponential backoff. Don't retry `400`, `401`, `403`, or `404` blindly (a context overflow is not retried automatically either: shorten the input or pick a model with a larger window): they'll fail the same way every time until you change the request. `402` cannot be fixed by repetition either: it clears when that model's quota period resets.\n\n## Model catalog\n\nEvery endpoint takes a `model` id. Capabilities vary by model:\n\n| Model | Use for | Capabilities |\n| --- | --- | --- |\n| `deepseek-v4-flash` | Chat, vision, reasoning | Streaming, tool calling, reasoning, image input, 1M-token context. 3B tokens/month per member |\n| `mimo-v2.6-flash` | Chat, vision, audio | Streaming, tool calling, reasoning, image input, audio input, 1M-token context. 1.0B tokens/month per member |\n| `qwen3.8-flash` | Chat, vision, agents | Streaming, tool calling, reasoning (on by default), vision, 1M-token context. 500M tokens/month per member |\n| `glm5.3-flash` | Chat, vision, agents | Streaming, tool calling, reasoning, vision, 1M-token context. 2B tokens/month per member |\n| `qwen3.6` | Chat, agents | Streaming, tool calling, vision, reasoning (opt-out, returns `reasoning_content`) |\n| `gemma4` | Chat, vision, agents | Streaming, tool calling, vision, reasoning (opt-in) |\n| `glm5.3` | Coding, long-horizon agents | Streaming, tool calling, reasoning trace, image, audio and video input, 1M-token context. Premium tier only |\n| `qwen3-embedding` | Embeddings | 4096-dimension vectors |\n| `rerank` | RAG reranking | Qwen3-Reranker-8B, 100+ languages |\n| `kokoro` | Text-to-speech | Multiple voices and audio formats |\n| `whisper` | Speech-to-text | Transcription with word/segment timestamps |\n| `flux-2-klein` | Image generation | Text-to-image and image-to-image |\n| `qwen-image-2.1` | Image generation (text→image) | 512-1280 px, 1-4 per request, seed 0-2147483647. 100 images/month per member (shared pool with flux-2-klein) |\n\n`glm5.3` is served only to keys on the GLM 5.3 premium tier; every other model is available to any inference member. Call [List models](#tag/Models) for the exact set available to your key.\n\n## Versioning & compatibility\n\nThe API tracks the OpenAI API surface, so OpenAI SDKs and tools work against `https://api.nan.builders/v1` unchanged. This reference documents the stable public `/v1` endpoints, plus the two read-only [Workspaces](#tag/workspaces) endpoints under `/api/workspaces`, and we add capabilities without breaking existing fields.",
+    "description": "Open models on a shared EU inference cluster. Zero logs.\n\nThe NaN API is OpenAI-compatible: predictable, resource-oriented URLs, JSON request and response bodies, and standard HTTP verbs and status codes. Point any OpenAI SDK at our base URL and your existing code keeps working. Change the base URL and the API key, and that's it.\n\nOne schema across every model, so you only learn the API once. Change the `model` field to switch models; everything else stays the same.\n\n- Base URL: `https://api.nan.builders/v1`\n- OpenAPI spec: this document. Import it into Postman, Insomnia, or your own tooling.\n\nIf you use the [Helmcode](https://helmcode.com) enterprise service, the base URL is `https://api.helmcode.com/v1` instead. Every other endpoint is identical.\n\n## Authentication\n\nEvery inference request authenticates with an API key, sent as a Bearer token:\n\n```\nAuthorization: Bearer $NAN_API_KEY\n```\n\nYou must be a NaN community member. Generate your key from user settings, under \"API Keys\", on the [platform](https://cloud.nan.builders/). The key is personal and non-transferable. Keep it secret: never embed one in client-side code or commit it to source control. Requests must go over HTTPS; calls over plain HTTP fail.\n\n### Platform tokens\n\nFor scripts that only manage [Runs](#tag/runs), [Automations](#tag/automations) and [Approvals](#tag/approvals), and list your [Workspaces](#tag/workspaces), create a **platform token** (`nan_pat_...`) under \"Tokens\" in your settings, and send it the same way: `Authorization: Bearer $NAN_TOKEN`. An API key works on both inference and these endpoints. Each endpoint lists the credentials it accepts.\n\nA platform token carries **scopes**, and each endpoint names the one it needs: `runs` (runs and approvals), `workspaces:read`, `automations:read` (read automations, templates, triggers and deliveries) and `automations:run` (run an existing automation). New tokens get `runs` and `workspaces:read`. A token without the scope gets `403`:\n\n```json\n{\n  \"error\": {\n    \"message\": \"This platform token does not have the \\\"automations:run\\\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.\",\n    \"type\": \"permission_error\",\n    \"param\": null,\n    \"code\": \"token_scope_denied\"\n  }\n}\n```\n\nA platform token never works for inference: the model endpoints answer `401`:\n\n```json\n{\n  \"error\": {\n    \"message\": \"Platform tokens (nan_pat_) cannot be used for inference. Use an inference API key (sk-) instead. Platform tokens only work on the platform API (/v1/runs and GET /api/workspaces).\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"token_not_valid_for_inference\"\n  }\n}\n```\n\n### Browser sign-in\n\nSome actions need you signed in through your browser at [cloud.nan.builders](https://cloud.nan.builders/), and no API key, platform token or CLI session can do them: approving a run, creating, editing or deleting automations and their triggers, writing secrets, and creating a token with an `automations:` scope. Through the API they answer `403`:\n\n```json\n{\n  \"error\": {\n    \"message\": \"This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs, change automations or secrets, or create tokens with automations scopes.\",\n    \"type\": \"permission_error\",\n    \"param\": null,\n    \"code\": \"browser_session_required\"\n  }\n}\n```\n\n## Making requests\n\nThe API is OpenAI-compatible, so point an official OpenAI SDK at our base URL and change nothing else:\n\n```python\nfrom openai import OpenAI\n\nclient = OpenAI(\n    api_key=\"$NAN_API_KEY\",\n    base_url=\"https://api.nan.builders/v1\",\n)\n\nresp = client.chat.completions.create(\n    model=\"deepseek-v4-flash\",\n    messages=[{\"role\": \"user\", \"content\": \"Hello\"}],\n)\nprint(resp.choices[0].message.content)\n```\n\n## Streaming\n\nChat responses can stream token-by-token. Set `\"stream\": true` on `/chat/completions` and the response arrives as Server-Sent Events: each event is a `data:` line carrying a `chat.completion.chunk`, with the new text in `choices[0].delta.content`. A final `data: [DONE]` line ends the stream. `/chat/completions` streams incrementally on every chat model. `/responses` streams incrementally only on `deepseek-v4-flash`; on `qwen3.6` and `gemma4` it holds the whole answer and sends it in one burst at the end.\n\n## Rate limits\n\n{{RATE_LIMITS}}\n\nImage endpoints run on their own budget, separate from the model endpoints: 20 requests per minute and 100 requests per month. The usage endpoint is metered separately too: {{USAGE_RATE_LIMIT}} requests per minute per member. Exceed any limit and you get a `429`.\n\n## Errors\n\nNaN uses conventional HTTP status codes: `2xx` on success, `4xx` for a problem with the request (a missing parameter, an invalid key, an unavailable model) and `5xx` for a server-side error. Every error returns a JSON body in the OpenAI shape:\n\n```json\n{\n  \"error\": {\n    \"message\": \"The model 'foo' does not exist.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"model\",\n    \"code\": \"model_not_found\"\n  }\n}\n```\n\n`message` is human-readable, `param` names the offending field when applicable, and `code` is a short machine-readable string you can branch on.\n\n| Status | Meaning | `code` |\n| --- | --- | --- |\n| `400` | Invalid or malformed parameter (`param` says which); content blocked by the safety filter; a `max_tokens` above what the model can generate (a generic \"Invalid request\" message today); or a request that does not fit the model's context window. On the models hosted on the cluster (`qwen3.6`, `gemma4`) the overflow message is \"Context length exceeded for model '...'\" with the model's limit; on the other models it is usually that text, but it can arrive as the generic \"Invalid request. Check your request parameters.\" | `\"400\"` (with `type: invalid_request_error`) · `content_policy_violation` |\n| `401` | Missing or invalid API key, or a key whose tier does not reach the requested model (`glm5.3`): \"This API key does not have access to the requested model\", `type: auth_error`. Measured 2026-09-12. A platform token (`nan_pat_...`) sent to an inference endpoint answers `token_not_valid_for_inference`. | `invalid_api_key` · `token_not_valid_for_inference` |\n| `402` | The token allowance is spent on a model that carries one. Not retryable: the counter returns to zero when that model's quota period does, the calendar month for the models counted per month and your billing period for `glm5.3`. | `monthly_cap_reached` |\n| `403` | Your tier can't access this endpoint. Image generation requires inference membership. A model your tier cannot reach answers `401`, not this. On the platform endpoints: a platform token without the scope the endpoint needs, or an action that needs a [browser sign-in](#description/browser-sign-in). | `tier_restricted` · `token_scope_denied` · `browser_session_required` |\n| `404` | The requested model doesn't exist. | `model_not_found` |\n| `429` | Rate limit hit (`rpm_limit`, `max_parallel_requests`), the rolling 4h token budget of `glm5.3`, or a quota exhausted. | `rate_limit_exceeded` · `insufficient_quota` · `quota_exceeded` |\n| `500` | Something went wrong on our side (includes upstream model errors). | (none) |\n| `524` | Timeout, typical with large audio files on `/audio/transcriptions`. | (none) |\n\nRetry `429` and `5xx` responses with exponential backoff. Don't retry `400`, `401`, `403`, or `404` blindly (a context overflow is not retried automatically either: shorten the input or pick a model with a larger window): they'll fail the same way every time until you change the request. `402` cannot be fixed by repetition either: it clears when that model's quota period resets.\n\n## Model catalog\n\nEvery endpoint takes a `model` id. Capabilities vary by model:\n\n| Model | Use for | Capabilities |\n| --- | --- | --- |\n| `deepseek-v4-flash` | Chat, vision, reasoning | Streaming, tool calling, reasoning, image input, 1M-token context. 3B tokens/month per member |\n| `mimo-v2.6-flash` | Chat, vision, audio | Streaming, tool calling, reasoning, image input, audio input, 1M-token context. 1.0B tokens/month per member |\n| `qwen3.8-flash` | Chat, vision, agents | Streaming, tool calling, reasoning (on by default), vision, 1M-token context. 500M tokens/month per member |\n| `glm5.3-flash` | Chat, vision, agents | Streaming, tool calling, reasoning, vision, 1M-token context. 2B tokens/month per member |\n| `qwen3.6` | Chat, agents | Streaming, tool calling, vision, reasoning (opt-out, returns `reasoning_content`) |\n| `gemma4` | Chat, vision, agents | Streaming, tool calling, vision, reasoning (opt-in) |\n| `glm5.3` | Coding, long-horizon agents | Streaming, tool calling, reasoning trace, image, audio and video input, 1M-token context. Premium tier only |\n| `qwen3-embedding` | Embeddings | 4096-dimension vectors |\n| `rerank` | RAG reranking | Qwen3-Reranker-8B, 100+ languages |\n| `kokoro` | Text-to-speech | Multiple voices and audio formats |\n| `whisper` | Speech-to-text | Transcription with word/segment timestamps |\n| `flux-2-klein` | Image generation | Text-to-image and image-to-image |\n| `qwen-image-2.1` | Image generation (text→image) | 512-1280 px, 1-4 per request, seed 0-2147483647. 100 images/month per member (shared pool with flux-2-klein) |\n\n`glm5.3` is served only to keys on the GLM 5.3 premium tier; every other model is available to any inference member. Call [List models](#tag/Models) for the exact set available to your key.\n\n## Versioning & compatibility\n\nThe API tracks the OpenAI API surface, so OpenAI SDKs and tools work against `https://api.nan.builders/v1` unchanged. This reference documents the stable public `/v1` endpoints, plus the two read-only [Workspaces](#tag/workspaces) endpoints under `/api/workspaces`, and we add capabilities without breaking existing fields.",
     "contact": {
       "name": "NaN",
       "url": "https://nan.builders"
@@ -60,7 +60,15 @@
     },
     {
       "name": "Runs",
-      "description": "Give an agent (Pi or Hermes) a task inside one of your workspaces and follow it. A run keeps going if the client disconnects. Accepts a member API key or a platform token. Guide: [Agent runs](https://nan.builders/docs/runs)."
+      "description": "Give an agent (Pi or Hermes) a task inside one of your workspaces and follow it. A run keeps going if the client disconnects. Accepts a member API key or a platform token with the `runs` scope. Guide: [Agent runs](https://nan.builders/docs/runs)."
+    },
+    {
+      "name": "Automations",
+      "description": "Read and run the automations you set up in the portal: saved agent tasks that webhooks, schedules or your own calls start. Reading needs a platform token with `automations:read`, running one `automations:run` (or your API key). Creating, editing and deleting automations and their triggers is done in the portal, signed in through your browser: those routes answer `403 browser_session_required` to API keys and platform tokens. Webhooks themselves arrive at `https://api.nan.builders/hooks/<token>`, signed by the sender. Guides: [Automations](https://nan.builders/docs/automations), [Webhooks and schedules](https://nan.builders/docs/webhooks)."
+    },
+    {
+      "name": "Approvals",
+      "description": "The actions your automation runs propose, and the ones waiting for your approval. List them, read a proposal and its diff, and reject. Approving is done only in the portal, signed in through your browser (`POST /v1/runs/{id}/approve` answers `403 browser_session_required` to API keys and platform tokens), so nothing a script or an agent holds can approve. Guide: [Automations](https://nan.builders/docs/automations#approve-or-reject-a-proposal)."
     },
     {
       "name": "Workspaces",
@@ -1602,7 +1610,7 @@
             "platformToken": []
           }
         ],
-        "description": "Gives an agent a task in one of your workspaces. The run is queued and starts as soon as there is a free place: a workspace runs 1 (Micro and the free workspace), 2 (Nano), 3 (Basic), 5 (Medium) or 8 (Large) runs at once, never more than your per-member total: at most 5 runs working across all your workspaces (8 on Premium). Extra runs wait, first in, first out.\n\nLimits: up to 20 queued runs per workspace and 50 in total (`429 run_queue_full`), and 60 new runs per rolling hour (`429 rate_limited`).\n\nCreating runs needs a plan with inference (`403 tier_restricted`): the run uses the workspace's inference key and counts against your plan's usage. The workspace must be `running` and have the agent installed.\n\n**Idempotency.** Send an `Idempotency-Key` header to make retries safe: the same key with the same body returns the run already created (`200`), the same key with a different body answers `409 idempotency_conflict`.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`).",
+        "description": "Gives an agent a task in one of your workspaces. The run is queued and starts as soon as there is a free place: a workspace runs 1 (Micro and the free workspace), 2 (Nano), 3 (Basic), 5 (Medium) or 8 (Large) runs at once, never more than your per-member total: at most 5 runs working across all your workspaces (8 on Premium). Extra runs wait, first in, first out.\n\nLimits: up to 20 queued runs per workspace and 50 in total (`429 run_queue_full`), and 60 new runs per rolling hour (`429 rate_limited`).\n\nCreating runs needs a plan with inference (`403 tier_restricted`): the run uses the workspace's inference key and counts against your plan's usage. The workspace must be `running` and have the agent installed.\n\n**Idempotency.** Send an `Idempotency-Key` header to make retries safe: the same key with the same body returns the run already created (`200`), the same key with a different body answers `409 idempotency_conflict`.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `runs` scope.",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -1844,7 +1852,7 @@
             "platformToken": []
           }
         ],
-        "description": "Your runs, newest first, with optional filters. Reading, following and cancelling runs does not need a plan with inference.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`).",
+        "description": "Your runs, newest first, with optional filters. Reading, following and cancelling runs does not need a plan with inference.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `runs` scope.",
         "parameters": [
           {
             "name": "workspace",
@@ -1855,6 +1863,15 @@
             "description": "Only the runs of this workspace (name or id). A workspace that is not yours gives an empty page."
           },
           {
+            "name": "automation",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Only the runs of this automation (its id). An automation that is not yours gives an empty page; a malformed id answers `400`."
+          },
+          {
             "name": "state",
             "in": "query",
             "schema": {
@@ -1863,6 +1880,7 @@
                 "queued",
                 "starting",
                 "running",
+                "awaiting_approval",
                 "succeeded",
                 "failed",
                 "cancelled",
@@ -2002,7 +2020,7 @@
             "platformToken": []
           }
         ],
-        "description": "One run, including the full `prompt`. Poll it, or follow the events stream, to see how it ends.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`).",
+        "description": "One run, including the full `prompt`. Poll it, or follow the events stream, to see how it ends.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `runs` scope.",
         "parameters": [
           {
             "name": "id",
@@ -2128,7 +2146,7 @@
             "platformToken": []
           }
         ],
-        "description": "The run's log, as a live stream or as JSON pages.\n\n**Stream.** Send `Accept: text/event-stream` (with `curl`, add `-N`). The server first replays every stored event after your resume point, then sends new ones as they happen. Frames:\n\n- `id: <seq>` + `event: run_event` + `data: <RunEvent>`: one event of the log.\n- `event: state` + `data: {\"state\", \"error_code\"}`: the run changed state.\n- `event: end` + `data: <Run>`: the run is over and every event has been sent. The server closes the stream after it.\n- `: hb`: a comment line every 15 seconds that keeps the connection open. Ignore it.\n\nTo resume after a dropped connection, send the last `id` you received as the `Last-Event-ID` header (it wins over `after`): you get the rest without gaps or repeats. A stream lasts at most 30 minutes; if it closes before `end`, reconnect with `Last-Event-ID`. Up to 10 open streams per member (`429 too_many_streams`).\n\n**JSON pages.** Without that `Accept` header the same endpoint answers one page of events after `after`. Pass the page's `next_after` as `after` until `done` is `true`.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`).",
+        "description": "The run's log, as a live stream or as JSON pages.\n\n**Stream.** Send `Accept: text/event-stream` (with `curl`, add `-N`). The server first replays every stored event after your resume point, then sends new ones as they happen. Frames:\n\n- `id: <seq>` + `event: run_event` + `data: <RunEvent>`: one event of the log.\n- `event: state` + `data: {\"state\", \"error_code\"}`: the run changed state.\n- `event: end` + `data: <Run>`: the run is over, or waiting for your approval (`awaiting_approval`), and every event has been sent. The server closes the stream after it.\n- `: hb`: a comment line every 15 seconds that keeps the connection open. Ignore it.\n\nTo resume after a dropped connection, send the last `id` you received as the `Last-Event-ID` header (it wins over `after`): you get the rest without gaps or repeats. A stream lasts at most 30 minutes; if it closes before `end`, reconnect with `Last-Event-ID`. Up to 10 open streams per member (`429 too_many_streams`).\n\n**JSON pages.** Without that `Accept` header the same endpoint answers one page of events after `after`. Pass the page's `next_after` as `after` until `done` is `true`.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `runs` scope.",
         "parameters": [
           {
             "name": "id",
@@ -2327,7 +2345,7 @@
             "platformToken": []
           }
         ],
-        "description": "Stops the run. A queued run is cancelled at once; a running one stops within a few seconds and ends as `cancelled`. Safe to repeat.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`).",
+        "description": "Stops the run. A queued run is cancelled at once; a running one stops within a few seconds and ends as `cancelled`. Safe to repeat.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `runs` scope.",
         "parameters": [
           {
             "name": "id",
@@ -2477,6 +2495,1591 @@
         ]
       }
     },
+    "/automations": {
+      "get": {
+        "operationId": "listAutomations",
+        "tags": [
+          "Automations"
+        ],
+        "summary": "List automations",
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Your automations, with their settings. Secrets appear by name, never by value.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:read` scope.",
+        "responses": {
+          "200": {
+            "description": "Your automations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationList"
+                },
+                "example": {
+                  "object": "list",
+                  "data": [
+                    {
+                      "id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                      "object": "automation",
+                      "name": "PR review api",
+                      "description": "Reviews every pull request of acme/api.",
+                      "template": "pr_review",
+                      "workspace": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                      "agent": "pi",
+                      "model": null,
+                      "instructions": "Review the pull request described in the input for correctness, security and maintainability.",
+                      "cwd": "/home/nan/projects/api",
+                      "git_isolation": true,
+                      "timeout_seconds": 1800,
+                      "approval_kinds": [
+                        "git_push",
+                        "github_create_pr",
+                        "github_pr_comment",
+                        "github_pr_review",
+                        "github_issue_comment",
+                        "github_add_labels"
+                      ],
+                      "approval_ttl_seconds": 259200,
+                      "inference": {
+                        "source": "nan"
+                      },
+                      "github_repo": "acme/api",
+                      "secrets": [
+                        {
+                          "secret": "GITHUB_READ_TOKEN",
+                          "env": "GITHUB_TOKEN",
+                          "exposure": "agent"
+                        },
+                        {
+                          "secret": "GITHUB_WRITE_TOKEN",
+                          "env": "GITHUB_TOKEN",
+                          "exposure": "actions"
+                        }
+                      ],
+                      "max_runs_per_hour": 30,
+                      "concurrency_policy": "skip_if_active",
+                      "max_trigger_depth": 2,
+                      "enabled": true,
+                      "disabled_reason": null,
+                      "created_at": "2026-10-11T09:00:00Z",
+                      "updated_at": "2026-10-11T09:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:read` scope (`token_scope_denied`), or the key that lives inside a workspace (`workspace_key_not_allowed`): agents cannot manage automations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:read` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:read\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl https://api.nan.builders/v1/automations \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
+    },
+    "/automations/templates": {
+      "get": {
+        "operationId": "listAutomationTemplates",
+        "tags": [
+          "Automations"
+        ],
+        "summary": "List templates",
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "The templates the portal offers when you create an automation: `pr_review`, `issue_triage`, `ci_failure` and `generic_webhook`, with their defaults.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:read` scope.",
+        "responses": {
+          "200": {
+            "description": "The templates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "object": {
+                      "type": "string",
+                      "enum": [
+                        "list"
+                      ]
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AutomationTemplate"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "object": "list",
+                  "data": [
+                    {
+                      "id": "pr_review",
+                      "name": "Pull request review",
+                      "description": "Reviews every new or updated pull request and proposes a review.",
+                      "instructions": "Review the pull request described in the input for correctness, security and maintainability. ...",
+                      "approval_kinds": [
+                        "git_push",
+                        "github_create_pr",
+                        "github_pr_comment",
+                        "github_pr_review",
+                        "github_issue_comment",
+                        "github_add_labels"
+                      ],
+                      "trigger_kind": "webhook",
+                      "signature_scheme": "github",
+                      "event_filter": {
+                        "events": [
+                          "pull_request"
+                        ],
+                        "actions": [
+                          "opened",
+                          "synchronize",
+                          "reopened",
+                          "ready_for_review"
+                        ],
+                        "exclude_drafts": true
+                      },
+                      "secret_slots": [
+                        {
+                          "env": "GITHUB_TOKEN",
+                          "exposure": "agent",
+                          "optional": true,
+                          "help": "Read-only token the agent uses to read the repository, pull requests and CI logs. Use a fine-grained token limited to this repository."
+                        },
+                        {
+                          "env": "GITHUB_TOKEN",
+                          "exposure": "actions",
+                          "optional": false,
+                          "help": "Write token used only by NaN's action executor (never given to the agent) to push, comment, review, label and open pull requests."
+                        }
+                      ],
+                      "requires_github_repo": true,
+                      "suggested_concurrency": "skip_if_active"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:read` scope (`token_scope_denied`), or the key that lives inside a workspace (`workspace_key_not_allowed`): agents cannot manage automations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:read` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:read\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl https://api.nan.builders/v1/automations/templates \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
+    },
+    "/automations/{id}": {
+      "get": {
+        "operationId": "getAutomation",
+        "tags": [
+          "Automations"
+        ],
+        "summary": "Retrieve an automation",
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "One automation.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:read` scope.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The automation id. A malformed id answers `404`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The automation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Automation"
+                },
+                "example": {
+                  "id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                  "object": "automation",
+                  "name": "PR review api",
+                  "description": "Reviews every pull request of acme/api.",
+                  "template": "pr_review",
+                  "workspace": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                  "agent": "pi",
+                  "model": null,
+                  "instructions": "Review the pull request described in the input for correctness, security and maintainability.",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": true,
+                  "timeout_seconds": 1800,
+                  "approval_kinds": [
+                    "git_push",
+                    "github_create_pr",
+                    "github_pr_comment",
+                    "github_pr_review",
+                    "github_issue_comment",
+                    "github_add_labels"
+                  ],
+                  "approval_ttl_seconds": 259200,
+                  "inference": {
+                    "source": "nan"
+                  },
+                  "github_repo": "acme/api",
+                  "secrets": [
+                    {
+                      "secret": "GITHUB_READ_TOKEN",
+                      "env": "GITHUB_TOKEN",
+                      "exposure": "agent"
+                    },
+                    {
+                      "secret": "GITHUB_WRITE_TOKEN",
+                      "env": "GITHUB_TOKEN",
+                      "exposure": "actions"
+                    }
+                  ],
+                  "max_runs_per_hour": 30,
+                  "concurrency_policy": "skip_if_active",
+                  "max_trigger_depth": 2,
+                  "enabled": true,
+                  "disabled_reason": null,
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "updated_at": "2026-10-11T09:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:read` scope (`token_scope_denied`), or the key that lives inside a workspace (`workspace_key_not_allowed`): agents cannot manage automations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:read` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:read\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No automation with that id among yours (another member's is also `404`, and so is a malformed id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "automation not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl https://api.nan.builders/v1/automations/$AUTOMATION_ID \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
+    },
+    "/automations/{id}/triggers": {
+      "get": {
+        "operationId": "listAutomationTriggers",
+        "tags": [
+          "Automations"
+        ],
+        "summary": "List triggers",
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "The webhooks and schedules of an automation. A webhook shows only the start of its URL: the full URL and the signing secret are shown once, in the portal, when they are created or rotated.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:read` scope.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The automation id. A malformed id answers `404`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The triggers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerList"
+                },
+                "example": {
+                  "object": "list",
+                  "data": [
+                    {
+                      "id": "9e2b4d6f-1a3c-4e5b-8d7f-6c0a2b4e6f81",
+                      "object": "trigger",
+                      "automation_id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                      "kind": "webhook",
+                      "enabled": true,
+                      "token_prefix": "nan_whk_Q3vX",
+                      "signature_scheme": "github",
+                      "event_filter": {
+                        "events": [
+                          "pull_request"
+                        ],
+                        "actions": [
+                          "opened",
+                          "synchronize",
+                          "reopened",
+                          "ready_for_review"
+                        ],
+                        "exclude_drafts": true
+                      },
+                      "actor_filter": {
+                        "logins": [],
+                        "author_associations": [
+                          "OWNER",
+                          "MEMBER",
+                          "COLLABORATOR"
+                        ],
+                        "exclude_bots": true
+                      },
+                      "prev_secret_until": null,
+                      "cron": null,
+                      "timezone": null,
+                      "next_fire_at": null,
+                      "last_fired_at": null,
+                      "last_outcome": null,
+                      "created_at": "2026-10-11T09:01:00Z",
+                      "updated_at": "2026-10-11T09:01:00Z"
+                    },
+                    {
+                      "id": "4c6e8a0b-2d4f-4a6c-9e0b-1d3f5a7c9e2b",
+                      "object": "trigger",
+                      "automation_id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                      "kind": "schedule",
+                      "enabled": true,
+                      "token_prefix": null,
+                      "signature_scheme": null,
+                      "event_filter": null,
+                      "actor_filter": null,
+                      "prev_secret_until": null,
+                      "cron": "0 9 * * 1-5",
+                      "timezone": "Europe/Madrid",
+                      "next_fire_at": "2026-10-12T07:00:21Z",
+                      "last_fired_at": "2026-10-11T07:00:21Z",
+                      "last_outcome": "run_created",
+                      "created_at": "2026-10-11T09:02:00Z",
+                      "updated_at": "2026-10-11T09:02:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:read` scope (`token_scope_denied`), or the key that lives inside a workspace (`workspace_key_not_allowed`): agents cannot manage automations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:read` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:read\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No automation with that id among yours (another member's is also `404`, and so is a malformed id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "automation not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl https://api.nan.builders/v1/automations/$AUTOMATION_ID/triggers \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
+    },
+    "/automations/{id}/deliveries": {
+      "get": {
+        "operationId": "listAutomationDeliveries",
+        "tags": [
+          "Automations"
+        ],
+        "summary": "List webhook deliveries",
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "The webhook deliveries of an automation in the last 30 days, newest first, and what each one did. Only final outcomes are kept: deliveries refused for their signature are never stored, and throttled ones (`429`, `503`) are not listed because the sender retries them.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:read` scope.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The automation id. A malformed id answers `404`."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            },
+            "description": "Deliveries to return, 1 to 100."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The deliveries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDeliveryList"
+                },
+                "example": {
+                  "object": "list",
+                  "data": [
+                    {
+                      "trigger_id": "9e2b4d6f-1a3c-4e5b-8d7f-6c0a2b4e6f81",
+                      "delivery_id": "72d3162e-cc78-11e3-81ab-4c9367dc0958",
+                      "received_at": "2026-10-11T09:00:00Z",
+                      "outcome": "run_created",
+                      "run_id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`limit` out of range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "limit must be between 1 and 100",
+                    "type": "invalid_request_error",
+                    "param": "limit",
+                    "code": "invalid_request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:read` scope (`token_scope_denied`), or the key that lives inside a workspace (`workspace_key_not_allowed`): agents cannot manage automations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:read` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:read\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No automation with that id among yours (another member's is also `404`, and so is a malformed id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "automation not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl \"https://api.nan.builders/v1/automations/$AUTOMATION_ID/deliveries?limit=20\" \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
+    },
+    "/automations/{id}/runs": {
+      "post": {
+        "operationId": "runAutomation",
+        "tags": [
+          "Automations"
+        ],
+        "summary": "Run an automation",
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Starts a run of the automation now, with its saved instructions, secrets and approval settings: the same run a webhook or a schedule would start. Its agent proposes actions, which apply automatically or wait for your approval as the automation says. Follow it like any run (`GET /v1/runs/{id}/events`). Runs you start this way are never skipped by `skip_if_active`, but they count towards the automation's `max_runs_per_hour` and the limits of every run.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:run` scope. Runs need a plan with inference.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The automation id. A malformed id answers `404`."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            },
+            "description": "Optional. A retry with the same key and the same input returns the run already created (`200`) instead of a second one. Keys starting with `sch:` or `whk:` are reserved (`400`)."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunAutomationRequest"
+              },
+              "example": {
+                "input": {
+                  "pr": 42,
+                  "note": "only the auth changes"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The run was created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                },
+                "example": {
+                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                  "object": "run",
+                  "workspace": {
+                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                    "name": "develop"
+                  },
+                  "agent": "pi",
+                  "model": null,
+                  "trigger": "api",
+                  "state": "queued",
+                  "queue_position": 1,
+                  "prompt_preview": "Review the pull request described in the input for correctness, security and maintainability.",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": true,
+                  "timeout_seconds": 1800,
+                  "cancel_requested": false,
+                  "exit_code": null,
+                  "error_code": null,
+                  "result": null,
+                  "usage": {
+                    "tokens_in": null,
+                    "tokens_out": null,
+                    "source": null
+                  },
+                  "last_seq": 0,
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "started_at": null,
+                  "finished_at": null,
+                  "phase": "propose",
+                  "inference": {
+                    "source": "nan"
+                  },
+                  "automation_id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                  "parent_run_id": null,
+                  "apply_run_ids": [],
+                  "approval": null,
+                  "approval_kinds": [
+                    "git_push",
+                    "github_create_pr",
+                    "github_pr_comment",
+                    "github_pr_review",
+                    "github_issue_comment",
+                    "github_add_labels"
+                  ],
+                  "github_repo": "acme/api",
+                  "trigger_depth": 0,
+                  "secrets": [
+                    {
+                      "env": "GITHUB_TOKEN",
+                      "exposure": "agent"
+                    }
+                  ],
+                  "agent_finished_at": null
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A retry with the same `Idempotency-Key`: the run created the first time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                },
+                "example": {
+                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                  "object": "run",
+                  "workspace": {
+                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                    "name": "develop"
+                  },
+                  "agent": "pi",
+                  "model": null,
+                  "trigger": "api",
+                  "state": "running",
+                  "queue_position": null,
+                  "prompt_preview": "Review the pull request described in the input for correctness, security and maintainability.",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": true,
+                  "timeout_seconds": 1800,
+                  "cancel_requested": false,
+                  "exit_code": null,
+                  "error_code": null,
+                  "result": null,
+                  "usage": {
+                    "tokens_in": null,
+                    "tokens_out": null,
+                    "source": null
+                  },
+                  "last_seq": 0,
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "started_at": "2026-10-11T09:00:02Z",
+                  "finished_at": null,
+                  "phase": "propose",
+                  "inference": {
+                    "source": "nan"
+                  },
+                  "automation_id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                  "parent_run_id": null,
+                  "apply_run_ids": [],
+                  "approval": null,
+                  "approval_kinds": [
+                    "git_push",
+                    "github_create_pr",
+                    "github_pr_comment",
+                    "github_pr_review",
+                    "github_issue_comment",
+                    "github_add_labels"
+                  ],
+                  "github_repo": "acme/api",
+                  "trigger_depth": 0,
+                  "secrets": [
+                    {
+                      "env": "GITHUB_TOKEN",
+                      "exposure": "agent"
+                    }
+                  ],
+                  "agent_finished_at": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body: `input` not a JSON object, too large (48 KiB) or nested too deep (8 levels); unknown fields; a bad `Idempotency-Key`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "must be a JSON object of at most 48 KiB nested at most 8 levels deep",
+                    "type": "invalid_request_error",
+                    "param": "input",
+                    "code": "invalid_request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:run` scope (`token_scope_denied`), or the key that lives inside a workspace (`workspace_key_not_allowed`): agents cannot manage automations. A membership without runs: `tier_restricted`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:run` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:run\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  },
+                  "tier_restricted": {
+                    "summary": "A membership without inference.",
+                    "value": {
+                      "error": {
+                        "message": "your membership does not include agent runs",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "tier_restricted"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No automation with that id among yours (another member's is also `404`, and so is a malformed id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "automation not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The run cannot start: the automation is disabled (`automation_disabled`), its workspace is not running (`workspace_not_running`), the agent is not installed (`agent_not_installed`), the workspace has no inference key (`no_inference_key`), or the `Idempotency-Key` was used with a different input (`idempotency_conflict`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "automation_disabled": {
+                    "summary": "Disabled automation.",
+                    "value": {
+                      "error": {
+                        "message": "the automation is disabled",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "automation_disabled"
+                      }
+                    }
+                  },
+                  "workspace_not_running": {
+                    "summary": "Stopped workspace.",
+                    "value": {
+                      "error": {
+                        "message": "the workspace is not running",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_not_running"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The automation reached its runs per hour (`automation_rate_limited`), or the limits of every run: the queue (`run_queue_full`) or 60 new runs per hour (`rate_limited`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "automation_rate_limited": {
+                    "summary": "Runs per hour of the automation.",
+                    "value": {
+                      "error": {
+                        "message": "the automation reached its run budget for the last hour",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "automation_rate_limited"
+                      }
+                    }
+                  },
+                  "run_queue_full": {
+                    "summary": "Queue full.",
+                    "value": {
+                      "error": {
+                        "message": "too many queued runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "run_queue_full"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl https://api.nan.builders/v1/automations/$AUTOMATION_ID/runs \\\n  -H \"Authorization: Bearer $NAN_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"input\": {\"pr\": 42}}'"
+          }
+        ]
+      }
+    },
+    "/approvals": {
+      "get": {
+        "operationId": "listApprovals",
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "List approvals",
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "The proposals of your automation runs, newest first. `?state=pending` lists the ones waiting for you, as the portal's **Needs approval** does.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `runs` scope.",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "pending",
+                "approved",
+                "rejected",
+                "expired",
+                "cancelled"
+              ]
+            },
+            "description": "Only approvals in this state. All of them when omitted."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "Approvals per page, 1 to 100."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque: the `next_cursor` of the previous page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of approvals.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalList"
+                },
+                "example": {
+                  "object": "list",
+                  "data": [
+                    {
+                      "run_id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                      "state": "pending",
+                      "approval_from": 0,
+                      "expires_at": "2026-10-14T09:03:41Z",
+                      "proposal": {
+                        "v": 1,
+                        "actions": [
+                          {
+                            "kind": "github_pr_review",
+                            "repo": "acme/api",
+                            "number": 42,
+                            "event": "COMMENT",
+                            "body": "The new branch in `login.go` skips the rate limit. Move the check above it.\n\n<!-- nan-run:6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c -->"
+                          }
+                        ]
+                      },
+                      "proposal_sha256": "3f1d0c9a8b7e6d5c4b3a29180f7e6d5c4b3a29180f7e6d5c4b3a29180f7e6d5c",
+                      "diffstat": null,
+                      "has_diff": false,
+                      "diff_masked": false,
+                      "decided_at": null,
+                      "prefix_apply_run_id": null,
+                      "apply_run_id": null,
+                      "run_state": "awaiting_approval",
+                      "workspace_id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                      "automation_id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69"
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An unknown `state` or `limit` out of range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "unknown approval state",
+                    "type": "invalid_request_error",
+                    "param": "state",
+                    "code": "invalid_request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `runs` scope (`token_scope_denied`), or the key that lives inside a workspace (`workspace_key_not_allowed`): agents cannot manage automations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `runs` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"runs\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl \"https://api.nan.builders/v1/approvals?state=pending\" \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
+    },
+    "/runs/{id}/proposal.diff": {
+      "get": {
+        "operationId": "getRunProposalDiff",
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "Download a proposal's diff",
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "The full diff of a proposal, as plain text (`Content-Disposition: attachment`). It exists only when your approval covers a push (`has_diff: true`). Secret values in it appear as `[masked]`.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `runs` scope.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The run id. A malformed id answers `404`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The diff.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "diff --git a/internal/auth/login.go b/internal/auth/login.go\n..."
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `runs` scope (`token_scope_denied`), or the key that lives inside a workspace (`workspace_key_not_allowed`): agents cannot manage automations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `runs` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"runs\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No run with that id among yours, or no diff kept for it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "run not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl -o proposal.diff https://api.nan.builders/v1/runs/$RUN_ID/proposal.diff \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
+          }
+        ]
+      }
+    },
+    "/runs/{id}/reject": {
+      "post": {
+        "operationId": "rejectRun",
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "Reject a proposal",
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Rejects the proposal of a run in `awaiting_approval`: the run ends `cancelled` with `error_code: approval_rejected`, and none of the actions that waited for approval is applied. Actions that applied automatically before it stay applied.\n\nApproving is not available here: it needs you signed in through the browser, in the portal.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `runs` scope.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The run id. A malformed id answers `404`."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "description": "Optional, for your own record."
+                  }
+                }
+              },
+              "example": {
+                "reason": "not now"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The run, now `cancelled`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                },
+                "example": {
+                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                  "object": "run",
+                  "workspace": {
+                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                    "name": "develop"
+                  },
+                  "agent": "pi",
+                  "model": null,
+                  "trigger": "webhook",
+                  "state": "cancelled",
+                  "queue_position": null,
+                  "prompt_preview": "Review the pull request described in the input for correctness, security and maintainability.",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": true,
+                  "timeout_seconds": 1800,
+                  "cancel_requested": false,
+                  "exit_code": null,
+                  "error_code": "approval_rejected",
+                  "result": {
+                    "status": "succeeded",
+                    "summary": "Proposed one review on acme/api#42.",
+                    "branch": null,
+                    "commit": null,
+                    "changed_files": 0,
+                    "artifacts": [],
+                    "actions_applied": []
+                  },
+                  "usage": {
+                    "tokens_in": 48210,
+                    "tokens_out": 2304,
+                    "source": "litellm"
+                  },
+                  "last_seq": 57,
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "started_at": "2026-10-11T09:00:02Z",
+                  "finished_at": "2026-10-11T10:12:00Z",
+                  "phase": "propose",
+                  "inference": {
+                    "source": "nan"
+                  },
+                  "automation_id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                  "parent_run_id": null,
+                  "apply_run_ids": [],
+                  "approval": {
+                    "run_id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                    "state": "rejected",
+                    "approval_from": 0,
+                    "expires_at": null,
+                    "proposal": {
+                      "v": 1,
+                      "actions": [
+                        {
+                          "kind": "github_pr_review",
+                          "repo": "acme/api",
+                          "number": 42,
+                          "event": "COMMENT",
+                          "body": "The new branch in `login.go` skips the rate limit. Move the check above it.\n\n<!-- nan-run:6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c -->"
+                        }
+                      ]
+                    },
+                    "proposal_sha256": "3f1d0c9a8b7e6d5c4b3a29180f7e6d5c4b3a29180f7e6d5c4b3a29180f7e6d5c",
+                    "diffstat": null,
+                    "has_diff": false,
+                    "diff_masked": false,
+                    "decided_at": "2026-10-11T10:12:00Z",
+                    "prefix_apply_run_id": null,
+                    "apply_run_id": null
+                  },
+                  "approval_kinds": [
+                    "git_push",
+                    "github_create_pr",
+                    "github_pr_comment",
+                    "github_pr_review",
+                    "github_issue_comment",
+                    "github_add_labels"
+                  ],
+                  "github_repo": "acme/api",
+                  "trigger_depth": 1,
+                  "secrets": [
+                    {
+                      "env": "GITHUB_TOKEN",
+                      "exposure": "agent"
+                    }
+                  ],
+                  "agent_finished_at": "2026-10-11T09:03:41Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`reason` is not text, or unknown fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "unknown field",
+                    "type": "invalid_request_error",
+                    "param": "foo",
+                    "code": "invalid_request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `runs` scope (`token_scope_denied`), or the key that lives inside a workspace (`workspace_key_not_allowed`): agents cannot manage automations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `runs` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"runs\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No run with that id among yours (another member's is also `404`, and so is a malformed id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "run not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The run is not waiting for approval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "the run is not awaiting approval",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_awaiting_approval"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "curl",
+            "label": "cURL",
+            "source": "curl -X POST https://api.nan.builders/v1/runs/$RUN_ID/reject \\\n  -H \"Authorization: Bearer $NAN_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"reason\": \"not now\"}'"
+          }
+        ]
+      }
+    },
     "/api/workspaces": {
       "servers": [
         {
@@ -2573,7 +4176,7 @@
                   "session_required": {
                     "value": {
                       "error": "session_required",
-                      "message": "This endpoint requires a signed-in session. API keys only work for inference (https://api.nan.builders/v1)."
+                      "message": "This endpoint requires a signed-in session. API keys (sk-) only work for inference (https://api.nan.builders/v1), the runs API (/v1/runs) and the read-only endpoints GET /api/workspaces, GET /api/workspaces/{uuid} and GET /api/usage/quota."
                     }
                   }
                 }
@@ -2697,7 +4300,7 @@
                   "session_required": {
                     "value": {
                       "error": "session_required",
-                      "message": "This endpoint requires a signed-in session. API keys only work for inference (https://api.nan.builders/v1)."
+                      "message": "This endpoint requires a signed-in session. API keys (sk-) only work for inference (https://api.nan.builders/v1), the runs API (/v1/runs) and the read-only endpoints GET /api/workspaces, GET /api/workspaces/{uuid} and GET /api/usage/quota."
                     }
                   }
                 }
@@ -2753,13 +4356,13 @@
       "apiKey": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Member API key (`sk-...`), from \"API Keys\" in your settings on the platform. Send it as `Authorization: Bearer <api-key>`. It works on every inference endpoint, on the Runs endpoints and on the two Workspaces endpoints. Personal and non-transferable. The key that lives inside a workspace (the one its agents use) is refused by the Runs endpoints with `403 workspace_key_not_allowed`."
+        "description": "Member API key (`sk-...`), from \"API Keys\" in your settings on the platform. Send it as `Authorization: Bearer <api-key>`. It works on every inference endpoint, on the Runs, Automations and Approvals endpoints and on the two Workspaces endpoints (it cannot approve runs or change automations). Personal and non-transferable. The key that lives inside a workspace (the one its agents use) is refused by the Runs endpoints with `403 workspace_key_not_allowed`."
       },
       "platformToken": {
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "nan_pat_...",
-        "description": "Platform token (`nan_pat_...`), from \"Tokens\" in your settings on the platform. Send it as `Authorization: Bearer <token>`. It works only on the platform API: the Runs endpoints (`/v1/runs...`) and the two Workspaces endpoints. It never works for inference: inference endpoints refuse it (`401`, or `403 token_scope_denied`). Shown once when you create it; up to 10 active; expires after 30, 90 or 365 days, or never; revocable at any time. Any member with an active subscription can create one; creating runs still needs a plan with inference."
+        "description": "Platform token (`nan_pat_...`), from \"Tokens\" in your settings on the platform. Send it as `Authorization: Bearer <token>`. It works only on the platform API: Runs (`/v1/runs...`), Automations (`/v1/automations...`), Approvals and the two Workspaces endpoints, and only where it carries the scope the endpoint names: `runs`, `workspaces:read`, `automations:read` or `automations:run`. A missing scope answers `403 token_scope_denied`. New tokens get `runs` and `workspaces:read` by default; a token with an `automations:` scope can only be created from a browser sign-in. It never works for inference: inference endpoints refuse it with `401 token_not_valid_for_inference`. It can never approve a run or change automations or secrets. Shown once when you create it; up to 10 active; expires after 30, 90 or 365 days, or never; revocable at any time. Any member with an active subscription can create one; creating runs still needs a plan with inference."
       }
     },
     "schemas": {
@@ -3842,12 +5445,39 @@
             "items": {
               "$ref": "#/components/schemas/RunArtifact"
             }
+          },
+          "actions_applied": {
+            "type": "array",
+            "description": "On an `apply` run: each action applied, in order. Empty otherwise.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "git_push",
+                    "github_create_pr",
+                    "github_pr_comment",
+                    "github_pr_review",
+                    "github_issue_comment",
+                    "github_add_labels"
+                  ]
+                },
+                "ok": {
+                  "type": "boolean"
+                },
+                "ref": {
+                  "type": "string",
+                  "description": "What the action produced: a commit, or the link of the pull request, comment or review."
+                }
+              }
+            }
           }
         }
       },
       "Run": {
         "type": "object",
-        "description": "A run. Every response returns this object; `prompt` (the full task) is only in `GET /v1/runs/{id}`.",
+        "description": "A run. Every response returns this object; `prompt` (the full task), `instructions` and `input` are only in `GET /v1/runs/{id}`.",
         "properties": {
           "id": {
             "type": "string",
@@ -3893,8 +5523,13 @@
             "enum": [
               "api",
               "cli",
-              "ui"
-            ]
+              "ui",
+              "webhook",
+              "schedule",
+              "approval",
+              "automation"
+            ],
+            "description": "What created the run: `api`, `cli` or `ui` (you, from the API, the CLI or the portal; a manual run of an automation is `api` or `ui`), `webhook` or `schedule` (an automation trigger), `approval` (the step that applies the actions you approved) or `automation` (the step that applies actions that need no approval)."
           },
           "state": {
             "type": "string",
@@ -3902,12 +5537,13 @@
               "queued",
               "starting",
               "running",
+              "awaiting_approval",
               "succeeded",
               "failed",
               "cancelled",
               "timed_out"
             ],
-            "description": "`queued` waits for a free place (per-workspace and per-member limits), then `starting`, `running`, and one of the four final states."
+            "description": "`queued` waits for a free place (per-workspace and per-member limits), then `starting`, `running`, and one of the four final states. An automation run whose proposal needs your approval stops in `awaiting_approval` until you approve it (`succeeded`), reject it or it expires (`cancelled`)."
           },
           "queue_position": {
             "type": [
@@ -3970,9 +5606,16 @@
               "interrupted",
               "protocol_error",
               "executor_error",
+              "secrets_unavailable",
+              "secret_missing",
+              "proposal_invalid",
+              "approval_rejected",
+              "approval_expired",
+              "action_failed",
+              "automation_deleted",
               null
             ],
-            "description": "Why the run did not succeed, when there is a reason."
+            "description": "Why the run did not succeed, when there is a reason. For automation runs: `secrets_unavailable` or `secret_missing` (its secrets could not be delivered, so it did not start), `proposal_invalid` (the proposed actions were refused), `approval_rejected`, `approval_expired`, `action_failed` (an action could not be applied) and `automation_deleted` (deleted while the run was queued)."
           },
           "result": {
             "oneOf": [
@@ -4035,6 +5678,133 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "run",
+              "propose",
+              "apply"
+            ],
+            "description": "`run`: a run you start with `POST /v1/runs`. `propose`: an automation run, whose agent proposes actions instead of acting. `apply`: the step that applies a proposal's actions, with no agent."
+          },
+          "inference": {
+            "type": "object",
+            "description": "Where the run's inference comes from. Always NaN.",
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": [
+                  "nan"
+                ]
+              }
+            }
+          },
+          "automation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The automation that created the run. `null` for runs you start with `POST /v1/runs`, and once the automation is deleted."
+          },
+          "parent_run_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "On an `apply` run: the automation run whose proposal it applies."
+          },
+          "apply_run_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "On an automation run: the `apply` runs that applied its actions, in order."
+          },
+          "approval": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Approval"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On an automation run that proposed actions: the proposal and where its approval stands. `null` otherwise."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "The automation's instructions the run used. Only in `GET /v1/runs/{id}` of an automation run."
+          },
+          "input": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The event or input that started an automation run. Only in `GET /v1/runs/{id}`."
+          },
+          "approval_kinds": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "enum": [
+                "git_push",
+                "github_create_pr",
+                "github_pr_comment",
+                "github_pr_review",
+                "github_issue_comment",
+                "github_add_labels"
+              ]
+            },
+            "description": "On an automation run: the action kinds that needed approval when it started. `null` otherwise."
+          },
+          "github_repo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "On an automation run: the repository its actions act on."
+          },
+          "trigger_depth": {
+            "type": "integer",
+            "description": "0 for a run you start. 1 for a webhook or schedule run, one more for each run caused by another run (loop protection)."
+          },
+          "secrets": {
+            "type": "array",
+            "description": "The secrets the run receives: variable names and who gets them, never values.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "env": {
+                  "type": "string"
+                },
+                "exposure": {
+                  "type": "string",
+                  "enum": [
+                    "agent",
+                    "actions"
+                  ]
+                }
+              }
+            }
+          },
+          "agent_finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the agent of an automation run finished, before any approval."
           }
         }
       },
@@ -4284,6 +6054,13 @@
               "interrupted",
               "protocol_error",
               "executor_error",
+              "secrets_unavailable",
+              "secret_missing",
+              "proposal_invalid",
+              "approval_rejected",
+              "approval_expired",
+              "action_failed",
+              "automation_deleted",
               null
             ]
           },
@@ -4316,9 +6093,11 @@
               "artifact",
               "error",
               "truncated",
-              "finished"
+              "finished",
+              "approval_required",
+              "action"
             ],
-            "description": "- `started`: The run started.\n- `log`: A line of output that is not a message.\n- `message`: Assistant text, sent incrementally: each event carries only its own chunk, and the last chunk of a message has `final: true` (its text may be empty). Concatenate the chunks to rebuild the message.\n- `tool_call`: The agent called a tool.\n- `tool_result`: What a tool answered. `id` matches its `tool_call`.\n- `usage`: Tokens used so far, as the agent reports them (cumulative).\n- `artifact`: A file the agent left in `artifacts/`.\n- `error`: Something went wrong.\n- `truncated`: The run hit its event limit (20000 events) or size limit (16 MiB): later events are dropped, except `artifact`, `error` and `finished`.\n- `finished`: The run ended. Always the last event."
+            "description": "- `started`: The run started.\n- `log`: A line of output that is not a message.\n- `message`: Assistant text, sent incrementally: each event carries only its own chunk, and the last chunk of a message has `final: true` (its text may be empty). Concatenate the chunks to rebuild the message.\n- `tool_call`: The agent called a tool.\n- `tool_result`: What a tool answered. `id` matches its `tool_call`.\n- `usage`: Tokens used so far, as the agent reports them (cumulative).\n- `artifact`: A file the agent left in `artifacts/`.\n- `error`: Something went wrong.\n- `truncated`: The run hit its event limit (20000 events) or size limit (16 MiB): later events are dropped, except `artifact`, `error` and `finished`.\n- `finished`: The run ended. Always the last event.\n- `approval_required`: An automation run proposed actions that wait for your approval.\n- `action`: One step of an `apply` run."
           },
           "data": {
             "oneOf": [
@@ -4351,6 +6130,12 @@
               },
               {
                 "$ref": "#/components/schemas/RunEventDataFinished"
+              },
+              {
+                "$ref": "#/components/schemas/RunEventDataApprovalRequired"
+              },
+              {
+                "$ref": "#/components/schemas/RunEventDataAction"
               }
             ],
             "description": "Depends on `type`."
@@ -4590,6 +6375,951 @@
             }
           }
         ]
+      },
+      "RunInput": {
+        "type": "object",
+        "description": "The untrusted input of an automation run. The agent receives it as data next to the automation's instructions, never as instructions. Render it as plain text.",
+        "properties": {
+          "untrusted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "api",
+              "webhook:github",
+              "webhook:stripe",
+              "webhook:nan",
+              "schedule"
+            ]
+          },
+          "event": {
+            "type": "string",
+            "description": "The event name, for a webhook."
+          },
+          "delivery": {
+            "type": "string",
+            "description": "The delivery id, for a webhook."
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The input itself: a JSON object."
+          }
+        }
+      },
+      "ProposalAction": {
+        "type": "object",
+        "description": "One proposed action. Which fields are present depends on `kind`. Every text was masked before it was stored: secret values appear as `[masked]`. Render every text as plain text.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "git_push",
+              "github_create_pr",
+              "github_pr_comment",
+              "github_pr_review",
+              "github_issue_comment",
+              "github_add_labels"
+            ]
+          },
+          "repo": {
+            "type": "string",
+            "description": "`owner/name`: always the automation's `github_repo`."
+          },
+          "base": {
+            "type": "string",
+            "description": "`git_push`, `github_create_pr`: the base branch."
+          },
+          "branch": {
+            "type": "string",
+            "description": "`git_push`: the branch pushed to."
+          },
+          "commit": {
+            "type": "string",
+            "description": "`git_push`: the agent's commit."
+          },
+          "commit_message": {
+            "type": "string",
+            "description": "`git_push`: the message of the pushed commit."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "`git_push`: a force push."
+          },
+          "head": {
+            "type": "string",
+            "description": "`github_create_pr`: the branch to merge."
+          },
+          "title": {
+            "type": "string",
+            "description": "`github_create_pr`: the title."
+          },
+          "draft": {
+            "type": "boolean",
+            "description": "`github_create_pr`: open it as a draft."
+          },
+          "number": {
+            "type": "integer",
+            "description": "The pull request or issue number."
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "COMMENT",
+              "APPROVE",
+              "REQUEST_CHANGES"
+            ],
+            "description": "`github_pr_review`: the review."
+          },
+          "body": {
+            "type": "string",
+            "description": "The text of a pull request, comment or review."
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`github_add_labels`: up to 10."
+          }
+        }
+      },
+      "Diffstat": {
+        "type": "object",
+        "description": "The files a push changes.",
+        "properties": {
+          "files_changed": {
+            "type": "integer"
+          },
+          "insertions": {
+            "type": "integer"
+          },
+          "deletions": {
+            "type": "integer"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "added": {
+                  "type": "integer"
+                },
+                "deleted": {
+                  "type": "integer"
+                },
+                "binary": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Only the first files are listed."
+          }
+        }
+      },
+      "Proposal": {
+        "type": "object",
+        "description": "What an automation run proposed: up to 10 actions. Immutable once stored.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposalAction"
+            }
+          },
+          "base": {
+            "type": "string",
+            "description": "With a push: the base branch."
+          },
+          "merge_base": {
+            "type": "string",
+            "description": "With a push: the commit the pushed commit is built on."
+          },
+          "bundle_sha256": {
+            "type": "string"
+          },
+          "diff_sha256": {
+            "type": "string",
+            "description": "With a push: the hash of the diff. What is pushed must match it."
+          },
+          "diffstat": {
+            "$ref": "#/components/schemas/Diffstat"
+          }
+        }
+      },
+      "Approval": {
+        "type": "object",
+        "description": "The proposal of an automation run and where its approval stands. Actions before `approval_from` apply automatically; from `approval_from` on they wait for your approval.",
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "pending",
+              "approved",
+              "rejected",
+              "expired",
+              "cancelled"
+            ],
+            "description": "`auto`: no action needed approval, they applied automatically. `pending`: waiting for you. `approved`, `rejected`, `expired`: what happened to it. `cancelled`: dropped without a decision (the automatic actions before it failed, the run was cancelled, or your membership no longer includes runs)."
+          },
+          "approval_from": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Index of the first action that needs approval. `null` when none does."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a pending approval expires."
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/Proposal"
+          },
+          "proposal_sha256": {
+            "type": "string",
+            "description": "The hash of the stored proposal. Approving in the portal binds to it."
+          },
+          "diffstat": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Diffstat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "has_diff": {
+            "type": "boolean",
+            "description": "A full diff is kept (`GET /v1/runs/{id}/proposal.diff`). Only when your approval covers a push."
+          },
+          "diff_masked": {
+            "type": "boolean",
+            "description": "The kept diff contains the value of one of your secrets, shown as `[masked]`. Approving pushes the real value."
+          },
+          "decided_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "prefix_apply_run_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The `apply` run of the actions before `approval_from`."
+          },
+          "apply_run_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The `apply` run of the approved actions."
+          }
+        }
+      },
+      "ApprovalListItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Approval"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "run_state": {
+                "type": "string",
+                "description": "The state of the run."
+              },
+              "workspace_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "automation_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              }
+            }
+          }
+        ]
+      },
+      "ApprovalList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalListItem"
+            },
+            "description": "Newest first."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass it as `cursor` for the next page. `null` on the last page."
+          }
+        }
+      },
+      "Automation": {
+        "type": "object",
+        "description": "A saved agent task. Created and edited in the portal. Never carries a secret value.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "automation"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Up to 64 characters, unique among yours."
+          },
+          "description": {
+            "type": "string"
+          },
+          "template": {
+            "type": "string",
+            "enum": [
+              "custom",
+              "pr_review",
+              "issue_triage",
+              "ci_failure",
+              "generic_webhook"
+            ]
+          },
+          "workspace": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The workspace id."
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "pi",
+              "hermes"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Up to 16 KiB. Trusted: the agent follows them."
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "git_isolation": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Separate branch: `true` on, `false` off, `null` auto."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 7200
+          },
+          "approval_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "git_push",
+                "github_create_pr",
+                "github_pr_comment",
+                "github_pr_review",
+                "github_issue_comment",
+                "github_add_labels"
+              ]
+            },
+            "description": "The action kinds that wait for your approval. Empty: every action applies automatically."
+          },
+          "approval_ttl_seconds": {
+            "type": "integer",
+            "minimum": 3600,
+            "maximum": 604800,
+            "description": "How long a proposal waits for you. 259200 (72 hours) by default."
+          },
+          "inference": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": [
+                  "nan"
+                ]
+              }
+            }
+          },
+          "github_repo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`owner/name`: the repository the actions act on."
+          },
+          "secrets": {
+            "type": "array",
+            "description": "The secrets its runs receive: names, variable names and who gets them. Never values.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "secret": {
+                  "type": "string",
+                  "description": "The name of your secret."
+                },
+                "env": {
+                  "type": "string",
+                  "description": "The variable name the run sees."
+                },
+                "exposure": {
+                  "type": "string",
+                  "enum": [
+                    "agent",
+                    "actions"
+                  ],
+                  "description": "`agent`: the agent receives it. `actions`: only the step that applies actions."
+                }
+              }
+            }
+          },
+          "max_runs_per_hour": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120
+          },
+          "concurrency_policy": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "skip_if_active"
+            ],
+            "description": "`skip_if_active`: a new event for the same pull request, issue, workflow or schedule is skipped while a run for it is active, including one awaiting approval."
+          },
+          "max_trigger_depth": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "disabled_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "member",
+              "workspace_deleted",
+              "secret_deleted",
+              null
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AutomationList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Automation"
+            }
+          }
+        }
+      },
+      "AutomationTemplate": {
+        "type": "object",
+        "description": "A template: the defaults the portal fills in when you create an automation from it.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "pr_review",
+              "issue_triage",
+              "ci_failure",
+              "generic_webhook"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "instructions": {
+            "type": "string"
+          },
+          "approval_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "git_push",
+                "github_create_pr",
+                "github_pr_comment",
+                "github_pr_review",
+                "github_issue_comment",
+                "github_add_labels"
+              ]
+            }
+          },
+          "trigger_kind": {
+            "type": "string",
+            "enum": [
+              "webhook",
+              "schedule"
+            ]
+          },
+          "signature_scheme": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "github",
+              "stripe",
+              "nan",
+              null
+            ]
+          },
+          "event_filter": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EventFilter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "secret_slots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "env": {
+                  "type": "string"
+                },
+                "exposure": {
+                  "type": "string",
+                  "enum": [
+                    "agent",
+                    "actions"
+                  ]
+                },
+                "optional": {
+                  "type": "boolean"
+                },
+                "help": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "requires_github_repo": {
+            "type": "boolean"
+          },
+          "suggested_concurrency": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "skip_if_active"
+            ]
+          }
+        }
+      },
+      "EventFilter": {
+        "type": "object",
+        "description": "Which webhook deliveries start a run. Every list you fill must match; empty lists match everything.",
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Event names (GitHub `X-GitHub-Event`, Stripe event type, NaN `X-Nan-Event`). An entry ending in `.*` matches a prefix."
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "GitHub `action`."
+          },
+          "exclude_drafts": {
+            "type": "boolean",
+            "description": "Ignore draft pull requests."
+          },
+          "conclusions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "GitHub `workflow_run` conclusion."
+          }
+        }
+      },
+      "Trigger": {
+        "type": "object",
+        "description": "What starts an automation: a webhook or a schedule. The webhook URL and its signing secret are never returned after they are created or rotated.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "trigger"
+            ]
+          },
+          "automation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "webhook",
+              "schedule"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "`false`: paused."
+          },
+          "token_prefix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Webhook: the start of the URL token, to recognise it."
+          },
+          "signature_scheme": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "github",
+              "stripe",
+              "nan",
+              null
+            ]
+          },
+          "event_filter": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EventFilter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actor_filter": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "GitHub only. `null`: every sender.",
+            "properties": {
+              "logins": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "author_associations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "exclude_bots": {
+                "type": "boolean"
+              }
+            }
+          },
+          "prev_secret_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "After a rotation with grace: until when the previous signing secret still works."
+          },
+          "cron": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_fire_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_fired_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_outcome": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "run_created",
+              "skipped_active",
+              "not_accepted",
+              "missed",
+              "rate_limited",
+              "queue_full",
+              "automation_disabled",
+              "workspace_deleted",
+              "error",
+              null
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TriggerList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Trigger"
+            }
+          }
+        }
+      },
+      "WebhookDelivery": {
+        "type": "object",
+        "description": "One webhook delivery. No payload and no headers are kept.",
+        "properties": {
+          "trigger_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "delivery_id": {
+            "type": "string",
+            "description": "The sender's delivery id (GitHub `X-GitHub-Delivery`, Stripe event id, NaN `X-Nan-Delivery`)."
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "run_created",
+              "ignored",
+              "loop_suppressed",
+              "skipped_active",
+              "not_accepted",
+              "too_large"
+            ]
+          },
+          "run_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "WebhookDeliveryList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookDelivery"
+            },
+            "description": "Newest first."
+          }
+        }
+      },
+      "RunAutomationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Optional. A JSON object of up to 48 KiB, nested at most 8 levels. The agent receives it as untrusted data next to the instructions, never as instructions. Do not put secrets in it."
+          }
+        }
+      },
+      "RunEventDataApprovalRequired": {
+        "type": "object",
+        "description": "`data` of an `approval_required` event. The proposal needs your approval.",
+        "required": [
+          "proposal_sha256",
+          "kinds"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "proposal_sha256": {
+            "type": "string"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "git_push",
+                "github_create_pr",
+                "github_pr_comment",
+                "github_pr_review",
+                "github_issue_comment",
+                "github_add_labels"
+              ]
+            },
+            "description": "The kinds of the actions that wait for approval."
+          }
+        }
+      },
+      "RunEventDataAction": {
+        "type": "object",
+        "description": "`data` of an `action` event: one step of an `apply` run.",
+        "required": [
+          "index",
+          "kind",
+          "status",
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "git_push",
+              "github_create_pr",
+              "github_pr_comment",
+              "github_pr_review",
+              "github_issue_comment",
+              "github_add_labels"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "started",
+              "ok",
+              "failed"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Plain text, masked."
+          }
+        }
       }
     },
     "responses": {

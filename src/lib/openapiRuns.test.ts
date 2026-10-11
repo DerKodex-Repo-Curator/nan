@@ -3,6 +3,7 @@ import spec from '../data/openapi.json';
 import { resolveSpec } from './apiDoc';
 import { DEFAULT_RATE_LIMITS } from './rateLimits';
 import { openapiToText } from './openapiToText';
+import { validate, type Schema } from '../tests/helpers/openapiValidate';
 
 /**
  * The Runs and Workspaces surface of the API reference.
@@ -14,84 +15,11 @@ import { openapiToText } from './openapiToText';
  * (the workspace view) and the platform-token middleware
  * (internal/middleware/auth.go, handlers.PlatformTokenAPIRoutes).
  *
- * There is no OpenAPI validator among the dependencies, so the examples are
- * checked against their schemas with the small validator below: enough of
- * JSON Schema for what this spec uses ($ref, type, enum, required,
- * properties, additionalProperties: false, items, oneOf, allOf, pattern,
- * minimum/maximum, minLength).
+ * Examples are checked against their schemas with the small validator in
+ * src/tests/helpers/openapiValidate.ts.
  */
 
-type Schema = Record<string, any>;
 const s = spec as any;
-
-function deref(schema: Schema): Schema {
-  if (schema && typeof schema.$ref === 'string') {
-    const target = schema.$ref
-      .replace(/^#\//, '')
-      .split('/')
-      .reduce((node: any, part: string) => node?.[part], s);
-    expect(target, schema.$ref).toBeDefined();
-    return deref(target);
-  }
-  return schema;
-}
-
-function typeOf(v: unknown): string {
-  if (v === null) return 'null';
-  if (Array.isArray(v)) return 'array';
-  if (typeof v === 'number') return Number.isInteger(v) ? 'integer' : 'number';
-  return typeof v;
-}
-
-/** Errors of `value` against `schema`, as `path: reason` strings. */
-function validate(value: unknown, schema: Schema, path = '$'): string[] {
-  const sc = deref(schema);
-  const errors: string[] = [];
-  if (sc.oneOf) {
-    const ok = sc.oneOf.filter((alt: Schema) => validate(value, alt, path).length === 0).length;
-    if (ok !== 1) errors.push(`${path}: matches ${ok} of oneOf`);
-    return errors;
-  }
-  if (sc.allOf) {
-    // Merge the parts into one object schema, so one part's fields are not
-    // "unknown" to the other.
-    const parts = sc.allOf.map(deref);
-    const merged = {
-      type: 'object',
-      required: parts.flatMap((p: Schema) => p.required ?? []),
-      properties: Object.assign({}, ...parts.map((p: Schema) => p.properties ?? {})),
-    };
-    return validate(value, merged, path);
-  }
-  if (sc.type) {
-    const types = Array.isArray(sc.type) ? sc.type : [sc.type];
-    const t = typeOf(value);
-    if (!types.includes(t) && !(t === 'integer' && types.includes('number'))) {
-      return [`${path}: ${t} is not ${types.join('|')}`];
-    }
-  }
-  if (sc.enum && !sc.enum.includes(value)) errors.push(`${path}: ${JSON.stringify(value)} not in enum`);
-  if (typeof value === 'string') {
-    if (sc.pattern && !new RegExp(sc.pattern).test(value)) errors.push(`${path}: does not match ${sc.pattern}`);
-    if (sc.minLength !== undefined && value.length < sc.minLength) errors.push(`${path}: too short`);
-    if (sc.maxLength !== undefined && value.length > sc.maxLength) errors.push(`${path}: too long`);
-  }
-  if (typeof value === 'number') {
-    if (sc.minimum !== undefined && value < sc.minimum) errors.push(`${path}: below minimum`);
-    if (sc.maximum !== undefined && value > sc.maximum) errors.push(`${path}: above maximum`);
-  }
-  if (typeOf(value) === 'object') {
-    const obj = value as Record<string, unknown>;
-    for (const key of sc.required ?? []) if (!(key in obj)) errors.push(`${path}: missing ${key}`);
-    for (const [key, v] of Object.entries(obj)) {
-      const prop = sc.properties?.[key];
-      if (prop) errors.push(...validate(v, prop, `${path}.${key}`));
-      else if (sc.properties && sc.additionalProperties !== true) errors.push(`${path}: unknown property ${key}`);
-    }
-  }
-  if (Array.isArray(value) && sc.items) value.forEach((v, i) => errors.push(...validate(v, sc.items, `${path}[${i}]`)));
-  return errors;
-}
 
 const RUN_OPS: Array<[string, string, string]> = [
   ['/runs', 'post', 'createRun'],
@@ -136,14 +64,14 @@ describe('openapi.json: credentials', () => {
   it('inference operations take the API key only (the global default)', () => {
     expect(s.security).toEqual([{ apiKey: [] }]);
     for (const [path, item] of Object.entries(s.paths) as Array<[string, any]>) {
-      if (path.startsWith('/runs') || path.startsWith('/api/')) continue;
+      if (/^\/(runs|automations|approvals|api)(\/|$)/.test(path)) continue;
       for (const method of ['get', 'post']) if (item[method]) expect(item[method].security, path).toBeUndefined();
     }
   });
 
   it.each(RUN_OPS)('%s %s accepts an API key or a platform token', (path, method) => {
     expect(op(path, method).security).toEqual([{ apiKey: [] }, { platformToken: [] }]);
-    expect(op(path, method).description).toContain('a member API key (`sk-...`) or a platform token (`nan_pat_...`)');
+    expect(op(path, method).description).toContain('a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `runs` scope');
   });
 
   it('both Workspaces operations accept an API key or a platform token, never a workspace key (cloud-api #325)', () => {
@@ -224,9 +152,13 @@ describe('openapi.json: the Runs contract (cloud-api)', () => {
 
   it('GET /runs: filters and the list object', () => {
     const params = Object.fromEntries(op('/runs', 'get').parameters.map((p: any) => [p.name, p]));
-    expect(Object.keys(params)).toEqual(['workspace', 'state', 'limit', 'cursor']);
+    expect(Object.keys(params)).toEqual(['workspace', 'automation', 'state', 'limit', 'cursor']);
     expect(params.limit.schema).toMatchObject({ minimum: 1, maximum: 100, default: 20 });
-    expect(params.state.schema.enum).toEqual(['queued', 'starting', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out']);
+    // internal/runs/api.go States, Phase 2 adds awaiting_approval.
+    expect(params.state.schema.enum).toEqual([
+      'queued', 'starting', 'running', 'awaiting_approval', 'succeeded', 'failed', 'cancelled', 'timed_out',
+    ]);
+    expect(params.automation.schema.format).toBe('uuid');
     expect(Object.keys(s.components.schemas.RunList.properties)).toEqual(['object', 'data', 'next_cursor']);
   });
 
@@ -235,19 +167,31 @@ describe('openapi.json: the Runs contract (cloud-api)', () => {
       'id', 'object', 'workspace', 'agent', 'model', 'trigger', 'state', 'queue_position', 'prompt_preview',
       'prompt', 'cwd', 'git_isolation', 'timeout_seconds', 'cancel_requested', 'exit_code', 'error_code',
       'result', 'usage', 'last_seq', 'created_at', 'started_at', 'finished_at',
+      // Phase 2 (handlers/runs.go runJSON), same order.
+      'phase', 'inference', 'automation_id', 'parent_run_id', 'apply_run_ids', 'approval', 'instructions', 'input',
+      'approval_kinds', 'github_repo', 'trigger_depth', 'secrets', 'agent_finished_at',
     ]);
     expect(Object.keys(s.components.schemas.RunResult.properties)).toEqual([
-      'status', 'summary', 'branch', 'commit', 'changed_files', 'artifacts',
+      'status', 'summary', 'branch', 'commit', 'changed_files', 'artifacts', 'actions_applied',
     ]);
+    expect(s.components.schemas.Run.properties.trigger.enum).toEqual([
+      'api', 'cli', 'ui', 'webhook', 'schedule', 'approval', 'automation',
+    ]);
+    expect(s.components.schemas.Run.properties.phase.enum).toEqual(['run', 'propose', 'apply']);
+    for (const code of ['secrets_unavailable', 'secret_missing', 'proposal_invalid', 'approval_rejected', 'approval_expired', 'action_failed', 'automation_deleted']) {
+      expect(s.components.schemas.Run.properties.error_code.enum, code).toContain(code);
+      expect(s.components.schemas.RunEventDataFinished.properties.error_code.enum, code).toContain(code);
+    }
   });
 
-  it('events: the ten event kinds, the message chunks and the page shape', () => {
+  it('events: the twelve event kinds, the message chunks and the page shape', () => {
     const event = s.components.schemas.RunEvent;
     expect(Object.keys(event.properties)).toEqual(['seq', 'ts', 'type', 'data']);
     expect(event.properties.type.enum).toEqual([
       'started', 'log', 'message', 'tool_call', 'tool_result', 'usage', 'artifact', 'error', 'truncated', 'finished',
+      'approval_required', 'action',
     ]);
-    expect(event.properties.data.oneOf).toHaveLength(10);
+    expect(event.properties.data.oneOf).toHaveLength(12);
     expect(s.components.schemas.RunEventDataMessage.description).toMatch(/incrementally.*`final: true`/s);
     expect(Object.keys(s.components.schemas.RunEventPage.properties)).toEqual(['data', 'next_after', 'done']);
   });
@@ -307,7 +251,9 @@ describe('openapi.json: the Workspaces contract (cloud-api)', () => {
     expect(ex.invalid_session.value).toEqual({ error: 'invalid session' });
     expect(ex.session_required.value).toEqual({
       error: 'session_required',
-      message: 'This endpoint requires a signed-in session. API keys only work for inference (https://api.nan.builders/v1).',
+      // internal/middleware/auth.go sessionRequiredBody (cloud-api #326).
+      message:
+        'This endpoint requires a signed-in session. API keys (sk-) only work for inference (https://api.nan.builders/v1), the runs API (/v1/runs) and the read-only endpoints GET /api/workspaces, GET /api/workspaces/{uuid} and GET /api/usage/quota.',
     });
   });
 

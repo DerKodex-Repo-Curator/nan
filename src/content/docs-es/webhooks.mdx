@@ -1,0 +1,330 @@
+---
+title: Webhooks y programaciones
+description: Lanza tus automatizaciones desde GitHub, Stripe o tus propios sistemas con webhooks firmados, o con una programación.
+order: 21
+group: Guías
+---
+
+import Steps from '../../components/docs/Steps.astro';
+import Details from '../../components/docs/Details.astro';
+import Callout from '../../components/docs/Callout.astro';
+
+# Webhooks y programaciones.
+
+Un **trigger** lanza una [automatización](/es/docs/automations) sin ti: un **webhook** cuando GitHub, Stripe o uno de tus sistemas envía un evento, o una **programación** a las horas que elijas. Cada arranque crea un run en tu workspace con los ajustes de la automatización, exactamente igual que **Run now**.
+
+Una automatización puede tener hasta **5 triggers**, de cualquiera de los dos tipos. Los gestionas en su pestaña **Triggers**, en [cloud.nan.builders/automations](https://cloud.nan.builders/automations): **+ Webhook**, **+ Schedule** y, en cada trigger, **Pause** / **Resume**, **Rotate** (webhooks) y el icono de la papelera para borrarlo. Añadir, cambiar y borrar triggers exige una [sesión en el navegador](/es/docs/automations#por-qué-algunas-acciones-necesitan-el-navegador).
+
+## Añade un webhook
+
+<Steps>
+
+### Elige el emisor
+
+En la pestaña **Triggers**, pulsa **+ Webhook** y elige el **Sender** (el emisor; el portal está en inglés):
+
+| Sender | Quién lo envía | Secreto de firma |
+|---|---|---|
+| **GitHub** | Los webhooks de un repositorio o de una organización. | Lo crea NaN. Tú lo pegas en GitHub. |
+| **Stripe** | Un endpoint de webhook de tu cuenta de Stripe. | Lo crea Stripe (`whsec_...`). Tú lo pegas aquí. |
+| **NaN (HMAC)** | Tus propios scripts y sistemas. | Lo crea NaN. Tu código firma con él. |
+
+Cuando la automatización viene de una plantilla, el emisor y el filtro de eventos ya están rellenos.
+
+Para **Stripe**, es Stripe quien te da el secreto de firma, y tú lo pegas en este formulario, así que crea antes el endpoint en Stripe: sigue [Desde Stripe](#desde-stripe).
+
+### Elige qué eventos lanzan un run
+
+**Event filter (JSON, optional)**: qué eventos lanzan un run. Consulta [Filtros de eventos](#filtros-de-eventos). Para GitHub también puedes limitar **Who can start it** (quién puede lanzarla): consulta [Solo algunos usuarios de GitHub](#solo-algunos-usuarios-de-github).
+
+### Copia la URL y el secreto
+
+Pulsa **Add webhook**. El portal te muestra, **una sola vez**:
+
+- **Webhook URL**: `https://api.nan.builders/hooks/nan_whk_...`. La propia URL es una credencial: cualquiera que la tenga puede enviarle eventos, así que trátala como una contraseña.
+- **Signing secret** (GitHub y NaN): con lo que el emisor firma cada evento. Para Stripe solo se muestra la URL: el secreto es el que pegaste.
+
+Cópialos y pulsa **I've saved them**. Después, el portal solo muestra el principio de la URL. Si los pierdes, [rótalos](#rota-la-url-o-el-secreto) para conseguir unos nuevos.
+
+### Configúralo en el emisor
+
+Sigue la sección de tu emisor: [GitHub](#desde-github), [Stripe](#desde-stripe) o [tu propio código](#envía-tus-propios-eventos).
+
+</Steps>
+
+## Desde GitHub
+
+En el repositorio, abre **Settings → Webhooks → Add webhook** (o lo mismo en los ajustes de tu organización):
+
+| Campo de GitHub | Valor |
+|---|---|
+| **Payload URL** | La URL del webhook. |
+| **Content type** | `application/json`. Un webhook form-encoded se rechaza con `415`. |
+| **Secret** | El secreto de firma. |
+| **Which events** | **Let me select individual events**, y marca los que maneja tu automatización: **Pull requests** para una review, **Issues** para el triaje, **Workflow runs** para los fallos de CI. |
+
+GitHub firma cada entrega con `X-Hub-Signature-256` y NaN la comprueba. Al guardar, GitHub envía un `ping`: se ignora siempre y aparece como **Ignored by a filter** en **Deliveries**. Eso te dice que la URL y el secreto funcionan.
+
+GitHub no firma ninguna marca de tiempo, así que NaN recuerda el id de cada entrega (`X-GitHub-Delivery`) y lanza como mucho un run por entrega durante 30 días. **Redeliver** en GitHub envía el mismo id: si ya lanzó un run, se responde como duplicado.
+
+## Desde Stripe
+
+<Steps>
+
+### Crea el endpoint en Stripe
+
+En el Dashboard de Stripe, **Developers → Webhooks → Add endpoint**. Elige los eventos que quieras y, de momento, cualquier URL provisional tuya: la cambias en el último paso. Stripe te muestra el **Signing secret** del endpoint (`whsec_...`).
+
+### Pega el secreto en NaN
+
+Añade el webhook en NaN con **Stripe** como emisor y pega ese `whsec_...` en **Stripe signing secret**. Se guarda cifrado y no se vuelve a mostrar.
+
+### Apunta Stripe a la URL
+
+Pon como URL del endpoint en Stripe la URL del webhook que te da NaN.
+
+</Steps>
+
+NaN comprueba `Stripe-Signature`, acepta cualquiera de las firmas que envía Stripe (envía varias mientras rotas su secreto) y rechaza los eventos con más de 5 minutos de desfase. Funcionan tanto el modo test como el live: el endpoint que creas decide qué eventos recibes. Cada id de evento (`evt_...`) lanza como mucho un run.
+
+## Envía tus propios eventos
+
+El emisor **NaN (HMAC)** es para tus propios sistemas: un script de despliegue, una alerta de monitorización, otro servicio. Envía un `POST` con un objeto JSON como cuerpo y estas cabeceras:
+
+| Cabecera | Obligatoria | Valor |
+|---|---|---|
+| `X-Nan-Timestamp` | Sí | La hora actual, en segundos Unix. Los eventos con más de 5 minutos de desfase se rechazan. |
+| `X-Nan-Signature` | Sí | `v1=` seguido del HMAC-SHA256 en hexadecimal de `<timestamp>.<body>` con el secreto de firma. Puedes enviar varias, separadas por comas, mientras rotas el secreto. |
+| `X-Nan-Delivery` | No | Un id único por evento, de hasta 128 caracteres entre `A-Z a-z 0-9 . _ : -`. El mismo id nunca lanza dos runs. Sin él, el id es el hash de la marca de tiempo y el cuerpo. La misma marca de tiempo y el mismo cuerpo son siempre un único evento, diga lo que diga esta cabecera. |
+| `X-Nan-Event` | No | El nombre del evento, para tu [filtro de eventos](#filtros-de-eventos). Por ejemplo `deploy.finished`. |
+| `X-Nan-Run-Id` | No | Si un run ha causado este evento, su id (está en `NAN_RUN_ID` dentro del run). Alimenta la [protección contra bucles](#bucles). |
+
+Firma el cuerpo exactamente como lo envías, byte a byte. En bash:
+
+```bash
+URL="https://api.nan.builders/hooks/nan_whk_..."
+SECRET="..."                       # el secreto de firma
+BODY='{"service":"api","version":"1.4.2"}'
+TS=$(date +%s)
+SIG=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | sed 's/^.* //')
+
+curl -s "$URL" \
+  -H "Content-Type: application/json" \
+  -H "X-Nan-Timestamp: $TS" \
+  -H "X-Nan-Signature: v1=$SIG" \
+  -H "X-Nan-Event: deploy.finished" \
+  -d "$BODY"
+```
+
+En Python:
+
+```python
+import hashlib, hmac, json, time, urllib.request
+
+url = "https://api.nan.builders/hooks/nan_whk_..."
+secret = b"..."
+body = json.dumps({"service": "api", "version": "1.4.2"}).encode()
+ts = str(int(time.time()))
+sig = hmac.new(secret, ts.encode() + b"." + body, hashlib.sha256).hexdigest()
+
+req = urllib.request.Request(url, data=body, method="POST", headers={
+    "Content-Type": "application/json",
+    "X-Nan-Timestamp": ts,
+    "X-Nan-Signature": f"v1={sig}",
+    "X-Nan-Event": "deploy.finished",
+})
+print(urllib.request.urlopen(req).read().decode())
+```
+
+En Node.js:
+
+```js
+import { createHmac } from 'node:crypto';
+
+const url = 'https://api.nan.builders/hooks/nan_whk_...';
+const secret = '...';
+const body = JSON.stringify({ service: 'api', version: '1.4.2' });
+const ts = Math.floor(Date.now() / 1000).toString();
+const sig = createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex');
+
+const res = await fetch(url, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Nan-Timestamp': ts,
+    'X-Nan-Signature': `v1=${sig}`,
+    'X-Nan-Event': 'deploy.finished',
+  },
+  body,
+});
+console.log(res.status, await res.text());
+```
+
+<Callout title="Guarda el secreto de firma en tu lado" variant="warning">
+Guarda la URL y el secreto de firma en el almacén de secretos de tus sistemas, nunca en un repositorio ni en código que se ejecute en el cliente. Con los dos, cualquiera puede lanzar tu automatización.
+</Callout>
+
+## Filtros de eventos
+
+El **Event filter** es un objeto JSON. Cada lista que rellenes tiene que coincidir, y una lista vacía lo deja pasar todo. Si dejas el campo vacío, el webhook usa el filtro de la plantilla de la automatización (cuando el emisor es el de la plantilla); para dejar pasar todos los eventos, escribe `{}`:
+
+| Campo | Coincide con | Ejemplo |
+|---|---|---|
+| `events` | El nombre del evento: `X-GitHub-Event` para GitHub, el `type` del evento para Stripe, `X-Nan-Event` para NaN. Una entrada que termina en `.*` coincide con un prefijo. | `["pull_request"]`, `["invoice.*"]` |
+| `actions` | El campo `action` de GitHub. | `["opened", "synchronize"]` |
+| `exclude_drafts` | `true` ignora las pull requests en borrador. | `true` |
+| `conclusions` | La `conclusion` de un `workflow_run` de GitHub. | `["failure"]` |
+
+La plantilla **Pull request review**, por ejemplo, usa:
+
+```json
+{
+  "events": ["pull_request"],
+  "actions": ["opened", "synchronize", "reopened", "ready_for_review"],
+  "exclude_drafts": true
+}
+```
+
+Hasta 32 entradas por lista, cada una con caracteres de `A-Z a-z 0-9 _ . : -`. Un evento que no coincide se responde con `200` y aparece como **Ignored by a filter**.
+
+## Solo algunos usuarios de GitHub
+
+Por defecto, cualquier evento con una firma válida lanza un run. En un repositorio público, eso significa cualquiera que pueda abrir una pull request o una issue. Para limitarlo, marca **Only some GitHub users** en **Who can start it**:
+
+- **GitHub logins**: solo los eventos enviados por estos usuarios. Vacío significa cualquiera.
+- **Relationship to the repository**: solo los autores con esa relación con el repositorio (owner, member, collaborator, contributor, first time contributor, first timer, none). Ninguna marcada significa cualquiera.
+- **Ignore bots**: descarta los eventos enviados por cuentas bot.
+
+Puedes cambiarlo después con **Change** en el trigger.
+
+## Qué recibe el agente
+
+El evento le llega al agente como datos, después de tus instrucciones y claramente marcado como algo que viene de fuera. Nunca se toma como instrucciones.
+
+- Los eventos de **GitHub** de pull requests, issues y ejecuciones de workflow llegan recortados a los campos que importan, con las cadenas largas cortadas con una marca:
+  - Pull requests: el repositorio, el número, el título, el cuerpo (hasta 8 KiB), el autor y su relación con el repositorio, las ramas y el commit, el enlace y cuántos archivos han cambiado.
+  - Issues: el repositorio, el número, el título, el cuerpo (hasta 8 KiB), el autor, las etiquetas y el enlace.
+  - Ejecuciones de workflow: el repositorio, el workflow, la ejecución, la rama y el commit, el enlace y las pull requests relacionadas.
+- **Cualquier otro evento** (otros eventos de GitHub, Stripe, NaN) llega como su cuerpo JSON, si ocupa como mucho 48 KiB y tiene 8 niveles de anidamiento como mucho. Si no, aparece como **Too large** y no arranca ningún run.
+
+Los cuerpos de los webhooks tienen un tope de 1 MiB.
+
+## Qué recibe el emisor de vuelta
+
+| Estado | Cuándo | Cuerpo |
+|---|---|---|
+| `202` | Se ha creado un run. | `{"status":"run_created","run_id":"..."}` |
+| `200` | Definitivo, sin run: filtrado, una entrega repetida, un bucle, un run ya activo, no aceptado (consulta [Entregas](#entregas)), o demasiado grande. | `{"status":"ignored"}`, `"duplicate"`, `"loop_suppressed"`, `"skipped_active"`, `"not_accepted"` o `"too_large"` |
+| `401` | La firma falta o es incorrecta, o la marca de tiempo tiene demasiado desfase. | Vacío |
+| `404` | URL desconocida, o un trigger en pausa o una automatización desactivada. | Vacío |
+| `413` | El cuerpo pasa de 1 MiB. | Vacío |
+| `400` | No se ha podido leer el cuerpo. | Vacío |
+| `415` | El cuerpo no es un objeto JSON (por ejemplo, un webhook de GitHub que no se envía como `application/json`), o un evento de Stripe sin un id de evento válido. | Vacío |
+| `429` | Demasiadas entregas de momento, la automatización ha llegado a sus runs por hora, o tu cola está llena. Reintenta más tarde (`Retry-After`). | Vacío |
+| `500`, `503` | Algo ha fallado en nuestro lado, o no disponible temporalmente. Reintenta más tarde. | Vacío |
+
+Un `200` es definitivo: el emisor no debería reintentarlo. Un `429`, `500` o `503` no se registra, así que un reintento o un reenvío se procesa como nuevo.
+
+## Entregas
+
+La pestaña **Deliveries** lista los últimos 50 webhooks que ha recibido la automatización en los últimos **30 días** (hasta 100 con `--limit` en la CLI o `limit` en la API), del más reciente al más antiguo, con cuándo llegó, su id de entrega, qué pasó y el run que lanzó:
+
+| Resultado | Significado |
+|---|---|
+| **Run started** | Se ha creado un run. |
+| **Ignored by a filter** | El filtro de eventos o de autores no ha coincidido. |
+| **Stopped: caused by one of its own runs** | Se ha parado un [bucle](#bucles). |
+| **Skipped: a run for the same subject is active** | Consulta [Cuando ya hay un run activo](/es/docs/automations#cuando-ya-hay-un-run-activo). |
+| **Not accepted: your membership does not include runs** | No se ha podido crear el run: tu plan no tiene inferencia, o el workspace está parado o borrado, su agente no está instalado o no tiene clave de inferencia. El emisor no lo reintenta, así que el evento se pierde: mantén el workspace encendido. |
+| **Too large** | El evento no cabía en lo que puede recibir el agente. |
+
+No se guarda ningún payload ni ninguna cabecera. Las entregas con una firma incorrecta nunca se guardan, y las limitadas (límite de peticiones, cola llena, no disponible temporalmente) se responden pidiendo un reintento y no se listan.
+
+Desde la terminal: `nan automations deliveries <automation>`. Desde la API: [`GET /v1/automations/{id}/deliveries`](/es/docs/api#tag/automations).
+
+## Rota la URL o el secreto
+
+**Rotate**, en un webhook, te da credenciales nuevas. Marca qué reemplazar:
+
+- **New webhook URL**: la URL actual deja de funcionar al momento.
+- **New signing secret** (marcado por defecto): por defecto, el secreto anterior sigue funcionando 24 horas, para que puedas actualizar el emisor sin perder eventos. Desmarca **Keep the old secret valid for 24 hours** si el anterior se ha filtrado: deja de funcionar al momento. Para Stripe, rota antes el secreto en Stripe y pega el nuevo `whsec_...`.
+
+Los valores nuevos se muestran una sola vez, como cuando añadiste el webhook.
+
+## Bucles
+
+Una automatización que comenta en una pull request puede recibir un webhook por su propio comentario, y una automatización que hace push puede disparar el CI que a su vez la vuelve a lanzar. NaN para esos bucles:
+
+- Todo lo que hace un run lleva su marca: una línea `Nan-Run:` en los commits que sube, una marca oculta en comentarios, reviews y pull requests, y las ramas `nan-run/...` en las que trabajan los runs (un evento en una rama con otro nombre se reconoce por las demás marcas). Tus propios scripts pueden reenviar `NAN_RUN_ID` como `X-Nan-Run-Id`.
+- Un run lanzado por un webhook o una programación está en la profundidad 1, y un evento causado por un run está un nivel más abajo que ese run. Por encima de la **Chain depth** de la automatización (2 por defecto, de 0 a 5) se para y aparece como **Stopped: caused by one of its own runs**. Con 2, un run de un webhook puede lanzar un run más, no dos.
+
+Los runs por hora de cada automatización, los 120 runs por hora desde webhooks y programaciones entre todas tus automatizaciones, y **Skip the new event** paran un bucle que se cuele entre las marcas.
+
+## Programaciones
+
+### Añade una programación
+
+En la pestaña **Triggers**, pulsa **+ Schedule**:
+
+- **Schedule (cron)**: cinco campos, minuto, hora, día del mes, mes y día de la semana. Por ejemplo `0 9 * * 1-5` (días laborables a las 9:00) o `30 */2 * * *` (cada dos horas, a y media). También funcionan los atajos `@hourly`, `@daily`, `@weekly`, `@monthly` y `@yearly`.
+- **Time zone**: la zona horaria; las horas la siguen. Empieza con la de tu navegador.
+
+El portal te enseña las próximas ejecuciones antes de guardar. Pulsa **Add schedule**.
+
+### Reglas
+
+- **Al menos 15 minutos entre runs.** Una programación cuyas próximas ejecuciones estén más juntas se rechaza.
+- **Hasta 10 programaciones** entre todas tus automatizaciones.
+- **Cambios de hora**: cuando se adelantan los relojes, la hora que se salta se ejecuta en la siguiente hora válida; cuando se atrasan, la hora repetida se ejecuta una vez.
+- **Unos segundos después del minuto**: cada programación se dispara hasta un minuto después de su hora, siempre con el mismo desfase, para que las programaciones en punto no arranquen todas a la vez.
+- **No se recupera lo perdido**: si un run no pudo arrancar a su hora (durante un mantenimiento, por ejemplo), aún arranca si llega como mucho 15 minutos tarde. Más tarde que eso, esa hora se salta y nunca se recupera.
+
+### Última ejecución
+
+Cada programación muestra su próxima ejecución y cómo fue la última:
+
+| Aparece como | Significado |
+|---|---|
+| **Run started** | Se ha creado un run. |
+| **Skipped: the previous run was still active** | **Skip the new event** está activado y el run anterior no había terminado. |
+| **Skipped: hourly limit reached** | La automatización ha llegado a sus runs por hora, o has llegado a los 120 por hora desde webhooks y programaciones. |
+| **Skipped: too many runs waiting** | Tu cola de runs está llena. |
+| **Skipped: automation disabled** | La automatización no está activada. |
+| **Skipped: workspace deleted** | Su workspace ya no existe. |
+| **Not accepted: your membership does not include runs** | No se ha podido crear el run: tu plan no tiene inferencia, o el workspace está parado o no está listo para el agente. |
+| **Missed (more than 15 minutes late)** | No pudo arrancar a tiempo y se ha saltado. |
+| **Error** | Algo ha fallado en nuestro lado. |
+
+Un run programado recibe, como datos, la hora para la que estaba programado, la expresión cron y la zona horaria: `scheduled_for`, `cron` y `timezone`.
+
+## Preguntas frecuentes
+
+<Details summary="Mi webhook de GitHub sale con una cruz roja en GitHub. ¿Qué ha pasado?">
+
+Abre la entrega en GitHub y mira la respuesta. `401` significa que el secreto que hay en GitHub no es el secreto de firma de este webhook: rótalo y pega el nuevo. `415` significa que el content type no es `application/json`. `404` significa que la URL está mal, que el trigger está en pausa o que la automatización está desactivada.
+
+</Details>
+
+<Details summary="GitHub dice 200 pero no ha arrancado ningún run.">
+
+El cuerpo te dice por qué: `ignored` (el `ping`, o el filtro no coincidió, a menudo por una acción que no incluiste), `not_accepted` (a menudo un workspace parado), `skipped_active`, `loop_suppressed` o `duplicate`. La pestaña **Deliveries** muestra lo mismo.
+
+</Details>
+
+<Details summary="¿Puede un webhook lanzar un run en el workspace de otro miembro?">
+
+No. Una URL de webhook pertenece a una automatización de un miembro, y solo lanza runs de esa automatización, en su workspace.
+
+</Details>
+
+<Details summary="¿Puedo lanzar una automatización desde CI sin un webhook?">
+
+Sí: con un token de plataforma que tenga los scopes `automations:run` y `runs` (y `automations:read` para llamarla por su nombre), ejecuta `nan automations run` o llama a la API. Consulta [Tokens para automatizaciones](/es/docs/automations#tokens-para-automatizaciones).
+
+</Details>
+
+<Details summary="¿Dónde pido ayuda?">
+
+Escribe en `#support` en Discord.
+
+</Details>

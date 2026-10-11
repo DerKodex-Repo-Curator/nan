@@ -22,6 +22,8 @@ You can start a run in three ways, and all three see the same runs:
 - From your terminal, with `nan run`.
 - From your own scripts, with the API.
 
+To run the same task again and again, from a webhook, on a schedule or with actions that wait for your approval, save it as an [automation](/docs/automations).
+
 ## Before you start
 
 - **A workspace that is running**, with Pi or Hermes installed. You can install either one from the **Software** panel of the workspace.
@@ -100,6 +102,7 @@ The folder must be inside `/home/nan`, your home in the workspace.
 | `failed` | The agent stopped with an error, or the run could not start (for example, **Separate branch** set to **On** in a folder that is not a repository). |
 | `cancelled` | You cancelled it. |
 | `timed_out` | It reached its time limit and was stopped. |
+| `awaiting_approval` | Only for [automation](/docs/automations) runs: the agent finished and proposed actions that wait for your approval. |
 
 The portal shows the same states with a capital letter, for example **Running**, **Succeeded** or **Cancelled**.
 
@@ -128,6 +131,8 @@ Each run works in its own process inside the workspace, with its own share of CP
 Runs use the inference key of the workspace, the same one its agents use when you work with them by hand. Their requests count against your plan's usage like any other.
 
 Secrets in your workspace's environment file, such as that inference key or a Telegram bot token, are shown as `***` in run logs and results, so a log does not leak them.
+
+The secrets you keep in your settings are not given to these runs: they go only to the runs of the [automations](/docs/automations#secrets) you assign them to.
 
 ## From the terminal: `nan run`
 
@@ -211,6 +216,8 @@ nan runs cancel <id>
 | `usage` | Tokens used so far. |
 | `error` | Something went wrong, with a code. |
 | `finished` | The run ended: its state and the agent's summary. |
+| `approval_required` | An [automation](/docs/automations) run proposed actions that wait for your approval. |
+| `action` | One step of applying an automation's actions. |
 
 ### Exit codes
 
@@ -223,6 +230,7 @@ nan runs cancel <id>
 | 2 | timed out |
 | 3 | cancelled |
 | 4 | the workspace is not ready for it: agent not installed, no inference key or a bad configuration |
+| 10 | the run is waiting for your approval (only [automation](/docs/automations#approve-or-reject-a-proposal) runs) |
 | 64 | usage error, including more than one workspace and no `--ws` |
 | 65 | not signed in, session expired or not allowed |
 | 69 | nan.builders unavailable, or the stream was lost (the run goes on, and the id is printed) |
@@ -253,7 +261,7 @@ nan auth login --api-token < token.txt  # or pipe it in
 
 Never put a token on the command line itself: it would end up in your shell history and in `ps`.
 
-In the CLI, a platform token only works for `nan run` and `nan runs` (see [API keys and tokens](#api-keys-and-tokens)). `nan me`, `nan metrics usage` and the dashboard still need a session from `nan auth login`.
+In the CLI, a platform token only works for `nan run`, `nan runs`, `nan automations` and `nan approvals` (see [API keys and tokens](#api-keys-and-tokens)). `nan me`, `nan metrics usage` and the dashboard still need a session from `nan auth login`.
 
 ### Use the CLI in CI or on a server
 
@@ -292,7 +300,7 @@ Two kinds of credentials work with the runs API. Both are in your [settings on t
 |---|---|---|
 | Looks like | `sk-...` | `nan_pat_...` |
 | Inference (models) | Yes | **No, never** |
-| Platform API (runs, your workspaces) | Yes | Yes |
+| Platform API (runs, automations, approvals, your workspaces) | Yes | Yes |
 | Who can create them | Plans with inference | Any member with an active subscription |
 
 A **token** is the one to give a script that only manages runs. It cannot call the models directly, but it can start runs that spend your plan, so keep it as private as an API key and revoke it if it leaks. Create it under **Settings → Tokens**:
@@ -301,6 +309,7 @@ A **token** is the one to give a script that only manages runs. It cannot call t
 - You can have up to **10** active tokens.
 - Each one expires after **30, 90 or 365 days**, or never.
 - You can revoke any of them at any time.
+- It carries **scopes**, what it may do: `runs` and `workspaces:read` by default. To list or run automations, add `automations:read` or `automations:run`. See [Tokens for automations](/docs/automations#tokens-for-automations).
 
 Creating runs still needs a plan with inference, whatever credential you use. The [API reference](/docs/api#description/platform-tokens) lists which credential each endpoint accepts.
 

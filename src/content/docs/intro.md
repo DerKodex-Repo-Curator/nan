@@ -32,5 +32,7 @@ Limits are per API key — a cap on requests per minute and a maximum number of 
 - [Models](/docs/models): the spec sheets and the limits.
 - [Workspaces](/docs/workspaces): your own cloud machine, over SSH and in the browser, with coding agents ready to use.
 - [Agent runs](/docs/runs): give an agent a task inside your workspace and let it work on its own.
+- [Automations](/docs/automations): save an agent task and start it from a webhook, a schedule or your scripts, with the approvals you choose.
+- [Webhooks and schedules](/docs/webhooks): connect GitHub, Stripe or your own systems, or run on a schedule.
 - [Examples](/docs/examples): snippets in Python, Node.js and curl.
 - Support: report issues in `#support` on Discord.
