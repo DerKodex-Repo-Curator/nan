@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { createHmac } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { parseFrontmatter } from '@astrojs/markdown-remark';
@@ -161,7 +161,9 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
   });
 
   test('secrets: write-only, exposures, reserved names and budgets', () => {
-    for (const fact of ['16 KiB', '48 KiB', '100', '20', '`GITHUB_TOKEN`', '`OPENAI_API_KEY`', '`NAN_`', '`PI_`', '`HERMES_`', '`secrets_unavailable`']) {
+    expect(autoFlat).toMatch(/100 (secrets|secretos)/);
+    expect(autoFlat).toMatch(/20 (secrets|secretos)/);
+    for (const fact of ['16 KiB', '48 KiB', '`GITHUB_TOKEN`', '`OPENAI_API_KEY`', '`NAN_`', '`PI_`', '`HERMES_`', '`secrets_unavailable`']) {
       expect(autoFlat, fact).toContain(fact);
     }
     expect(autoBody).toContain('**Add secret**');
@@ -206,7 +208,9 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
   });
 
   test('webhooks: the answers to the sender match cloud-api (DeliveryOutcome.HTTPStatus)', () => {
-    for (const status of ['202', '200', '401', '404', '413', '415', '429', '503']) expect(hooksBody, status).toContain(`| \`${status}\` |`);
+    for (const status of ['202', '200', '400', '401', '404', '413', '415', '429', '500', '503']) {
+      expect(hooksBody, status).toMatch(new RegExp(`^\\| (\`\\d{3}\`, )?\`${status}\``, 'm'));
+    }
     for (const outcome of ['run_created', 'ignored', 'duplicate', 'loop_suppressed', 'skipped_active', 'not_accepted', 'too_large']) {
       expect(hooksBody, outcome).toContain(`"${outcome}"`);
     }
@@ -236,9 +240,26 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
     expect(hooksBody).toMatch(/printf '%s\.%s' "\$TS" "\$BODY" \| openssl dgst -sha256 -hmac "\$SECRET"/);
     expect(hooksBody).toContain('hmac.new(secret, ts.encode() + b"." + body, hashlib.sha256).hexdigest()');
     expect(hooksBody).toContain("createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex')");
-    // The scheme itself: what cloud-api's verifyNaN recomputes.
-    const sig = createHmac('sha256', 'secret').update('1760000000.{"a":1}').digest('hex');
-    expect(sig).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test('the bash signing line, run as published, gives the signature verifyNaN expects', () => {
+    const line = /^SIG=.*$/m.exec(hooksBody)![0];
+    const out = execFileSync('bash', ['-c', `${line}\nprintf '%s' "$SIG"`], {
+      env: { ...process.env, TS: '1760000000', BODY: '{"service":"api","version":"1.4.2"}', SECRET: 'whsec_test' },
+    }).toString();
+    // HMAC-SHA256("whsec_test", "1760000000.<body>"), computed independently.
+    expect(out).toBe('6e718ca934186a37aacbceec46f0226f3567a3017fd84ac1011f01870ff37651');
+  });
+
+  test('review fixes: ping, empty filter, apply runs, CI scopes, skip subjects, chain depth', () => {
+    expect(hooksBody).toMatch(/`ping`[^.]*(always ignored|se ignora siempre)/);
+    expect(hooksBody).toContain('`{}`');
+    expect(autoFlat).toMatch(/\*\*apply run\*\*|\*\*run de aplicación\*\*/);
+    expect(autoBody).toContain('`action_failed`');
+    expect(autoFlat).toMatch(/`automations:run` (and|y) `runs`/);
+    expect(autoBody).toContain('`data.object.id`');
+    expect(autoBody).toContain('`cloud.nan.builders/automations/<id>`');
+    for (const body of [autoFlat, hooksFlat]) expect(body).toMatch(/(depth 1|profundidad 1)/);
   });
 
   test('never discloses internals, never uses em-dashes', () => {

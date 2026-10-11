@@ -13,7 +13,7 @@ import Callout from '../../components/docs/Callout.astro';
 
 A **trigger** starts an [automation](/docs/automations) without you: a **webhook** when GitHub, Stripe or one of your systems sends an event, or a **schedule** at the times you pick. Each start creates a run in your workspace with the automation's settings, exactly like **Run now**.
 
-An automation can have up to **5 triggers**, of either kind. You manage them in its **Triggers** tab, at [cloud.nan.builders/automations](https://cloud.nan.builders/automations): **+ Webhook**, **+ Schedule**, and on each trigger **Pause** / **Resume**, **Rotate** (webhooks) and delete. Adding, changing and deleting triggers needs a [browser sign-in](/docs/automations#why-some-actions-need-the-browser).
+An automation can have up to **5 triggers**, of either kind. You manage them in its **Triggers** tab, at [cloud.nan.builders/automations](https://cloud.nan.builders/automations): **+ Webhook**, **+ Schedule**, and on each trigger **Pause** / **Resume**, **Rotate** (webhooks) and the bin icon to delete it. Adding, changing and deleting triggers needs a [browser sign-in](/docs/automations#why-some-actions-need-the-browser).
 
 ## Add a webhook
 
@@ -31,6 +31,8 @@ In the **Triggers** tab, press **+ Webhook** and pick the **Sender**:
 
 When the automation comes from a template, the sender and the event filter are already filled in.
 
+For **Stripe**, Stripe gives you the signing secret, and you paste it in this form, so create the endpoint in Stripe first: follow [From Stripe](#from-stripe).
+
 ### Choose which events start a run
 
 **Event filter (JSON, optional)**: which events start a run. See [Event filters](#event-filters). For GitHub you can also limit **Who can start it**: see [Only some GitHub users](#only-some-github-users).
@@ -40,9 +42,9 @@ When the automation comes from a template, the sender and the event filter are a
 Press **Add webhook**. The portal shows, **only once**:
 
 - **Webhook URL**: `https://api.nan.builders/hooks/nan_whk_...`. The URL itself is a credential: anyone who has it can send to it, so treat it like a password.
-- **Signing secret** (GitHub and NaN): what the sender signs each event with.
+- **Signing secret** (GitHub and NaN): what the sender signs each event with. For Stripe only the URL is shown: the secret is the one you pasted.
 
-Copy both, then press **I've saved them**. Afterwards the portal only shows the start of the URL. If you lose them, [rotate](#rotate-the-url-or-the-secret) to get new ones.
+Copy them, then press **I've saved them**. Afterwards the portal only shows the start of the URL. If you lose them, [rotate](#rotate-the-url-or-the-secret) to get new ones.
 
 ### Set it up on the sender
 
@@ -61,9 +63,9 @@ In the repository, open **Settings → Webhooks → Add webhook** (or the same i
 | **Secret** | The signing secret. |
 | **Which events** | **Let me select individual events**, and tick the ones your automation handles: **Pull requests** for a review, **Issues** for triage, **Workflow runs** for CI failures. |
 
-GitHub signs each delivery with `X-Hub-Signature-256` and NaN checks it. When you save, GitHub sends a `ping`: it shows as **Ignored by a filter** in **Deliveries** unless your filter takes `ping`. That tells you the URL and the secret work.
+GitHub signs each delivery with `X-Hub-Signature-256` and NaN checks it. When you save, GitHub sends a `ping`: it is always ignored and shows as **Ignored by a filter** in **Deliveries**. That tells you the URL and the secret work.
 
-GitHub does not sign a timestamp, so NaN remembers each delivery id (`X-GitHub-Delivery`) and starts at most one run per delivery. **Redeliver** in GitHub sends the same id: if it already started a run, it is answered as a duplicate.
+GitHub does not sign a timestamp, so NaN remembers each delivery id (`X-GitHub-Delivery`) and starts at most one run per delivery for 30 days. **Redeliver** in GitHub sends the same id: if it already started a run, it is answered as a duplicate.
 
 ## From Stripe
 
@@ -93,7 +95,7 @@ The **NaN (HMAC)** sender is for your own systems: a deploy script, a monitoring
 |---|---|---|
 | `X-Nan-Timestamp` | Yes | The current time, in Unix seconds. Events more than 5 minutes off are refused. |
 | `X-Nan-Signature` | Yes | `v1=` followed by the hex HMAC-SHA256 of `<timestamp>.<body>` with the signing secret. You can send several, separated by commas, while you rotate the secret. |
-| `X-Nan-Delivery` | No | A unique id per event, up to 128 of `A-Z a-z 0-9 . _ : -`. The same id never starts two runs. Without it, the id is the hash of the timestamp and the body. |
+| `X-Nan-Delivery` | No | A unique id per event, up to 128 of `A-Z a-z 0-9 . _ : -`. The same id never starts two runs. Without it, the id is the hash of the timestamp and the body. The same timestamp and body are always one event, whatever this header says. |
 | `X-Nan-Event` | No | The event's name, for your [event filter](#event-filters). For example `deploy.finished`. |
 | `X-Nan-Run-Id` | No | If a run caused this event, its id (it is in `NAN_RUN_ID` inside the run). It feeds the [loop protection](#loops). |
 
@@ -164,7 +166,7 @@ Keep the URL and the signing secret in your systems' secret store, never in a re
 
 ## Event filters
 
-The **Event filter** is a JSON object. Each list you fill must match; an empty list, or no filter at all, lets everything through:
+The **Event filter** is a JSON object. Each list you fill must match, and an empty list lets everything through. If you leave the field empty, the webhook uses the filter of the automation's template (when the sender is the template's); to let every event through, write `{}`:
 
 | Field | Matches | Example |
 |---|---|---|
@@ -190,7 +192,7 @@ Up to 32 entries per list, each of `A-Z a-z 0-9 _ . : -`. An event that does not
 By default, any event with a valid signature starts a run. On a public repository that means anyone who can open a pull request or an issue. To limit it, tick **Only some GitHub users** under **Who can start it**:
 
 - **GitHub logins**: only events sent by these users. Empty means any.
-- **Relationship to the repository**: only authors with that relationship (owner, member, collaborator, contributor, first-time contributor...). None ticked means any.
+- **Relationship to the repository**: only authors with that relationship (owner, member, collaborator, contributor, first time contributor, first timer, none). None ticked means any.
 - **Ignore bots**: skip events sent by bot accounts.
 
 You can change it later with **Change** on the trigger.
@@ -199,29 +201,33 @@ You can change it later with **Change** on the trigger.
 
 The event reaches the agent as data, after your instructions and clearly marked as coming from outside. It is never taken as instructions.
 
-- **GitHub** pull request, issue and workflow run events arrive trimmed to the fields that matter: the repository, the number, the title, the body (up to 8 KiB), the author and their relationship to the repository, the branches and commit, the link, and the changed files or the failed workflow.
+- **GitHub** pull request, issue and workflow run events arrive trimmed to the fields that matter, with long strings cut with a marker:
+  - Pull requests: the repository, the number, the title, the body (up to 8 KiB), the author and their relationship to the repository, the branches and commit, the link and how many files changed.
+  - Issues: the repository, the number, the title, the body (up to 8 KiB), the author, the labels and the link.
+  - Workflow runs: the repository, the workflow, the run, the branch and commit, the link and the related pull requests.
 - **Any other event** (other GitHub events, Stripe, NaN) arrives as its JSON body, if it is at most 48 KiB and nested at most 8 levels. Otherwise it is listed as **Too large** and no run starts.
 
-Long strings are cut with a marker. Webhook bodies are capped at 1 MiB.
+Webhook bodies are capped at 1 MiB.
 
 ## What the sender gets back
 
 | Status | When | Body |
 |---|---|---|
 | `202` | A run was created. | `{"status":"run_created","run_id":"..."}` |
-| `200` | Accepted without a run: filtered out, a repeated delivery, a loop, a run already active, a membership without runs, or too large. | `{"status":"ignored"}`, `"duplicate"`, `"loop_suppressed"`, `"skipped_active"`, `"not_accepted"` or `"too_large"` |
+| `200` | Final, without a run: filtered out, a repeated delivery, a loop, a run already active, not accepted (see [Deliveries](#deliveries)), or too large. | `{"status":"ignored"}`, `"duplicate"`, `"loop_suppressed"`, `"skipped_active"`, `"not_accepted"` or `"too_large"` |
 | `401` | The signature is missing or wrong, or the timestamp is too far off. | Empty |
 | `404` | Unknown URL, or a paused trigger or a disabled automation. | Empty |
 | `413` | The body is over 1 MiB. | Empty |
-| `415` | A GitHub webhook that is not `application/json`. | Empty |
+| `400` | The body could not be read. | Empty |
+| `415` | The body is not a JSON object (a GitHub webhook not sent as `application/json`, for example), or a Stripe event without a valid event id. | Empty |
 | `429` | Too many deliveries for now, the automation reached its runs per hour, or your queue is full. Retry later (`Retry-After`). | Empty |
-| `503` | Temporarily unavailable. Retry later. | Empty |
+| `500`, `503` | Something failed on our side, or temporarily unavailable. Retry later. | Empty |
 
 A `200` is final: the sender should not retry it. A `429` or a `503` is not recorded, so a retry or a redelivery is processed as new.
 
 ## Deliveries
 
-The **Deliveries** tab lists the webhooks the automation received in the last **30 days**, newest first, with when it arrived, its delivery id, what happened and the run it started:
+The **Deliveries** tab lists the last 50 webhooks the automation received in the last **30 days** (up to 100 with `--limit` in the CLI or `limit` in the API), newest first, with when it arrived, its delivery id, what happened and the run it started:
 
 | Outcome | Meaning |
 |---|---|
@@ -229,7 +235,7 @@ The **Deliveries** tab lists the webhooks the automation received in the last **
 | **Ignored by a filter** | The event or actor filter did not match. |
 | **Stopped: caused by one of its own runs** | A [loop](#loops) was stopped. |
 | **Skipped: a run for the same subject is active** | See [When a run is already active](/docs/automations#when-a-run-is-already-active). |
-| **Not accepted: your membership does not include runs** | Your plan has no inference. |
+| **Not accepted: your membership does not include runs** | The run could not be created: your plan has no inference, or the workspace is stopped or deleted, its agent is not installed or it has no inference key. The sender does not retry it, so the event is lost: keep the workspace running. |
 | **Too large** | The event did not fit in what the agent can receive. |
 
 No payload and no headers are kept. Deliveries with a bad signature are never stored, and throttled ones (rate limit, full queue, temporarily unavailable) are answered with a retry and not listed.
@@ -241,7 +247,7 @@ From the terminal: `nan automations deliveries <automation>`. From the API: [`GE
 **Rotate**, on a webhook, gives you new credentials. Tick what to replace:
 
 - **New webhook URL**: the current URL stops working at once.
-- **New signing secret**: by default the old secret keeps working for 24 hours, so you can update the sender without losing events. Untick **Keep the old secret valid for 24 hours** if the old one leaked: it stops working at once. For Stripe, roll the secret in Stripe first and paste the new `whsec_...`.
+- **New signing secret** (ticked by default): by default the old secret keeps working for 24 hours, so you can update the sender without losing events. Untick **Keep the old secret valid for 24 hours** if the old one leaked: it stops working at once. For Stripe, roll the secret in Stripe first and paste the new `whsec_...`.
 
 The new values are shown once, like when you added the webhook.
 
@@ -249,8 +255,8 @@ The new values are shown once, like when you added the webhook.
 
 An automation that comments on a pull request can receive a webhook for its own comment, and an automation that pushes can trigger the CI that triggers it again. NaN stops those loops:
 
-- Everything a run does carries its mark: a `Nan-Run:` line in pushed commits, a hidden marker in comments, reviews and pull requests, and branches named `nan-run/...`. Your own scripts can forward `NAN_RUN_ID` as `X-Nan-Run-Id`.
-- An event caused by a run counts one step more than that run. Beyond the automation's **Chain depth** (2 by default, 0 to 5), it is stopped and listed as **Stopped: caused by one of its own runs**.
+- Everything a run does carries its mark: a `Nan-Run:` line in pushed commits, a hidden marker in comments, reviews and pull requests, and the `nan-run/...` branches runs work on (an event on a branch with another name is recognised by the other marks). Your own scripts can forward `NAN_RUN_ID` as `X-Nan-Run-Id`.
+- A webhook or schedule run is at depth 1, and an event caused by a run is one deeper than that run. Beyond the automation's **Chain depth** (2 by default, 0 to 5) it is stopped and listed as **Stopped: caused by one of its own runs**. With 2, a webhook run can start one more run, not two.
 
 The runs per hour of each automation, the 120 runs per hour from webhooks and schedules across your automations, and **Skip the new event** stop a loop that slips past the marks.
 
@@ -285,8 +291,9 @@ Each schedule shows its next run and how the last one went:
 | **Skipped: too many runs waiting** | Your run queue is full. |
 | **Skipped: automation disabled** | The automation is not enabled. |
 | **Skipped: workspace deleted** | Its workspace no longer exists. |
-| **Not accepted: your membership does not include runs** | Your plan has no inference. |
+| **Not accepted: your membership does not include runs** | The run could not be created: your plan has no inference, or the workspace is stopped, deleted or not ready for the agent. |
 | **Missed (more than 15 minutes late)** | It could not start in time and was skipped. |
+| **Error** | Something failed on our side. |
 
 A scheduled run receives, as data, the time it was scheduled for, the cron expression and the time zone: `scheduled_for`, `cron` and `timezone`.
 
@@ -300,7 +307,7 @@ Open the delivery in GitHub and look at the response. `401` means the secret in 
 
 <Details summary="GitHub says 200 but no run started.">
 
-The body tells you why: `ignored` (the filter did not match, often the `ping` or an action you did not include), `skipped_active`, `loop_suppressed` or `duplicate`. The **Deliveries** tab lists the same.
+The body tells you why: `ignored` (the `ping`, or the filter did not match, often an action you did not include), `not_accepted` (often a stopped workspace), `skipped_active`, `loop_suppressed` or `duplicate`. The **Deliveries** tab lists the same.
 
 </Details>
 
@@ -312,7 +319,7 @@ No. A webhook URL belongs to one automation of one member, and it only starts ru
 
 <Details summary="Can I trigger an automation from CI without a webhook?">
 
-Yes: with a platform token that has the `automations:run` scope, call `nan automations run` or the API. See [Run it now](/docs/automations#run-it-now).
+Yes: with a platform token that has the `automations:run` and `runs` scopes (and `automations:read` to call it by name), run `nan automations run` or call the API. See [Tokens for automations](/docs/automations#tokens-for-automations).
 
 </Details>
 

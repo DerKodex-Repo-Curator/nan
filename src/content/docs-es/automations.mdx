@@ -26,6 +26,7 @@ El agente de una automatización no hace push ni publica nada por su cuenta. **P
 - **Un workspace encendido**, con Pi o Hermes instalado, como para cualquier [run](/es/docs/runs#antes-de-empezar).
 - **Un plan con inferencia.** Los runs de una automatización usan la clave de inferencia de tu workspace y cuentan para el uso de tu plan como cualquier otro run.
 - **Una sesión en el navegador.** Crear o cambiar automatizaciones, escribir secretos y aprobar acciones exige que hayas iniciado sesión en [cloud.nan.builders](https://cloud.nan.builders/) desde tu navegador, con el enlace por correo. Una sesión de la CLI, una API key o un token pueden listar automatizaciones y lanzarlas, pero nunca cambiarlas. Consulta [Por qué algunas acciones necesitan el navegador](#por-qué-algunas-acciones-necesitan-el-navegador).
+- **Para las plantillas de GitHub, un token de GitHub guardado como secreto.** Sin él la automatización no se puede guardar, así que créalo antes: consulta [Un token de GitHub para las acciones](#un-token-de-github-para-las-acciones).
 
 ## Crea una automatización
 
@@ -33,7 +34,7 @@ El agente de una automatización no hace push ni publica nada por su cuenta. **P
 
 ### Abre Automations
 
-Entra en [cloud.nan.builders/automations](https://cloud.nan.builders/automations), o en **Automations** en la barra lateral, bajo **Workspaces**. La página tiene dos pestañas: **Automations**, tu lista, y **Needs approval**, las propuestas que esperan por ti.
+Entra en [cloud.nan.builders/automations](https://cloud.nan.builders/automations), o en **Automations** en la barra lateral, bajo **Workspaces**. La página tiene dos pestañas: **Automations**, tu lista, y **Needs approval**, las propuestas pendientes de tu aprobación.
 
 ### Elige una plantilla o empieza de cero
 
@@ -47,7 +48,7 @@ Pulsa **New automation**. Una plantilla rellena valores razonables que puedes ca
 | **Generic webhook** | Ejecuta tus instrucciones con cualquier evento JSON firmado. | Un webhook con la [firma de NaN](/es/docs/webhooks#envía-tus-propios-eventos). |
 | **From scratch** | Tus propias instrucciones, triggers y acciones. | Lo que añadas. |
 
-Las tres plantillas de GitHub actúan sobre un repositorio, así que necesitan un **GitHub repository** y un token de GitHub para las acciones. Consulta [Un token de GitHub para las acciones](#un-token-de-github-para-las-acciones).
+Las tres plantillas de GitHub actúan sobre un repositorio, así que necesitan un **GitHub repository** y un token de GitHub para las acciones. Su tarjeta **Secrets** trae ya preparada una fila `GITHUB_TOKEN`: elige en ella el secreto de tu token. Consulta [Un token de GitHub para las acciones](#un-token-de-github-para-las-acciones).
 
 ### Rellena los ajustes
 
@@ -59,17 +60,17 @@ Las tres plantillas de GitHub actúan sobre un repositorio, así que necesitan u
 | **Workspace** | El workspace donde trabaja el agente. |
 | **Agent** | Pi o Hermes. |
 | **Folder** | Dónde trabaja el agente, dentro de `/home/nan`. |
-| **Separate branch** | Rama aparte: **On**, **Auto** u **Off**, como en un [run](/es/docs/runs#dónde-trabaja-el-agente). |
+| **Separate branch** | Rama aparte: **On** (por defecto), **Auto** u **Off (work in the folder directly)** (trabajar directamente en la carpeta), como en un [run](/es/docs/runs#dónde-trabaja-el-agente). |
 | **Time limit (minutes)** | El tiempo máximo, de 1 a 120. 30 por defecto. |
 | **GitHub repository (optional)** | `owner/name`, por ejemplo `acme/api`. El repositorio sobre el que actúan las acciones. |
 | **Secrets** | Cuáles de tus [secretos](#secretos) reciben los runs, y quién recibe cada uno. |
-| **Approval** | Qué tipos de acción esperan por ti. Consulta [Acciones y aprobación](#acciones-y-aprobación). |
+| **Approval** | Qué tipos de acción esperan tu aprobación. Consulta [Acciones y aprobación](#acciones-y-aprobación). |
 | **Runs per hour** | Runs por hora, de 1 a 120, contados sobre la última hora. 30 por defecto. Por encima, los nuevos arranques se rechazan hasta que los runs más antiguos salen de esa hora. |
 | **When a run is active** | **Skip the new event** (descarta el evento nuevo) o **Queue it** (lo pone en cola). Consulta [Cuando ya hay un run activo](#cuando-ya-hay-un-run-activo). |
-| **Chain depth** | Profundidad de cadena, de 0 a 5. 2 por defecto. Cuántas veces un comentario o un push del propio run puede lanzar otro run. Consulta [Bucles](/es/docs/webhooks#bucles). |
+| **Chain depth** | Profundidad de cadena, de 0 a 5. 2 por defecto. Hasta dónde puede llegar una cadena de runs: un run lanzado por un webhook o una programación está en la profundidad 1, y un run lanzado por un comentario o un push de otro run está un nivel más abajo. Con 2, un run de un webhook puede lanzar un run más, no dos. Consulta [Bucles](/es/docs/webhooks#bucles). |
 | **Enabled** | Si está desactivada, nada la lanza: ni sus triggers, ni **Run now**. |
 
-Pulsa **Create automation**.
+**Runs per hour**, **When a run is active**, **Chain depth** y **Enabled** están en la tarjeta **Limits**. Pulsa **Create automation**.
 
 ### Conecta lo que la lanza
 
@@ -93,7 +94,7 @@ Abre tus ajustes en el portal, **Secrets**, debajo de **Tokens**, y pulsa **Add 
 
 Los secretos son de **solo escritura**: una vez guardados, nadie puede volver a leer el valor, ni siquiera tú. La lista muestra el nombre, los 4 últimos caracteres cuando el valor es lo bastante largo, la descripción y qué automatizaciones usan cada uno. Puedes:
 
-- **Replace value**: el valor nuevo se aplica en el siguiente run. El anterior no se puede recuperar.
+- **Replace value**: el valor nuevo lo usan todos los runs que arranquen a partir de ese momento, incluidos los que ya están en cola. El anterior no se puede recuperar.
 - Cambiar su **Description**.
 - **Delete**. El borrado se rechaza mientras una automatización lo use: quítalo antes de esas automatizaciones.
 
@@ -114,7 +115,7 @@ En la tarjeta **Secrets** de la automatización, **Add a secret** y elige, para 
 
 El mismo nombre de variable puede aparecer una vez por opción. La configuración habitual de GitHub le da al agente un token de solo lectura y a las acciones un token de escritura, los dos como `GITHUB_TOKEN`.
 
-Una automatización admite hasta 20 secretos, y todos los secretos que recibe un run pueden sumar como mucho 48 KiB. Los secretos solo llegan a los runs de las automatizaciones a las que los asignas: un run que lanzas con `nan run` o desde la pestaña **Runs** no recibe ninguno.
+Una automatización admite hasta 20 secretos, y todos los secretos que recibe un run pueden sumar como mucho 48 KiB. Los secretos solo llegan a los runs de las automatizaciones a las que los asignas: un run que lanzas con `nan run` o desde la pestaña **Runs** de un workspace no recibe ninguno.
 
 En los logs, resultados y propuestas de los runs, todos los valores de los secretos aparecen enmascarados. Un run solo arranca si todos los secretos que necesita están disponibles; si no, falla con `secrets_unavailable` y nada se ejecuta sin ellos.
 
@@ -131,7 +132,9 @@ Para actuar sobre un repositorio, una automatización necesita:
 
 Crea un [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) limitado a ese único repositorio, con los permisos que necesitan las acciones: **Contents** de lectura y escritura para hacer push, **Pull requests** de lectura y escritura para abrir, comentar y revisar pull requests, e **Issues** de lectura y escritura para comentar en issues y añadir etiquetas. Guárdalo en **Secrets**, por ejemplo como `GITHUB_WRITE_TOKEN`, y asígnalo a la automatización como `GITHUB_TOKEN`, **Actions only**.
 
-Si el agente también necesita leer el repositorio (uno privado, o para traer logs de CI), crea un segundo token solo con permisos de lectura y asígnalo como `GITHUB_TOKEN`, **Agent**.
+Si un push puede cambiar archivos dentro de `.github/workflows/` (la plantilla **CI failure** puede hacerlo), el token de escritura también necesita **Workflows** de lectura y escritura.
+
+Si el agente también necesita leer el repositorio (uno privado, o para traer logs de CI), crea un segundo token solo con permisos de lectura (**Contents**, **Pull requests**, **Issues**, y **Actions** para los logs de CI) y asígnalo como `GITHUB_TOKEN`, **Agent**.
 
 ## Acciones y aprobación
 
@@ -141,7 +144,7 @@ El agente de una automatización trabaja como en cualquier run: lee el código, 
 
 | Acción | En el portal aparece como | Qué hace NaN |
 |---|---|---|
-| `git_push` | **Push commits** | Hace push de los cambios del agente a una rama, como un único commit encima de la rama base. |
+| `git_push` | **Push commits** | Hace push de los cambios del agente a la rama que indica la propuesta, como un único commit encima del punto de la rama base desde el que empezó el agente. |
 | `github_create_pr` | **Open pull requests** | Abre una pull request (o un borrador). |
 | `github_pr_comment` | **Comment on pull requests** | Publica un comentario en una pull request. |
 | `github_pr_review` | **Review pull requests** | Publica una review: comentar, aprobar o pedir cambios. |
@@ -152,21 +155,21 @@ Hasta 10 acciones por propuesta, siempre sobre el **GitHub repository** de la au
 
 Después, un paso aparte, sin agente y sin ningún modelo de IA, aplica las acciones con tu token **Actions only**. El agente nunca ve ese token. Un run que no propone nada simplemente termina como `succeeded`.
 
-Todo lo que hace NaN va marcado: los commits que sube llevan una línea `Nan-Run: <run id>`, los comentarios, reviews y pull requests terminan con una marca oculta, y las ramas creadas por runs empiezan por `nan-run/`. El autor de un commit subido es `NaN run <run@nan.builders>`.
+Todo lo que hace NaN va marcado: los commits que sube llevan una línea `Nan-Run: <run id>`, los comentarios, reviews y pull requests terminan con una marca oculta, y las ramas aparte en las que trabajan los runs empiezan por `nan-run/` (el push en sí va a la rama que indica la propuesta). El autor de un commit subido es `NaN run <run@nan.builders>`.
 
-Un push nunca lleva la clave de inferencia de tu workspace: una propuesta cuyos cambios la contengan se rechaza (`proposal_invalid`), necesite aprobación o no. Tus propios secretos son cosa tuya: si un diff contiene el valor de alguno de ellos, el portal te avisa antes de aprobar.
+Un push nunca lleva la clave de inferencia de tu workspace: una propuesta cuyos cambios la contengan se rechaza (`proposal_invalid`), necesite aprobación o no. Tus propios secretos son cosa tuya: si un diff contiene el valor de un secreto que recibe ese run, el portal te avisa antes de aprobar.
 
-### Elige qué espera por ti
+### Elige qué espera tu aprobación
 
 La tarjeta **Approval** de una automatización tiene tres opciones:
 
-- **Approve everything**: todas las acciones esperan por ti. Las plantillas empiezan con esta.
+- **Approve everything**: todas las acciones esperan tu aprobación. Las plantillas empiezan con esta.
 - **Fully automatic**: las acciones se aplican sin preguntar, push y pull requests incluidos.
 - **Custom**: marca qué tipos de acción necesitan aprobación. Las demás se aplican solas.
 
 Cuando algo de fuera (un webhook o una programación) puede lanzar una automatización que aplica alguna acción sin preguntar, el editor muestra un aviso. Nunca te impide guardar: lo que pasa en tu repositorio es decisión tuya.
 
-**Proposals expire after**: cuánto tiempo espera una propuesta por ti: **1 hour**, **24 hours**, **72 hours** (por defecto) o **7 days**.
+**Proposals expire after** (aparece cuando al menos un tipo de acción necesita aprobación): cuánto tiempo te espera una propuesta: **1 hour**, **24 hours**, **72 hours** (por defecto) o **7 days**.
 
 La aprobación controla lo que NaN hace con tus secretos **Actions only**. El agente en sí se ejecuta en tu workspace y puede usar cualquier cosa que tengas ahí, como una clave SSH o una sesión de `gh`.
 
@@ -182,37 +185,47 @@ Pulsa **Review** para abrir la propuesta: cada acción, con sus textos completos
 
 ### Apruébala
 
-**Approve and apply** aplica, en orden, las acciones que esperaban por ti. Aprobar exige una sesión en el navegador. Si la propuesta ha cambiado desde que la abriste, el portal te pide que la revises de nuevo.
+**Approve and apply** manda aplicar, en orden, las acciones pendientes de tu aprobación. Se activa cuando la propuesta y su diff han cargado; si el portal no puede mostrar la propuesta exactamente, solo te ofrece **Reject**. Aprobar exige una sesión en el navegador. Si la propuesta ha cambiado desde que la abriste, el portal te pide que la revises de nuevo.
 
 ### O recházala
 
-**Reject**, con un motivo opcional. No se aplica nada de lo que esperaba aprobación. También puedes rechazarla desde la terminal con `nan runs reject <id>` o desde la API.
+**Reject** te pide confirmación, con un campo **Reason (optional)** para el motivo. No se aplica nada de lo que esperaba aprobación. También puedes rechazarla desde la terminal con `nan runs reject <id>` o desde la API.
 
 </Steps>
 
 Si nadie decide antes de que caduque, la propuesta se descarta y el run termina como `cancelled`.
 
-Cómo termina un run, según su propuesta:
+Las acciones las aplica un **run de aplicación** aparte: aparece en la pestaña **Runs** del workspace, sin agente y sin gastar tokens, y su log tiene una línea por acción. El run propio de la automatización termina en cuanto su propuesta queda resuelta, antes de que se apliquen las acciones:
 
-| La propuesta... | El run termina como |
-|---|---|
-| no tiene acciones | `succeeded` |
-| solo tiene acciones que se aplican solas | `succeeded`, y las acciones se aplican |
-| tiene acciones que necesitan aprobación, y apruebas | `succeeded`, y las acciones se aplican |
-| se rechaza | `cancelled` (`approval_rejected`) |
-| caduca | `cancelled` (`approval_expired`) |
-| no es válida | `failed` (`proposal_invalid`) |
+| La propuesta... | El run de la automatización termina como | Y después |
+|---|---|---|
+| no tiene acciones | `succeeded` | No hay nada que aplicar. |
+| solo tiene acciones que se aplican solas | `succeeded` | Un run de aplicación las aplica. |
+| tiene acciones que necesitan aprobación, y apruebas | `succeeded` | Un run de aplicación las aplica. |
+| se rechaza | `cancelled` (`approval_rejected`) | No se aplica nada de lo que esperaba aprobación. |
+| caduca | `cancelled` (`approval_expired`) | No se aplica nada de lo que esperaba aprobación. |
+| no es válida | `failed` (`proposal_invalid`) | No se aplica nada. |
 
-La aprobación empieza en la primera acción que la necesita. Las acciones anteriores se aplican solas mientras la propuesta espera por ti, y en cuanto apruebas, el resto se aplica en orden, incluidas las acciones posteriores que por sí solas no necesitarían aprobación: una pull request necesita que antes se haya hecho push de su rama. Si una acción falla, las siguientes no se aplican y el run muestra `action_failed`.
+Así que `succeeded` significa que la propuesta se aceptó, no que todas las acciones funcionaran: revisa el run de aplicación. Si una acción falla, el run de aplicación termina como `failed` (`action_failed`) y las acciones siguientes no se aplican.
 
-El paso que aplica las acciones aparece como un run propio en la pestaña **Runs** del workspace, sin agente y sin gastar tokens. Su log tiene una línea por acción.
+La aprobación empieza en la primera acción que la necesita. Las acciones anteriores se aplican solas mientras la propuesta espera tu aprobación (si una de ellas falla, el run de la automatización falla con `action_failed` y no queda nada que aprobar), y en cuanto apruebas, el resto se aplica en orden, incluidas las acciones posteriores que por sí solas no necesitarían aprobación: una pull request necesita que antes se haya hecho push de su rama.
 
 ## Cuando ya hay un run activo
 
 **When a run is active** decide qué pasa si llega un evento nuevo sobre lo mismo mientras sigue en marcha un run para ello, incluido un run que espera tu aprobación:
 
-- **Skip the new event**: se descarta. Para una pull request, una issue o un workflow, "lo mismo" es esa pull request, issue o ejecución de workflow. Para una programación, es la automatización. Las plantillas de GitHub usan esta opción, así que hacer push de tres commits seguidos a una pull request no lanza tres reviews.
-- **Queue it**: se pone en cola un run nuevo, como siempre.
+- **Skip the new event**: se descarta. Las plantillas de GitHub usan esta opción, así que hacer push de tres commits seguidos a una pull request no lanza tres reviews.
+- **Queue it**: se pone en cola un run nuevo, como siempre. La plantilla **Generic webhook** usa esta opción.
+
+Qué cuenta como "lo mismo" depende de qué lanzó el run:
+
+| Lanzado por | Lo mismo es |
+|---|---|
+| Un evento de GitHub de pull request o issue | Esa pull request o issue. |
+| Un evento `workflow_run` de GitHub | El mismo repositorio y la misma rama: un fallo nuevo en esa rama se descarta mientras haya un run activo para ella, aunque venga de otra ejecución de workflow. |
+| Un evento de Stripe | El mismo objeto de Stripe (`data.object.id`). |
+| Cualquier otro evento (emisores NaN, otros eventos de GitHub) | Cualquier evento de la automatización: un run cada vez. |
+| Una programación | La automatización. |
 
 Los runs que lanzas tú nunca se descartan.
 
@@ -220,7 +233,7 @@ Los runs que lanzas tú nunca se descartan.
 
 ### Desde el portal
 
-**Run now**, arriba en la automatización, abre una caja para un **Input** opcional: un objeto JSON (hasta 48 KiB) que el agente recibe como datos junto a tus instrucciones, nunca como instrucciones. **Start run** te lleva a la página del run.
+**Run now**, arriba en la automatización, abre una caja para el campo opcional **Input (JSON object, optional)**: un objeto JSON (hasta 48 KiB) que el agente recibe como datos junto a tus instrucciones, nunca como instrucciones. **Start run** te lleva a la página del run.
 
 ### Desde la terminal
 
@@ -235,12 +248,12 @@ gh api repos/acme/api/pulls/42 | nan automations run "PR review" --input -
 nan automations deliveries "PR review"      # webhooks recibidos, últimos 30 días
 ```
 
-`--input` acepta el propio JSON, `@file.json` o `-` para stdin. No pongas secretos en él: el agente lo lee. Una automatización se indica por su nombre o por su id.
+`--input` acepta el propio JSON, `@file.json` o `-` para stdin. No pongas secretos en él: el agente lo lee. Una automatización se indica por su nombre o por su id; con un nombre, la CLI la busca primero, y eso exige el scope `automations:read` en un token.
 
 Los comandos de aprobaciones y secretos:
 
 ```bash
-nan approvals ls                  # propuestas que esperan por ti
+nan approvals ls                  # propuestas pendientes de tu aprobación
 nan runs proposal <run-id>        # las acciones propuestas, y dónde aprobarlas
 nan runs proposal <run-id> --diff # con el diff completo, cuando se guarda
 nan runs reject <run-id> --reason "not now"
@@ -253,7 +266,7 @@ No hay ningún comando para crear o cambiar automatizaciones, escribir secretos 
 
 ### Desde la API
 
-Con un [token de plataforma](#tokens-para-automatizaciones) que tenga el scope `automations:run`, o con tu API key:
+La API usa el id de la automatización: está en la dirección de su página (`cloud.nan.builders/automations/<id>`), en `nan automations ls` y en `GET /v1/automations`. Con un [token de plataforma](#tokens-para-automatizaciones) que tenga el scope `automations:run`, o con tu API key:
 
 ```bash
 curl https://api.nan.builders/v1/automations/$AUTOMATION_ID/runs \
@@ -264,7 +277,7 @@ curl https://api.nan.builders/v1/automations/$AUTOMATION_ID/runs \
 
 La respuesta es el run, que sigues como cualquier otro ([Crea un run y síguelo](/es/docs/runs#crea-un-run-y-síguelo)). La referencia completa está en [Referencia de la API → Automations](/es/docs/api#tag/automations) y [Referencia de la API → Approvals](/es/docs/api#tag/approvals).
 
-### Tokens para automatizaciones
+## Tokens para automatizaciones
 
 Un token de plataforma lleva **scopes**: lo que puede hacer. Los eliges al crearlo, en **Settings → Tokens**:
 
@@ -276,6 +289,8 @@ Un token de plataforma lleva **scopes**: lo que puede hacer. Los eliges al crear
 | `automations:run` | Lanzar una automatización existente, por ejemplo desde CI. No puede crear ni cambiar automatizaciones, ni aprobar. |
 
 Los tokens nuevos llevan `runs` y `workspaces:read` por defecto. Un token con `automations:read` o `automations:run` solo se puede crear desde una sesión en el navegador. Un token sin el scope que necesita un endpoint recibe `403 token_scope_denied`.
+
+Para CI, dale al token `automations:run` y `runs` (para seguir el run y conocer su resultado), y además `automations:read` si llamas a la automatización por su nombre. Por ejemplo: `nan automations run <id>` en un paso con `NAN_TOKEN` definido, como en [Usa la CLI en CI o en un servidor](/es/docs/runs#usa-la-cli-en-ci-o-en-un-servidor).
 
 ## Límites
 
@@ -294,9 +309,9 @@ Los runs de las automatizaciones comparten los límites de todos los runs: cuán
 
 ## Cambia o borra una automatización
 
-Un run conserva los ajustes con los que arrancó. Editar una automatización nunca cambia un run que ya está en cola o trabajando.
+Cambia cualquier ajuste en la pestaña **Settings** y pulsa **Save changes**. Un run conserva los ajustes con los que arrancó: editar una automatización nunca cambia un run que ya está en cola o trabajando.
 
-**Delete** para sus triggers al momento y cancela sus runs en cola. Los runs que ya están trabajando terminan, y las acciones que ya aprobaste, o que se aplican solas, se completan igualmente. Los runs pasados se quedan en el historial del workspace.
+Al borrarla con **Delete**, sus triggers se detienen al momento y se cancelan sus runs en cola. Los runs que ya están trabajando terminan, y las acciones que ya aprobaste, o que se aplican solas, se completan igualmente. Los runs pasados se quedan en el historial del workspace, y un run que ya espera tu aprobación todavía se puede aprobar o rechazar.
 
 ## Por qué algunas acciones necesitan el navegador
 

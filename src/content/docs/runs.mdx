@@ -230,10 +230,10 @@ nan runs cancel <id>
 | 2 | timed out |
 | 3 | cancelled |
 | 4 | the workspace is not ready for it: agent not installed, no inference key or a bad configuration |
+| 10 | the run is waiting for your approval (only [automation](/docs/automations#approve-or-reject-a-proposal) runs) |
 | 64 | usage error, including more than one workspace and no `--ws` |
 | 65 | not signed in, session expired or not allowed |
 | 69 | nan.builders unavailable, or the stream was lost (the run goes on, and the id is printed) |
-| 10 | the run is waiting for your approval (only [automation](/docs/automations#approve-or-reject-a-proposal) runs) |
 | 75 | the run was accepted and is still going (`--detach`, or Ctrl-C once) |
 
 Under `set -e`, allow for the 75 of `--detach`:
