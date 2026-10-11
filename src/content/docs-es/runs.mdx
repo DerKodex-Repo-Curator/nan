@@ -22,6 +22,8 @@ Puedes lanzar un run de tres formas, y las tres ven los mismos runs:
 - Desde tu terminal, con `nan run`.
 - Desde tus propios scripts, con la API.
 
+Para lanzar la misma tarea una y otra vez, desde un webhook, con una programación o con acciones que esperan tu aprobación, guárdala como una [automatización](/es/docs/automations).
+
 ## Antes de empezar
 
 - **Un workspace encendido**, con Pi o Hermes instalado. Puedes instalar cualquiera de los dos desde el panel de **Software** del workspace.
@@ -100,6 +102,7 @@ La carpeta tiene que estar dentro de `/home/nan`, tu carpeta personal en el work
 | `failed` | El agente se ha parado con un error, o el run no ha podido empezar (por ejemplo, **Separate branch** en **On** en una carpeta que no es un repositorio). |
 | `cancelled` | Lo has cancelado tú. |
 | `timed_out` | Ha llegado a su tiempo máximo y se ha parado. |
+| `awaiting_approval` | Solo para runs de [automatizaciones](/es/docs/automations): el agente ha terminado y ha propuesto acciones que esperan tu aprobación. |
 
 El portal muestra los mismos estados en inglés y con mayúscula, por ejemplo **Running**, **Succeeded** o **Cancelled**.
 
@@ -128,6 +131,8 @@ Cada run trabaja en su propio proceso dentro del workspace, con su parte de CPU 
 Los runs usan la clave de inferencia del workspace, la misma que usan sus agentes cuando trabajas con ellos a mano. Sus peticiones cuentan para el uso de tu plan como cualquier otra.
 
 Los secretos del archivo de entorno de tu workspace, como esa clave de inferencia o un token de bot de Telegram, aparecen como `***` en los logs y resultados de los runs, así que un log no los filtra.
+
+Los secretos que guardas en tus ajustes no se les dan a estos runs: solo llegan a los runs de las [automatizaciones](/es/docs/automations#secretos) a las que los asignas.
 
 ## Desde la terminal: `nan run`
 
@@ -211,6 +216,8 @@ nan runs cancel <id>
 | `usage` | Los tokens gastados hasta ahora. |
 | `error` | Algo ha ido mal, con un código. |
 | `finished` | El run ha terminado: su estado y el resumen del agente. |
+| `approval_required` | Un run de una [automatización](/es/docs/automations) ha propuesto acciones que esperan tu aprobación. |
+| `action` | Un paso de la aplicación de las acciones de una automatización. |
 
 ### Códigos de salida
 
@@ -226,6 +233,7 @@ nan runs cancel <id>
 | 64 | error de uso, también tener más de un workspace y no pasar `--ws` |
 | 65 | sin sesión, sesión caducada o sin permiso |
 | 69 | nan.builders no disponible, o se ha perdido el stream (el run sigue, y se imprime el id) |
+| 10 | el run espera tu aprobación (solo runs de [automatizaciones](/es/docs/automations#aprueba-o-rechaza-una-propuesta)) |
 | 75 | el run se ha aceptado y sigue en marcha (`--detach`, o Ctrl-C una vez) |
 
 Con `set -e`, ten en cuenta el 75 de `--detach`:
@@ -253,7 +261,7 @@ nan auth login --api-token < token.txt  # o pásalo por stdin
 
 No pongas nunca un token en la propia línea de comandos: acabaría en el historial de tu shell y en `ps`.
 
-En la CLI, un token de plataforma solo sirve para `nan run` y `nan runs` (consulta [API keys y tokens](#api-keys-y-tokens)). `nan me`, `nan metrics usage` y el panel siguen necesitando una sesión de `nan auth login`.
+En la CLI, un token de plataforma solo sirve para `nan run`, `nan runs`, `nan automations` y `nan approvals` (consulta [API keys y tokens](#api-keys-y-tokens)). `nan me`, `nan metrics usage` y el panel siguen necesitando una sesión de `nan auth login`.
 
 ### Usa la CLI en CI o en un servidor
 
@@ -292,7 +300,7 @@ Hay dos tipos de credenciales que sirven para la API de runs. Las dos están en 
 |---|---|---|
 | Formato | `sk-...` | `nan_pat_...` |
 | Inferencia (modelos) | Sí | **No, nunca** |
-| API de la plataforma (runs, tus workspaces) | Sí | Sí |
+| API de la plataforma (runs, automatizaciones, aprobaciones, tus workspaces) | Sí | Sí |
 | Quién puede crearlas | Planes con inferencia | Cualquier miembro con una suscripción activa |
 
 Un **token** es lo que conviene darle a un script que solo gestiona runs. No sirve para llamar a los modelos directamente, pero sí para lanzar runs que gastan tu plan: guárdalo igual de bien que una API key y revócalo si se filtra. Créalo en **Settings → Tokens**:
@@ -301,6 +309,7 @@ Un **token** es lo que conviene darle a un script que solo gestiona runs. No sir
 - Puedes tener hasta **10** tokens activos.
 - Cada uno caduca a los **30, 90 o 365 días**, o nunca.
 - Puedes revocar cualquiera en cualquier momento.
+- Lleva **scopes**, lo que puede hacer: `runs` y `workspaces:read` por defecto. Para listar o lanzar automatizaciones, añade `automations:read` o `automations:run`. Consulta [Tokens para automatizaciones](/es/docs/automations#tokens-para-automatizaciones).
 
 Para crear runs sigue haciendo falta un plan con inferencia, uses la credencial que uses. La [referencia de la API](/es/docs/api#description/platform-tokens) indica qué credencial acepta cada endpoint.
 

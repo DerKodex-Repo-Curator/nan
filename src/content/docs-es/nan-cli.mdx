@@ -168,6 +168,21 @@ nan runs logs <id> -f
 
 El run se ejecuta en el workspace, no en tu máquina, así que sigue aunque cierres la terminal. Los comandos de runs usan tu sesión de `nan auth login`, o un token de plataforma desde `NAN_TOKEN`, `--token-file` o `nan auth login --api-token` para scripts, CI y servidores. Todos los flags, el orden de autenticación, los códigos de salida y la API están en [Runs de agentes](/es/docs/runs).
 
+## Automatizaciones
+
+Desde la v0.1.26 la CLI también lista y lanza tus [automatizaciones](/es/docs/automations), y te enseña las propuestas que esperan tu aprobación:
+
+```bash
+nan automations ls
+nan automations run "PR review" --input '{"pr": 42}'
+nan approvals ls
+nan runs proposal <run-id>
+nan runs reject <run-id>
+nan secrets ls
+```
+
+Crear o editar automatizaciones y triggers, escribir secretos y aprobar propuestas solo se hace en el portal, con sesión iniciada en tu navegador: si lo intentas, la CLI te dice dónde. Un run que espera aprobación hace que `nan run`, `nan runs logs -f` y `nan automations run` salgan con código 10. Los detalles están en [Automatizaciones](/es/docs/automations#desde-la-terminal).
+
 ## Actualizar
 
 Vuelve a pasar el instalador. Siempre trae la última versión publicada y sobrescribe la que tengas:

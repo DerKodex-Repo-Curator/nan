@@ -1,0 +1,342 @@
+---
+title: Automations
+description: Save an agent task once and let webhooks, schedules or your own scripts run it, with the actions you choose waiting for your approval.
+order: 20
+group: Guides
+---
+
+import Steps from '../../components/docs/Steps.astro';
+import Details from '../../components/docs/Details.astro';
+import Callout from '../../components/docs/Callout.astro';
+
+# Automations.
+
+An **automation** is an [agent run](/docs/runs) you set up once and start as often as you need: the workspace, the agent, the instructions, the folder, the secrets it receives and what may start it. Every time it starts, it creates a run in your workspace with those settings.
+
+What can start an automation:
+
+- **You**, with **Run now** in the portal, `nan automations run` in the terminal or a call to the API.
+- **A webhook**: GitHub, Stripe or any system that can sign a request. See [Webhooks and schedules](/docs/webhooks).
+- **A schedule**: every weekday at 9:00, every hour, the first of the month. Also in [Webhooks and schedules](/docs/webhooks).
+
+The agent of an automation does not push or post on its own. It **proposes actions** (push a branch, open a pull request, comment, review, add labels) and NaN applies them with a token you keep apart from the agent. You decide which kinds of action wait for your approval and which apply automatically: all of them, none of them or any mix.
+
+## Before you start
+
+- **A workspace that is running**, with Pi or Hermes installed, as for any [run](/docs/runs#before-you-start).
+- **A plan with inference.** Automation runs use your workspace's inference key and count against your plan's usage like any other run.
+- **A browser sign-in.** Creating or changing automations, writing secrets and approving actions need you signed in at [cloud.nan.builders](https://cloud.nan.builders/) in your browser, with the email link. A CLI session, an API key or a token can list automations and run them, but never change them. See [Why some actions need the browser](#why-some-actions-need-the-browser).
+
+## Create an automation
+
+<Steps>
+
+### Open Automations
+
+Go to [cloud.nan.builders/automations](https://cloud.nan.builders/automations), or **Automations** in the sidebar, under **Workspaces**. The page has two tabs: **Automations**, your list, and **Needs approval**, the proposals waiting for you.
+
+### Pick a template or start from scratch
+
+Press **New automation**. A template fills in sensible defaults that you can change afterwards; **From scratch** leaves everything to you.
+
+| Template | What it does | Starts on |
+|---|---|---|
+| **Pull request review** | Reviews every new or updated pull request and proposes a review. | GitHub webhook: `pull_request` opened, synchronize, reopened or ready for review. Drafts are ignored. |
+| **Issue triage** | Analyses new issues, comments and proposes labels. | GitHub webhook: `issues` opened or reopened. |
+| **CI failure** | Investigates failed workflow runs and proposes a fix (a push and a pull request) or an explanation. | GitHub webhook: `workflow_run` completed with conclusion `failure`. |
+| **Generic webhook** | Runs your instructions on any signed JSON event. | A webhook with the [NaN signature](/docs/webhooks#send-your-own-events). |
+| **From scratch** | Your own instructions, triggers and actions. | Whatever you add. |
+
+The three GitHub templates act on a repository, so they need a **GitHub repository** and a GitHub token for actions. See [A GitHub token for actions](#a-github-token-for-actions).
+
+### Fill in the settings
+
+| Field | What it is |
+|---|---|
+| **Name** | Up to 64 characters, unique among your automations. |
+| **Description (optional)** | For you. |
+| **Instructions** | What the agent must do, up to 16 KiB. Your instructions are trusted. Whatever a webhook or a manual run sends is given to the agent as data, never as instructions. |
+| **Workspace** | The workspace the agent runs in. |
+| **Agent** | Pi or Hermes. |
+| **Folder** | Where the agent works, inside `/home/nan`. |
+| **Separate branch** | **On**, **Auto** or **Off**, as in a [run](/docs/runs#where-the-agent-works). |
+| **Time limit (minutes)** | From 1 to 120. 30 by default. |
+| **GitHub repository (optional)** | `owner/name`, for example `acme/api`. The repository the actions act on. |
+| **Secrets** | Which of your [secrets](#secrets) the runs receive, and who receives each one. |
+| **Approval** | Which kinds of action wait for you. See [Actions and approval](#actions-and-approval). |
+| **Runs per hour** | From 1 to 120, counted over the last hour. 30 by default. Beyond it, new starts are refused until older runs leave that hour. |
+| **When a run is active** | **Skip the new event** or **Queue it**. See [When a run is already active](#when-a-run-is-already-active). |
+| **Chain depth** | From 0 to 5. 2 by default. How many times a run's own comment or push may start another run. See [Loops](/docs/webhooks#loops). |
+| **Enabled** | Off, nothing starts it: not its triggers, not **Run now**. |
+
+Press **Create automation**.
+
+### Connect what starts it
+
+After creating it, the portal opens its **Triggers** tab. Add a webhook or a schedule: [Webhooks and schedules](/docs/webhooks) walks you through each one. An automation without triggers only runs when you start it yourself.
+
+</Steps>
+
+Each automation has four tabs: **Settings**, **Triggers**, **Runs** (its runs, newest first) and **Deliveries** (the webhooks it received). **Run now** and **Delete** are at the top.
+
+## Secrets
+
+Secrets are the tokens and keys your automations use: a GitHub token, an API key for a service of yours. You keep them in your settings and assign them to the automations that need them.
+
+### Add a secret
+
+Open your settings on the portal, **Secrets**, below **Tokens**, and press **Add secret**:
+
+- **Name**: the variable name your automations see, in capitals, digits and `_`, starting with a letter. For example `GITHUB_TOKEN`. Up to 64 characters.
+- **Value**: saved exactly as you paste it, up to 16 KiB. Line breaks inside the value are fine (a PEM key, for example), but not at its start or end.
+- **Description**, optional.
+
+Secrets are **write-only**: once saved, nobody can read a value back, not even you. The list shows the name, the last 4 characters when the value is long enough, the description and which automations use each one. You can:
+
+- **Replace value**: the new value takes effect on the next run. The old one cannot be recovered.
+- Change its **Description**.
+- **Delete** it. Deleting is refused while an automation uses it: remove it from those automations first.
+
+You can keep up to 100 secrets. Prefer short-lived tokens limited to what the automation needs.
+
+### Assign secrets to an automation
+
+In the **Secrets** card of the automation, **Add a secret** and pick, for each one:
+
+- **The secret**, by name.
+- **The variable name** the run sees it as. It can differ from the secret's name, and it cannot be a name the runtime sets itself: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `HOME`, `USER`, `PATH`, `LANG`, `CREDENTIALS_DIRECTORY` or anything starting with `NAN_`, `PI_` or `HERMES_`.
+- **Who receives it**:
+
+| Option | Who gets the value | Use it for |
+|---|---|---|
+| **Agent (read access)** | The agent, in its environment, in every run. | Tokens the agent needs to read things: fetch a pull request, read CI logs. |
+| **Actions only (write access)** | Only the step that applies the actions, never the agent or any AI model. | Write tokens: push, comment, review, label, open pull requests. |
+
+The same variable name can appear once per option. The usual GitHub setup gives the agent a read-only token and the actions a write token, both as `GITHUB_TOKEN`.
+
+An automation takes up to 20 secrets, and all the secrets one run receives must add up to 48 KiB at most. Secrets go only to the runs of the automations you assign them to: a run you start with `nan run` or from the **Runs** tab never receives any.
+
+In run logs, results and proposals, every secret value is masked. A run only starts if every secret it needs is available; otherwise it fails with `secrets_unavailable` and nothing runs without them.
+
+<Callout title="What the agent can do with a secret" variant="warning">
+An agent that receives a secret can read it, and could send it somewhere if something convinces it to. Masking protects our logs, not the agent's network. Give the agent only read tokens, keep write tokens as **Actions only**, and limit every token to the repository it is for.
+</Callout>
+
+### A GitHub token for actions
+
+To act on a repository, an automation needs:
+
+1. Its **GitHub repository** set to `owner/name`.
+2. A secret assigned as `GITHUB_TOKEN` with **Actions only (write access)**. Without it the automation cannot be saved.
+
+Create a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) limited to that one repository, with the permissions the actions need: **Contents** read and write to push, **Pull requests** read and write to open, comment on and review pull requests, and **Issues** read and write to comment on issues and add labels. Save it in **Secrets**, for example as `GITHUB_WRITE_TOKEN`, and assign it to the automation as `GITHUB_TOKEN`, **Actions only**.
+
+If the agent also needs to read the repository (a private one, or to fetch CI logs), create a second token with read permissions only and assign it as `GITHUB_TOKEN`, **Agent**.
+
+## Actions and approval
+
+### How an automation acts
+
+The agent of an automation works like any run: it reads the code, runs commands and commits in its folder. When it wants to act on the repository, it writes a proposal instead of acting:
+
+| Action | Shown in the portal as | What NaN does |
+|---|---|---|
+| `git_push` | **Push commits** | Pushes the agent's changes to a branch, as one commit on top of the base branch. |
+| `github_create_pr` | **Open pull requests** | Opens a pull request (or a draft). |
+| `github_pr_comment` | **Comment on pull requests** | Posts a comment on a pull request. |
+| `github_pr_review` | **Review pull requests** | Posts a review: comment, approve or request changes. |
+| `github_issue_comment` | **Comment on issues** | Posts a comment on an issue. |
+| `github_add_labels` | **Add labels** | Adds labels to an issue or pull request. |
+
+Up to 10 actions per proposal, always on the automation's **GitHub repository**. The templates already tell the agent how to write the proposal; with **From scratch**, the agent learns it from the same instructions, which the run adds for you.
+
+Then a separate step, with no agent and no AI model in it, applies the actions with your **Actions only** token. The agent never sees that token. A run that proposes nothing just ends as `succeeded`.
+
+Everything NaN does is marked: pushed commits carry a `Nan-Run: <run id>` line, comments, reviews and pull requests end with a hidden marker, and branches made by runs start with `nan-run/`. The author of a pushed commit is `NaN run <run@nan.builders>`.
+
+A push never carries the inference key of your workspace: a proposal whose changes contain it is refused (`proposal_invalid`), whether it needs approval or not. Your own secrets are your call: if a diff contains the value of one of them, the portal warns you before you approve.
+
+### Choose what waits for you
+
+The **Approval** card of an automation has three presets:
+
+- **Approve everything**: every action waits for you. The templates start with this one.
+- **Fully automatic**: actions apply without asking, pushes and pull requests included.
+- **Custom**: tick which kinds of action need approval. The others apply automatically.
+
+When something from outside (a webhook or a schedule) can start an automation that applies any action without asking, the editor shows a notice. It never stops you from saving: what happens in your repository is your decision.
+
+**Proposals expire after**: how long a proposal waits for you: **1 hour**, **24 hours**, **72 hours** (the default) or **7 days**.
+
+Approval controls what NaN does with your **Actions only** secrets. The agent itself runs in your workspace and can use anything you keep there, such as an SSH key or a `gh` login.
+
+## Approve or reject a proposal
+
+When a proposal needs you, the run stops in **awaiting approval** (`awaiting_approval`) and the **Needs approval** tab of **Automations** shows it, with a counter next to **Automations** in the sidebar.
+
+<Steps>
+
+### Review it
+
+Press **Review** to open the proposal: each action, with its texts in full, the branch and the commit message of a push, and the files it changes. When your approval covers a push, **Changes to push** shows the full diff. **Open run** takes you to the run's page and its log.
+
+### Approve it
+
+**Approve and apply** applies the actions that waited for you, in order. Approving needs a browser sign-in. If the proposal changed since you opened it, the portal asks you to review it again.
+
+### Or reject it
+
+**Reject**, with an optional reason. Nothing that waited for approval is applied. You can also reject from the terminal with `nan runs reject <id>` or from the API.
+
+</Steps>
+
+If nobody decides before it expires, the proposal is dropped and the run ends as `cancelled`.
+
+How a run ends, depending on its proposal:
+
+| The proposal... | The run ends as |
+|---|---|
+| has no actions | `succeeded` |
+| has only actions that apply automatically | `succeeded`, and the actions are applied |
+| has actions that need approval, and you approve | `succeeded`, and the actions are applied |
+| is rejected | `cancelled` (`approval_rejected`) |
+| expires | `cancelled` (`approval_expired`) |
+| is not valid | `failed` (`proposal_invalid`) |
+
+Approval starts at the first action that needs it. The actions before it apply automatically while the proposal waits for you, and once you approve, the rest apply in order, including later actions that would not need approval on their own: a pull request needs its branch pushed first. If an action fails, the ones after it are not applied and the run shows `action_failed`.
+
+The step that applies the actions appears as its own run in the workspace's **Runs** tab, with no agent and no tokens used. Its log has one line per action.
+
+## When a run is already active
+
+**When a run is active** decides what happens if a new event arrives for the same thing while a run for it is still going, including a run waiting for your approval:
+
+- **Skip the new event**: it is skipped. For a pull request, an issue or a workflow, "the same thing" is that pull request, issue or workflow run. For a schedule, it is the automation. The GitHub templates use this, so pushing three commits to a pull request in a row does not start three reviews.
+- **Queue it**: a new run is queued as usual.
+
+Runs you start yourself are never skipped.
+
+## Run it now
+
+### From the portal
+
+**Run now**, at the top of the automation, opens a box for an optional **Input**: a JSON object (up to 48 KiB) that the agent receives as data next to your instructions, never as instructions. **Start run** takes you to the run's page.
+
+### From the terminal
+
+You need the [NaN CLI](/docs/nan-cli) **0.1.26** or newer.
+
+```bash
+nan automations ls                          # your automations
+nan automations show "PR review"            # settings, secrets (names only) and triggers
+nan automations run "PR review" --input '{"pr": 42}'
+nan automations run nightly-triage --detach
+gh api repos/acme/api/pulls/42 | nan automations run "PR review" --input -
+nan automations deliveries "PR review"      # webhooks received, last 30 days
+```
+
+`--input` takes the JSON itself, `@file.json` or `-` for stdin. Do not put secrets in it: the agent reads it. An automation is named by its name or its id.
+
+The approvals and secrets commands:
+
+```bash
+nan approvals ls                  # proposals waiting for you
+nan runs proposal <run-id>        # the proposed actions, and where to approve them
+nan runs proposal <run-id> --diff # with the full diff, when one is kept
+nan runs reject <run-id> --reason "not now"
+nan secrets ls                    # names and metadata, never values
+```
+
+`nan run`, `nan runs logs -f` and `nan automations run` exit with code **10** when the run stops waiting for approval, and print the commands to read and reject the proposal and the link to approve it.
+
+There is no command to create or change automations, write secrets or approve: the CLI tells you where to do it in the portal. `nan secrets ls` needs your `nan auth login` session; the other commands also take a platform token, as `nan run` does ([Authentication](/docs/runs#authentication)).
+
+### From the API
+
+With a [platform token](#tokens-for-automations) that has the `automations:run` scope, or your API key:
+
+```bash
+curl https://api.nan.builders/v1/automations/$AUTOMATION_ID/runs \
+  -H "Authorization: Bearer $NAN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"pr": 42}}'
+```
+
+The answer is the run, which you follow like any other ([Create a run and follow it](/docs/runs#create-a-run-and-follow-it)). The full reference is in [API reference → Automations](/docs/api#tag/automations) and [API reference → Approvals](/docs/api#tag/approvals).
+
+### Tokens for automations
+
+A platform token carries **scopes**: what it may do. You pick them when you create it, under **Settings → Tokens**:
+
+| Scope | What it allows |
+|---|---|
+| `runs` | Start, list, follow and cancel runs. List approvals, read proposals and reject them. |
+| `workspaces:read` | List your workspaces and read one by id. |
+| `automations:read` | Read your automations, templates, triggers and deliveries. Never secret values. |
+| `automations:run` | Run an existing automation, for example from CI. It cannot create or change automations, or approve. |
+
+New tokens get `runs` and `workspaces:read` by default. A token with `automations:read` or `automations:run` can only be created from a browser sign-in. A token without the scope an endpoint needs gets `403 token_scope_denied`.
+
+## Limits
+
+| Limit | Value |
+|---|---|
+| Automations | 50 per member |
+| Triggers | 5 per automation |
+| Schedules | 10 per member, across all your automations |
+| Runs per hour | 30 per automation by default, up to 120 |
+| Runs from webhooks and schedules | 120 per hour per member, across all your automations |
+| Secrets | 100 per member, 20 per automation, 48 KiB per run |
+| Instructions | 16 KiB |
+| Input of a run | A JSON object of up to 48 KiB, nested at most 8 levels |
+
+Automation runs share the limits of every run: how many work at once in each workspace, at most 5 at once across all your workspaces (8 on Premium), and the queue. See [How many runs at once](/docs/runs#how-many-runs-at-once). Automations need a plan with inference: without one, the portal shows you the upgrade options and webhooks are answered without starting a run.
+
+## Change or delete an automation
+
+A run keeps the settings it started with. Editing an automation never changes a run that is already queued or working.
+
+**Delete** stops its triggers at once and cancels its queued runs. Runs already working finish, and actions you already approved, or that apply automatically, still complete. Past runs stay in the workspace's history.
+
+## Why some actions need the browser
+
+An automation decides which of your secrets an agent receives and what it may do in your repository without asking. If anything that can read a CLI session or a token could change it, an agent in a workspace or a CI job could too. So these need you, signed in through your browser:
+
+- Creating, changing or deleting an automation or its triggers.
+- Adding, replacing or deleting secrets.
+- Approving a proposal.
+- Creating a token with `automations:read` or `automations:run`.
+
+Rejecting is always safe, so any credential that can read your runs can reject. If the portal says you need to sign in again, sign out and sign in with the email link from the same browser.
+
+## FAQ
+
+<Details summary="Can an automation push to my main branch?">
+
+Yes, if its proposal says so and your approval settings allow it. The branch, the base branch and whether the push forces are in the proposal, and you see them before approving. Approval is your safety net: keep **Push commits** under approval if you want to see every push first.
+
+</Details>
+
+<Details summary="Does the agent see my GitHub write token?">
+
+No, if you assign it as **Actions only**. That value goes only to the step that applies the actions, which runs no agent and no AI model.
+
+</Details>
+
+<Details summary="What happens if I do not answer a proposal?">
+
+It expires after the time you set (72 hours by default) and the run ends as `cancelled`. Nothing that waited for approval is applied.
+
+</Details>
+
+<Details summary="Can I create automations from the CLI or the API?">
+
+Not yet. From the CLI and the API you can list, inspect and run them, and read and reject proposals. Creating and editing happen in the portal.
+
+</Details>
+
+<Details summary="Where do I get help?">
+
+Write in `#support` on Discord.
+
+</Details>
