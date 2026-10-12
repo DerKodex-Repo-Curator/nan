@@ -96,7 +96,9 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
     expect(a.group).toBe(page.group);
     expect(h.group).toBe(page.group);
     expect(a.order).toBe(runs.order + 1);
-    expect(h.order).toBe(runs.order + 2);
+    // The PR gatekeeper guide is nested under Automations (frontmatter
+    // `parent`), so it takes the slot right after it and Webhooks follows.
+    expect(h.order).toBe(a.order + 2);
     for (const later of ['examples.md', 'apps.md']) {
       const o = (parseFrontmatter(read(page.dir + later)).frontmatter as { order: number }).order;
       expect(o, later).toBeGreaterThan(h.order);

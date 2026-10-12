@@ -43,6 +43,8 @@ describe('the two guide collections', () => {
       const en = parseFrontmatter(read(resolve(enDir, file))).frontmatter as Record<string, unknown>;
       const es = parseFrontmatter(read(resolve(esDir, esFile))).frontmatter as Record<string, unknown>;
       expect(es.order, `${id}: order`).toBe(en.order);
+      // `parent` is an entry id, not a label, so it is identical in both.
+      expect(es.parent, `${id}: parent`).toBe(en.parent);
     }
   });
 
@@ -112,7 +114,7 @@ describe('the docs layout', () => {
    * segment made every Spanish page show an extra crumb for the docs index.
    */
   it('builds the breadcrumb from the path without the locale prefix', () => {
-    expect(layout).toContain('const breadcrumb = enPath');
+    expect(layout).toContain('const pathCrumbs = enPath');
   });
 
   it('declares both languages to search engines', () => {

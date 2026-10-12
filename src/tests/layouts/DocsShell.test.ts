@@ -69,6 +69,24 @@ describe('Docs.astro: pieces that must not disappear', () => {
     expect(layout).toContain('aria-label="Pagination"');
   });
 
+  /**
+   * With today's content the raw `order` and the sidebar's visual order agree
+   * (a guard below keeps children right after their parent), so a page-level
+   * test cannot tell them apart. What makes prev/next follow the sidebar when
+   * they diverge is walking flattenDocsNav (unit-tested in docsNav.test.ts),
+   * so that wiring is pinned here.
+   */
+  it('scrolls the current page into view when the mobile drawer opens', () => {
+    expect(layout).toMatch(/if \(open\) side\.querySelector\('\[aria-current="page"\]'\)\?\.scrollIntoView/);
+  });
+
+  it('walks the sidebar\'s visual order for prev/next', () => {
+    expect(layout).toContain('const navOrder = flattenDocsNav(navGroups)');
+    expect(layout).toMatch(/const currentIndex = navOrder\.findIndex/);
+    expect(layout).toMatch(/prevPage = currentIndex > 0 \? navOrder\[currentIndex - 1\]/);
+    expect(layout).toMatch(/navOrder\[currentIndex \+ 1\]/);
+  });
+
   it('keeps the search box with its keyboard shortcut', () => {
     expect(layout).toContain('id="docs-search"');
     expect(layout).toMatch(/metaKey \|\| e\.ctrlKey/);
@@ -161,6 +179,7 @@ describe('frontmatter of the docs collection', () => {
       order?: number;
       group?: string;
       title?: string;
+      parent?: string;
     },
   }));
 
@@ -188,6 +207,38 @@ describe('frontmatter of the docs collection', () => {
   it('repeats no order, counting the reference\'s synthetic entry', () => {
     const orders = [...metas.map((m) => m.data.order), API_DOC_META.order];
     expect(new Set(orders).size, `orders: ${orders.join(', ')}`).toBe(orders.length);
+  });
+
+  /**
+   * `parent` nests a page under another in the sidebar. A typo does not fail
+   * the build (the nav falls back to the top level), so it is caught here: the
+   * parent must exist, must not be the page itself, and must share its group,
+   * or the child would silently move to another section.
+   */
+  it('points every `parent` at an existing guide of the same group', () => {
+    const byId = new Map(metas.map((m) => [m.file.replace(/\.(md|mdx)$/, ''), m]));
+    for (const m of metas) {
+      const parent = m.data.parent;
+      if (parent === undefined) continue;
+      const id = m.file.replace(/\.(md|mdx)$/, '');
+      expect(parent, `${m.file}: parent of itself`).not.toBe(id);
+      expect(byId.has(parent), `${m.file}: parent=${parent} does not exist`).toBe(true);
+      expect(byId.get(parent)!.data.group, `${m.file}: parent in another group`).toBe(m.data.group);
+      expect(byId.get(parent)!.data.parent, `${m.file}: nested two levels`).toBeUndefined();
+    }
+  });
+
+  it('places a child right after its parent (or its previous sibling) in the flat order', () => {
+    const byId = new Map(metas.map((m) => [m.file.replace(/\.(md|mdx)$/, ''), m]));
+    for (const m of metas) {
+      if (!m.data.parent) continue;
+      const parentOrder = byId.get(m.data.parent)!.data.order as number;
+      const siblings = metas
+        .filter((s) => s.data.parent === m.data.parent)
+        .map((s) => s.data.order as number)
+        .sort((a, b) => a - b);
+      expect(siblings, `${m.file}: children of ${m.data.parent}`).toEqual(siblings.map((_, i) => parentOrder + 1 + i));
+    }
   });
 
   it('numbers from zero with no gaps', () => {

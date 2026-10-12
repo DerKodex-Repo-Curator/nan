@@ -16,6 +16,17 @@ const docsSchema = z.object({
    * second list to maintain either.
    */
   group: z.string().default('Guides'),
+  /*
+   * The entry id of the page this one is listed under in the sidebar (e.g.
+   * `automations`). The page then shows as an indented sub-item right below
+   * its parent, inside the parent's group, and prev/next follow that order.
+   * Its URL stays flat (/docs/<id>): nesting is a nav concern only, so links
+   * and the /api/docs manifest are unaffected. Same value in both languages.
+   */
+  parent: z
+    .string()
+    .regex(/^[a-z0-9-]+$/)
+    .optional(),
   locale: z.string().default('es'),
 });
 
