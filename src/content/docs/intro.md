@@ -34,5 +34,6 @@ Limits are per API key — a cap on requests per minute and a maximum number of 
 - [Agent runs](/docs/runs): give an agent a task inside your workspace and let it work on its own.
 - [Automations](/docs/automations): save an agent task and start it from a webhook, a schedule or your scripts, with the approvals you choose.
 - [Webhooks and schedules](/docs/webhooks): connect GitHub, Stripe or your own systems, or run on a schedule.
+- [PR gatekeeper](/docs/pr-gatekeeper): a step-by-step guide, with screenshots, to an automation that checks every pull request and keeps one comment with the verdict.
 - [Examples](/docs/examples): snippets in Python, Node.js and curl.
 - Support: report issues in `#support` on Discord.
