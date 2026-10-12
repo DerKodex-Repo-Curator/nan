@@ -2566,7 +2566,10 @@
                       "enabled": true,
                       "disabled_reason": null,
                       "created_at": "2026-10-11T09:00:00Z",
-                      "updated_at": "2026-10-11T09:00:00Z"
+                      "updated_at": "2026-10-11T09:00:00Z",
+                      "checkout": "workspace",
+                      "sticky_pr_comment": false,
+                      "checkout_untrusted_heads": false
                     }
                   ]
                 }
@@ -2837,7 +2840,10 @@
                   "enabled": true,
                   "disabled_reason": null,
                   "created_at": "2026-10-11T09:00:00Z",
-                  "updated_at": "2026-10-11T09:00:00Z"
+                  "updated_at": "2026-10-11T09:00:00Z",
+                  "checkout": "workspace",
+                  "sticky_pr_comment": false,
+                  "checkout_untrusted_heads": false
                 }
               }
             }
@@ -3233,7 +3239,7 @@
             "platformToken": []
           }
         ],
-        "description": "Starts a run of the automation now, with its saved instructions, secrets and approval settings: the same run a webhook or a schedule would start. Its agent proposes actions, which apply automatically or wait for your approval as the automation says. Follow it like any run (`GET /v1/runs/{id}/events`). Runs you start this way are never skipped by `skip_if_active`, but they count towards the automation's `max_runs_per_hour` and the limits of every run.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:run` scope. Runs need a plan with inference.",
+        "description": "Starts a run of the automation now, with its saved instructions, secrets and approval settings: the same run a webhook or a schedule would start. Its agent proposes actions, which apply automatically or wait for your approval as the automation says. Follow it like any run (`GET /v1/runs/{id}/events`). Runs you start this way are never skipped by `skip_if_active` or cancelled by `supersede`, but they count towards the automation's `max_runs_per_hour` and the limits of every run.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:run` scope. Runs need a plan with inference.",
         "parameters": [
           {
             "name": "id",
@@ -3333,7 +3339,10 @@
                       "exposure": "agent"
                     }
                   ],
-                  "agent_finished_at": null
+                  "agent_finished_at": null,
+                  "checkout": null,
+                  "superseded_by": null,
+                  "sticky_pr_comment": false
                 }
               }
             }
@@ -3398,7 +3407,10 @@
                       "exposure": "agent"
                     }
                   ],
-                  "agent_finished_at": null
+                  "agent_finished_at": null,
+                  "checkout": null,
+                  "superseded_by": null,
+                  "sticky_pr_comment": false
                 }
               }
             }
@@ -3974,7 +3986,10 @@
                       "exposure": "agent"
                     }
                   ],
-                  "agent_finished_at": "2026-10-11T09:03:41Z"
+                  "agent_finished_at": "2026-10-11T09:03:41Z",
+                  "checkout": null,
+                  "superseded_by": null,
+                  "sticky_pr_comment": false
                 }
               }
             }
@@ -5805,6 +5820,29 @@
             ],
             "format": "date-time",
             "description": "When the agent of an automation run finished, before any approval."
+          },
+          "checkout": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunCheckout"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On an automation run (`phase: \"propose\"`) whose automation uses `checkout: \"fresh\"`: the commit it works on. `null` for every other run, apply runs included."
+          },
+          "superseded_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "When a newer run for the same subject cancelled this one (`concurrency_policy: \"supersede\"`): that run's id. The run ends `cancelled` with `error_code: \"cancelled\"`."
+          },
+          "sticky_pr_comment": {
+            "type": "boolean",
+            "description": "On an automation run (`phase: \"propose\"`): whether its pull request comments edit the automation's one comment per pull request (`sticky_pr_comment` of the automation when the run started). `false` on other runs."
           }
         }
       },
@@ -5873,6 +5911,22 @@
           },
           "unit": {
             "type": "string"
+          },
+          "checkout": {
+            "type": "object",
+            "description": "Only on runs with a fresh checkout: the commit checked out.",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "fresh"
+                ]
+              },
+              "sha": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              }
+            }
           }
         }
       },
@@ -6844,9 +6898,10 @@
             "type": "string",
             "enum": [
               "queue",
-              "skip_if_active"
+              "skip_if_active",
+              "supersede"
             ],
-            "description": "`skip_if_active`: a new event for the same pull request, issue, workflow or schedule is skipped while a run for it is active, including one awaiting approval."
+            "description": "What happens when a new event arrives for the same pull request, issue, branch or schedule while a run for it is active, including one awaiting approval. `queue`: a new run is queued. `skip_if_active`: the new event is skipped. `supersede`: the new event starts a run and cancels the active runs of this automation for the same pull request, issue, branch or Stripe object (they end `cancelled`, with `superseded_by` set); events without such a subject (schedules, manual runs, NaN senders) behave as `queue`."
           },
           "max_trigger_depth": {
             "type": "integer",
@@ -6875,6 +6930,25 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "checkout": {
+            "type": "string",
+            "enum": [
+              "workspace",
+              "fresh"
+            ],
+            "default": "workspace",
+            "description": "Where the agent works. `workspace`: in `cwd`, in your workspace, as any run. `fresh`: NaN clones `github_repo` for each run into a folder of its own, at the event's exact commit (the pull request's head commit for a `pull_request` event on that repository, the run's head commit for a `workflow_run` event on that repository, the latest commit of the default branch otherwise), and deletes it when the run ends, whatever the outcome; `cwd` is not used and `git_isolation` must be `null` or `false`. A `git_push` is refused in `fresh` mode. Needs `github_repo`."
+          },
+          "sticky_pr_comment": {
+            "type": "boolean",
+            "default": false,
+            "description": "`true`: the automation keeps one comment per pull request. Each run's `github_pr_comment` edits the comment NaN posted before for this automation instead of adding a new one. NaN only edits a comment it posted itself and marked for this automation; issue comments are never edited."
+          },
+          "checkout_untrusted_heads": {
+            "type": "boolean",
+            "default": false,
+            "description": "Only with `checkout: \"fresh\"`. `false` (the default): pull requests from forks, pull requests whose author has no write access to the repository (not an owner, member or collaborator) and `workflow_run` events from forks are ignored (delivery outcome `ignored`), because the agent and the tests it runs would execute that code with the automation's agent secrets in your workspace. `true`: they run too. Your decision."
           }
         }
       },
@@ -7318,6 +7392,44 @@
           "message": {
             "type": "string",
             "description": "Plain text, masked."
+          }
+        }
+      },
+      "RunCheckout": {
+        "type": "object",
+        "description": "The fresh checkout of a run whose automation uses `checkout: \"fresh\"`.",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "fresh"
+            ]
+          },
+          "sha": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{40}$",
+            "description": "The commit checked out. `null` until the run has resolved the default branch."
+          },
+          "pr_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The pull request, when the event was about one."
+          },
+          "base_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The pull request's base branch, when there is one."
+          },
+          "label": {
+            "type": "string",
+            "description": "For display, for example `fresh @ 0123456789ab` or `fresh @ default branch`."
           }
         }
       }

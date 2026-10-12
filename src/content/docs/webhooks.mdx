@@ -197,6 +197,8 @@ By default, any event with a valid signature starts a run. On a public repositor
 
 You can change it later with **Change** on the trigger.
 
+An automation with **Fresh clone per run** also ignores, by default, pull requests from forks and from authors without write access, whatever this filter says: their code would run in your workspace. See [Pull requests from forks and outside contributors](/docs/automations#pull-requests-from-forks-and-outside-contributors).
+
 ## What the agent receives
 
 The event reaches the agent as data, after your instructions and clearly marked as coming from outside. It is never taken as instructions.
@@ -232,7 +234,7 @@ The **Deliveries** tab lists the last 50 webhooks the automation received in the
 | Outcome | Meaning |
 |---|---|
 | **Run started** | A run was created. |
-| **Ignored by a filter** | The event or actor filter did not match. |
+| **Ignored by a filter** | The event or actor filter did not match, or, with **Fresh clone per run**, the pull request came from a fork or an author without write access. |
 | **Stopped: caused by one of its own runs** | A [loop](#loops) was stopped. |
 | **Skipped: a run for the same subject is active** | See [When a run is already active](/docs/automations#when-a-run-is-already-active). |
 | **Not accepted: your membership does not include runs** | The run could not be created: your plan has no inference, or the workspace is stopped or deleted, its agent is not installed or it has no inference key. The sender does not retry it, so the event is lost: keep the workspace running. |

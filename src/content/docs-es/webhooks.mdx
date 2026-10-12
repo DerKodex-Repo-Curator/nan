@@ -197,6 +197,8 @@ Por defecto, cualquier evento con una firma válida lanza un run. En un reposito
 
 Puedes cambiarlo después con **Change** en el trigger.
 
+Una automatización con **Fresh clone per run** también ignora, por defecto, las pull requests de forks y de autores sin permiso de escritura, diga lo que diga este filtro: su código se ejecutaría en tu workspace. Consulta [Pull requests de forks y de colaboradores externos](/es/docs/automations#pull-requests-de-forks-y-de-colaboradores-externos).
+
 ## Qué recibe el agente
 
 El evento le llega al agente como datos, después de tus instrucciones y claramente marcado como algo que viene de fuera. Nunca se toma como instrucciones.
@@ -232,7 +234,7 @@ La pestaña **Deliveries** lista los últimos 50 webhooks que ha recibido la aut
 | Resultado | Significado |
 |---|---|
 | **Run started** | Se ha creado un run. |
-| **Ignored by a filter** | El filtro de eventos o de autores no ha coincidido. |
+| **Ignored by a filter** | El filtro de eventos o de autores no ha coincidido o, con **Fresh clone per run**, la pull request venía de un fork o de un autor sin permiso de escritura. |
 | **Stopped: caused by one of its own runs** | Se ha parado un [bucle](#bucles). |
 | **Skipped: a run for the same subject is active** | Consulta [Cuando ya hay un run activo](/es/docs/automations#cuando-ya-hay-un-run-activo). |
 | **Not accepted: your membership does not include runs** | No se ha podido crear el run: tu plan no tiene inferencia, o el workspace está parado o borrado, su agente no está instalado o no tiene clave de inferencia. El emisor no lo reintenta, así que el evento se pierde: mantén el workspace encendido. |

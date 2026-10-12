@@ -110,6 +110,8 @@ describe('openapi.json: the Automations contract (cloud-api)', () => {
       'git_isolation', 'timeout_seconds', 'approval_kinds', 'approval_ttl_seconds', 'inference', 'github_repo',
       'secrets', 'max_runs_per_hour', 'concurrency_policy', 'max_trigger_depth', 'enabled', 'disabled_reason',
       'created_at', 'updated_at',
+      // Migration 110 (PR gatekeeper), same order as automationJSON.
+      'checkout', 'sticky_pr_comment', 'checkout_untrusted_heads',
     ]);
     expect(sc.Automation.properties.template.enum).toEqual(['custom', 'pr_review', 'issue_triage', 'ci_failure', 'generic_webhook']);
     expect(sc.Automation.properties.approval_kinds.items.enum).toEqual(ACTION_KINDS);
@@ -118,6 +120,26 @@ describe('openapi.json: the Automations contract (cloud-api)', () => {
     expect(sc.Automation.properties.approval_ttl_seconds).toMatchObject({ minimum: 3600, maximum: 604800 });
     expect(sc.Automation.properties.secrets.items.properties.exposure.enum).toEqual(['agent', 'actions']);
     expect(sc.Automation.description).toMatch(/Never carries a secret value/);
+  });
+
+  it('the PR gatekeeper settings (cloud-api PR #343): checkout, sticky comment, untrusted heads, supersede', () => {
+    const p = sc.Automation.properties;
+    expect(p.checkout).toMatchObject({ type: 'string', enum: ['workspace', 'fresh'], default: 'workspace' });
+    expect(p.checkout.description).toMatch(/clones `github_repo` for each run/);
+    expect(p.checkout.description).toMatch(/deletes it when the run ends, whatever the outcome/);
+    expect(p.checkout.description).toMatch(/`git_push` is refused/);
+    expect(p.checkout.description).toMatch(/`git_isolation` must be `null` or `false`/);
+    expect(op('/automations/{id}/runs', 'post').description).toContain('or cancelled by `supersede`');
+    expect(p.sticky_pr_comment).toMatchObject({ type: 'boolean', default: false });
+    expect(p.sticky_pr_comment.description).toMatch(/only edits a comment it posted itself/);
+    expect(p.checkout_untrusted_heads).toMatchObject({ type: 'boolean', default: false });
+    expect(p.checkout_untrusted_heads.description).toMatch(/Only with `checkout: "fresh"`/);
+    expect(p.checkout_untrusted_heads.description).toMatch(/forks/);
+    expect(p.checkout_untrusted_heads.description).toContain('`ignored`');
+    expect(p.concurrency_policy.enum).toEqual(['queue', 'skip_if_active', 'supersede']);
+    expect(p.concurrency_policy.description).toMatch(/`supersede`[^.]*cancels the active runs/);
+    expect(p.concurrency_policy.description).toContain('`superseded_by`');
+    expect(p.concurrency_policy.description).toMatch(/behave as `queue`/);
   });
 
   it('Trigger, template and delivery objects match the handlers', () => {
@@ -271,13 +293,17 @@ describe('cloud-api golden responses validate against the published schemas', ()
       'approvals_list.json', 'automation_deliveries.json', 'automation_get.json', 'automation_templates.json',
       'automation_triggers.json', 'automations_list.json', 'run_get_adhoc.json', 'run_get_propose.json',
       'run_list_propose.json', 'trigger_create.json',
-    ]);
+      // cloud-api PR #343: a fresh-checkout, sticky, supersede automation and a superseded run.
+      'automation_get_gatekeeper.json', 'run_get_gatekeeper.json',
+    ].sort());
   });
 
   const ref = (name: string): Schema => ({ $ref: `#/components/schemas/${name}` });
   const cases: Array<[string, unknown, Schema]> = [
     ['automations_list', golden('automations_list'), ref('AutomationList')],
     ['automation_get', golden('automation_get'), ref('Automation')],
+    ['automation_get_gatekeeper', golden('automation_get_gatekeeper'), ref('Automation')],
+    ['run_get_gatekeeper', golden('run_get_gatekeeper'), ref('Run')],
     ['automation_templates', golden('automation_templates'), op('/automations/templates', 'get').responses['200'].content['application/json'].schema],
     ['automation_triggers', golden('automation_triggers'), ref('TriggerList')],
     ['trigger_create .trigger', golden('trigger_create').trigger, ref('Trigger')],
@@ -290,6 +316,22 @@ describe('cloud-api golden responses validate against the published schemas', ()
 
   it.each(cases)('%s', (_name, value, schema) => {
     expect(validate(value, schema)).toEqual([]);
+  });
+
+  it('the gatekeeper goldens carry the new settings and the run checkout', () => {
+    expect(golden('automation_get_gatekeeper')).toMatchObject({ checkout: 'fresh', sticky_pr_comment: true, concurrency_policy: 'supersede', checkout_untrusted_heads: false });
+    expect(golden('run_get_gatekeeper')).toMatchObject({ state: 'cancelled', error_code: 'cancelled', sticky_pr_comment: true });
+    expect(golden('run_get_gatekeeper').superseded_by).toMatch(/^[0-9a-f-]{36}$/);
+    expect(Object.keys(golden('run_get_gatekeeper').checkout).sort()).toEqual(Object.keys(s.components.schemas.RunCheckout.properties).sort());
+    for (const g of ['automation_get', 'automations_list']) expect(JSON.stringify(golden(g))).toContain('"checkout":"workspace"');
+    for (const g of ['run_get_propose', 'run_get_adhoc']) expect(golden(g)).toMatchObject({ checkout: null, superseded_by: null, sticky_pr_comment: false });
+  });
+
+  it('the validator rejects a checkout mode or a sha the schema does not allow', () => {
+    expect(validate({ ...golden('automation_get_gatekeeper'), checkout: 'worktree' }, ref('Automation'))).not.toEqual([]);
+    expect(validate({ ...golden('automation_get_gatekeeper'), concurrency_policy: 'cancel' }, ref('Automation'))).not.toEqual([]);
+    const run = golden('run_get_gatekeeper');
+    expect(validate({ ...run, checkout: { ...run.checkout, sha: 'main' } }, ref('Run'))).not.toEqual([]);
   });
 
   it('the validator still rejects a field the schema does not declare', () => {

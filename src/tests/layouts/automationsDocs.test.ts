@@ -281,6 +281,86 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
   });
 });
 
+/**
+ * PR gatekeeper settings (cloud-api PR helmcode/nan-cloud-api#343, migration
+ * 110): fresh checkout, untrusted heads, sticky PR comment, supersede. Portal
+ * labels from the cloud-ui automation editor (Repository card, Limits card,
+ * run page header).
+ */
+const GATEKEEPER_LABELS = [
+  'Checkout', 'Workspace folder', 'Fresh clone per run', 'Repository',
+  'Run pull requests from forks and outside contributors', 'Keep one comment per pull request',
+  'Cancel the previous run', 'Superseded by run', 'One comment, updated each run',
+];
+
+describe.each(Object.entries(pages))('PR gatekeeper settings and recipe (%s)', (_locale, page) => {
+  const body = strip(read(page.dir + 'automations.mdx'));
+  const flat = body.replace(/\s+/g, ' ');
+  const hooks = strip(read(page.dir + 'webhooks.mdx'));
+  const recipe = body.slice(body.search(/^## (Recipe|Receta): PR gatekeeper$/m), body.search(/^## (FAQ|Preguntas frecuentes)$/m));
+  const instructions = /```text\n([\s\S]*?)```/.exec(recipe)?.[1] ?? '';
+
+  test('every new portal label is documented', () => {
+    for (const label of GATEKEEPER_LABELS) expect(body, label).toContain(`**${label}**`);
+  });
+
+  test('fresh clone: exact commit, own folder, caches inside, deleted whatever happens, no push', () => {
+    for (const fact of ['`pull_request.head.sha`', '`origin/<base>`', '`workflow_run`', '`TMPDIR`', '`git_push`', '`proposal_invalid`', '4 GiB', '`pull request head moved`', '`checkout`']) {
+      expect(flat, fact).toContain(fact);
+    }
+    expect(flat).toMatch(/500[,.]000/);
+    expect(flat).toMatch(/10 (minutes|minutos)/);
+    // The clone credential is the agent-exposure GITHUB_TOKEN (nanrun/checkout.go).
+    expect(flat).toMatch(/`GITHUB_TOKEN` (with|con) \*\*Agent \(read access\)\*\*/);
+    expect(flat).toMatch(/(succeeded, failed, timed out or cancelled|bien, con error, por tiempo o cancelado)/);
+    // nanrun/checkout.go: the event's sha is fetched first; only a moved, unfetchable head fails.
+    expect(flat).toMatch(/(always checks out the commit the event names|siempre hace checkout del commit que indica el evento)/);
+    expect(body).toContain('(#' + (page.prefix ? 'receta' : 'recipe') + '-pr-gatekeeper)');
+  });
+
+  test('untrusted heads are ignored by default, opt-in is the member\'s decision', () => {
+    expect(flat).toMatch(/fork/);
+    expect(flat).toMatch(/owner[^.]*member[^.]*collaborator/);
+    expect(flat).toContain('**Ignored by a filter**');
+    expect(flat).toMatch(/(never stops you|nunca te lo impide)/);
+    expect(hooks).toContain(`${page.prefix}/docs/automations#`);
+    expect(hooks.replace(/\s+/g, ' ')).toMatch(/\*\*Fresh clone per run\*\*[^|]*fork/);
+  });
+
+  test('sticky comment: only its own marked comment, PR comments only', () => {
+    expect(flat).toMatch(/(never edits a comment someone else wrote|Nunca edita un comentario escrito por otra persona)/);
+    expect(flat).toMatch(/(last line|última línea)/);
+    expect(flat).toContain('**Comment on pull requests**');
+  });
+
+  test('supersede: cancels the same subject, queues without one, superseded_by', () => {
+    expect(flat).toContain('`superseded_by`');
+    expect(flat).toMatch(/\*\*Cancel the previous run\*\*[^.]*(queued, working or waiting|en cola, trabajando o esperando)/);
+    expect(flat).toMatch(/(they are queued, as with|se ponen en cola, como con) \*\*Queue it\*\*/);
+  });
+
+  test('the recipe: recommended settings, webhook, token permissions', () => {
+    expect(recipe).not.toBe('');
+    for (const v of ['Fresh clone per run', 'Cancel the previous run', 'Fully automatic', 'Pull request review', 'Pull requests', 'Contents', 'Actions only (write access)', 'Agent (read access)', 'Payload URL', 'Let me select individual events']) {
+      expect(recipe, v).toContain(`**${v}**`);
+    }
+    expect(recipe).toContain('`application/json`');
+    // runs/spec.go: a succeeded apply run applied every action; the propose run succeeds before that.
+    expect(recipe.replace(/\s+/g, ' ')).toMatch(/(the apply run ends as|el run de aplicación termina como) `failed`/);
+    expect(recipe).toContain(`${page.prefix}/docs/webhooks#`);
+    expect(recipe.replace(/\s+/g, ' ')).toMatch(/\*\*Pull requests\*\* (read and write|de lectura y escritura)/);
+  });
+
+  test('the sample instructions leave checkout and cleanup to NaN', () => {
+    expect(instructions.length).toBeGreaterThan(500);
+    expect(instructions).toMatch(/current folder/);
+    expect(instructions).not.toMatch(/git clone|rm -rf|git checkout|NAN_RUN_|actions\.json|GITHUB_TOKEN/);
+    for (const check of ['Tests exist for the claimed scope', 'Tests pass', 'Security', 'Improvements', 'VERSION', 'ONE comment', 'untrusted data']) {
+      expect(instructions, check).toContain(check);
+    }
+  });
+});
+
 describe('automations guides, both locales', () => {
   test.each(['automations.mdx', 'webhooks.mdx'])('%s: the Spanish page is a translation with the same structure', (file) => {
     const [en, es] = [pages.en, pages.es].map((p) => strip(read(p.dir + file)));
