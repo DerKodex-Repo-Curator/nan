@@ -3,8 +3,11 @@ import spec from '../data/openapi.json';
 import { API_DOC_META, API_DOC_SLUG } from './apiDoc';
 import {
   apiSearchHeadings,
+  docsNavAncestors,
+  flattenDocsNav,
   groupDocsNav,
   isActiveDocPath,
+  isActiveDocTrail,
   slugifyAnchor,
   type DocsNavItem,
 } from './docsNav';
@@ -52,6 +55,12 @@ describe('isActiveDocPath', () => {
     expect(isActiveDocPath('/docs', '/docs')).toBe(true);
   });
 
+  it('does not let /es/docs highlight on every Spanish page either', () => {
+    expect(isActiveDocPath('/es/docs/models', '/es/docs')).toBe(false);
+    expect(isActiveDocPath('/es/docs', '/es/docs')).toBe(true);
+    expect(isActiveDocPath('/es/docs/guides/deploy', '/es/docs/guides')).toBe(true);
+  });
+
   it('does not match a sibling that merely shares a prefix', () => {
     expect(isActiveDocPath('/docs/models-old', '/docs/models')).toBe(false);
   });
@@ -73,6 +82,154 @@ describe('groupDocsNav', () => {
     const items = [item({ label: 'A' }), item({ label: 'B', group: 'Other' }), item({ label: 'C' })];
     const flat = groupDocsNav(items).flatMap((g) => g.items.map((i) => i.label));
     expect(flat.sort()).toEqual(['A', 'B', 'C']);
+  });
+});
+
+/**
+ * Nesting: a page can declare `parent` (the slug of another page) and it is
+ * then listed as a sub-item right under that page instead of at the top level
+ * of its group. Owner's ask: the PR gatekeeper guide belongs UNDER Automations.
+ */
+describe('groupDocsNav: nesting under a parent', () => {
+  const guides = () => [
+    item({ slug: '/docs/runs', label: 'Runs', order: 19 }),
+    item({ slug: '/docs/automations', label: 'Automations', order: 20 }),
+    item({ slug: '/docs/pr-gatekeeper', label: 'PR gatekeeper', order: 21, parent: '/docs/automations' }),
+    item({ slug: '/docs/webhooks', label: 'Webhooks', order: 22 }),
+  ];
+
+  it('lists the child under its parent, not at the top level', () => {
+    const [g] = groupDocsNav(guides());
+    expect(g.items.map((i) => i.label)).toEqual(['Runs', 'Automations', 'Webhooks']);
+    const automations = g.items.find((i) => i.label === 'Automations')!;
+    expect(automations.children.map((c) => c.label)).toEqual(['PR gatekeeper']);
+  });
+
+  it('never lists a child twice', () => {
+    const flat = flattenDocsNav(groupDocsNav(guides()));
+    expect(flat.filter((i) => i.label === 'PR gatekeeper')).toHaveLength(1);
+    expect(flat).toHaveLength(4);
+  });
+
+  it('gives top-level items an empty children list', () => {
+    const [g] = groupDocsNav(guides());
+    expect(g.items.find((i) => i.label === 'Runs')!.children).toEqual([]);
+  });
+
+  it('orders siblings under one parent by their own order, whatever the input order', () => {
+    const [g] = groupDocsNav([
+      item({ slug: '/docs/b', label: 'B', order: 5, parent: '/docs/p' }),
+      item({ slug: '/docs/p', label: 'P', order: 1 }),
+      item({ slug: '/docs/a', label: 'A', order: 3, parent: '/docs/p' }),
+    ]);
+    expect(g.items[0].children.map((c) => c.label)).toEqual(['A', 'B']);
+  });
+
+  it('follows the parent into its group, even if the child says otherwise', () => {
+    const groups = groupDocsNav([
+      item({ slug: '/docs/p', label: 'P', order: 0, group: 'Guides' }),
+      item({ slug: '/docs/c', label: 'C', order: 1, parent: '/docs/p', group: 'Reference' }),
+    ]);
+    expect(groups.map((g) => g.group)).toEqual(['Guides']);
+    expect(groups[0].items[0].children.map((c) => c.label)).toEqual(['C']);
+  });
+
+  it('does not open a group for a child alone', () => {
+    const groups = groupDocsNav([
+      item({ slug: '/docs/p', label: 'P', order: 5, group: 'Guides' }),
+      item({ slug: '/docs/c', label: 'C', order: 0, parent: '/docs/p', group: 'Get started' }),
+    ]);
+    expect(groups.map((g) => g.group)).toEqual(['Guides']);
+  });
+
+  /** A typo in `parent` must not make the page vanish from the nav. */
+  it('keeps a page whose parent does not exist at the top level', () => {
+    const [g] = groupDocsNav([item({ slug: '/docs/orphan', label: 'Orphan', parent: '/docs/nope' })]);
+    expect(g.items.map((i) => i.label)).toEqual(['Orphan']);
+  });
+
+  it('keeps a page that names itself as parent at the top level', () => {
+    const [g] = groupDocsNav([item({ slug: '/docs/self', label: 'Self', parent: '/docs/self' })]);
+    expect(g.items.map((i) => i.label)).toEqual(['Self']);
+  });
+
+  it('survives a parent cycle without dropping or duplicating pages', () => {
+    const flat = flattenDocsNav(
+      groupDocsNav([
+        item({ slug: '/docs/a', label: 'A', order: 0, parent: '/docs/b' }),
+        item({ slug: '/docs/b', label: 'B', order: 1, parent: '/docs/a' }),
+      ]),
+    );
+    expect(flat.map((i) => i.label).sort()).toEqual(['A', 'B']);
+  });
+
+  it('nests more than one level deep', () => {
+    const groups = groupDocsNav([
+      item({ slug: '/docs/a', label: 'A', order: 0 }),
+      item({ slug: '/docs/b', label: 'B', order: 1, parent: '/docs/a' }),
+      item({ slug: '/docs/c', label: 'C', order: 2, parent: '/docs/b' }),
+    ]);
+    expect(groups[0].items[0].children[0].children.map((c) => c.label)).toEqual(['C']);
+  });
+});
+
+describe('flattenDocsNav: the visual order, for prev/next', () => {
+  it('puts each child right after its parent, before the parent\'s next sibling', () => {
+    const flat = flattenDocsNav(
+      groupDocsNav([
+        item({ slug: '/docs/intro', label: 'Intro', order: 0, group: 'Get started' }),
+        item({ slug: '/docs/automations', label: 'Automations', order: 20 }),
+        item({ slug: '/docs/webhooks', label: 'Webhooks', order: 21 }),
+        // Out of order on purpose: the visual order wins over the raw number.
+        item({ slug: '/docs/pr-gatekeeper', label: 'PR gatekeeper', order: 22, parent: '/docs/automations' }),
+      ]),
+    );
+    expect(flat.map((i) => i.label)).toEqual(['Intro', 'Automations', 'PR gatekeeper', 'Webhooks']);
+  });
+});
+
+describe('isActiveDocTrail', () => {
+  const [g] = groupDocsNav([
+    item({ slug: '/docs/automations', label: 'Automations', order: 0 }),
+    item({ slug: '/docs/pr-gatekeeper', label: 'PR gatekeeper', order: 1, parent: '/docs/automations' }),
+    item({ slug: '/docs/webhooks', label: 'Webhooks', order: 2 }),
+  ]);
+  const automations = g.items[0];
+
+  it('marks the parent as on the trail while a child is open', () => {
+    expect(isActiveDocTrail('/docs/pr-gatekeeper', automations)).toBe(true);
+  });
+
+  it('also when the parent itself is open', () => {
+    expect(isActiveDocTrail('/docs/automations', automations)).toBe(true);
+  });
+
+  it('not on an unrelated page', () => {
+    expect(isActiveDocTrail('/docs/webhooks', automations)).toBe(false);
+  });
+});
+
+describe('docsNavAncestors: for the breadcrumb', () => {
+  const items = [
+    item({ slug: '/docs/automations', label: 'Automations', order: 0 }),
+    item({ slug: '/docs/pr-gatekeeper', label: 'PR gatekeeper', order: 1, parent: '/docs/automations' }),
+  ];
+
+  it('returns the parents of a nested page, outermost first', () => {
+    expect(docsNavAncestors(items, '/docs/pr-gatekeeper').map((i) => i.label)).toEqual(['Automations']);
+  });
+
+  it('returns nothing for a top-level page or an unknown one', () => {
+    expect(docsNavAncestors(items, '/docs/automations')).toEqual([]);
+    expect(docsNavAncestors(items, '/docs/nope')).toEqual([]);
+  });
+
+  it('stops on a cycle instead of looping forever', () => {
+    const cyclic = [
+      item({ slug: '/docs/a', label: 'A', parent: '/docs/b' }),
+      item({ slug: '/docs/b', label: 'B', parent: '/docs/a' }),
+    ];
+    expect(docsNavAncestors(cyclic, '/docs/a').length).toBeLessThanOrEqual(1);
   });
 });
 

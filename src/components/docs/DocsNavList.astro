@@ -1,0 +1,45 @@
+---
+/**
+ * One level of the docs sidebar: a list of pages, each with the pages nested
+ * under it (frontmatter `parent`) rendered as an indented sub-list right below.
+ *
+ * It recurses through Astro.self, so nesting depth is whatever the data says.
+ * Sub-items are always shown, not behind a toggle: with a handful of children
+ * a disclosure button would add a click and a focus stop for no gain, and a
+ * plain nested <ul> is what screen readers announce as "list, level 2".
+ *
+ * `here` is the current path. The current page gets `aria-current="page"`; the
+ * pages above it (its parent chain) get `is-trail`, so the reader sees where
+ * the open page sits in the tree.
+ */
+import { isActiveDocPath, isActiveDocTrail, type DocsNavNode } from '../../lib/docsNav';
+
+interface Props {
+  items: DocsNavNode[];
+  here: string;
+  depth?: number;
+}
+
+const { items, here, depth = 0 } = Astro.props;
+---
+
+<ul class:list={[{ 'docs-nav-sub': depth > 0 }]} data-depth={depth}>
+  {
+    items.map((item) => {
+      const active = isActiveDocPath(here, item.slug);
+      const trail = !active && isActiveDocTrail(here, item);
+      return (
+        <li class:list={[{ 'has-children': item.children.length > 0 }]}>
+          <a
+            href={item.slug}
+            class:list={['docs-nav-link', { 'is-active': active, 'is-trail': trail }]}
+            aria-current={active ? 'page' : undefined}
+          >
+            {item.label}
+          </a>
+          {item.children.length > 0 && <Astro.self items={item.children} here={here} depth={depth + 1} />}
+        </li>
+      );
+    })
+  }
+</ul>

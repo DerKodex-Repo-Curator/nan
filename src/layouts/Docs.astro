@@ -11,10 +11,15 @@ import '@fontsource/jetbrains-mono/700.css';
 
 import { getCollection, render } from 'astro:content';
 import DocsTopBar from '../components/docs/DocsTopBar.astro';
+import DocsSidebarNav from '../components/docs/DocsSidebarNav.astro';
 import { API_DOC_META, API_DOC_SLUG } from '../lib/apiDoc';
 import spec from '../data/openapi.json';
 import {
   apiSearchHeadings,
+  docSlug,
+  docsNavAncestors,
+  docsNavItemFromEntry,
+  flattenDocsNav,
   groupDocsNav,
   isActiveDocPath,
   type DocsNavItem,
@@ -75,13 +80,7 @@ const entries = await getCollection(lang === 'es' ? 'docsEs' : 'docs');
  * so the page and the manifest cannot disagree.
  */
 const navItems: DocsNavItem[] = [
-  ...entries.map((entry) => ({
-    slug: entry.id === 'intro' ? `${pfx}/docs` : `${pfx}/docs/${entry.id}`,
-    label: entry.data.title,
-    order: entry.data.order,
-    group: entry.data.group,
-    description: entry.data.description,
-  })),
+  ...entries.map((entry) => docsNavItemFromEntry(entry, pfx)),
   {
     slug: `${pfx}/docs/${API_DOC_SLUG}`,
     label: API_DOC_META.title,
@@ -92,6 +91,9 @@ const navItems: DocsNavItem[] = [
 ].sort((a, b) => a.order - b.order);
 
 const navGroups = groupDocsNav(navItems);
+// The sidebar's visual order (children right after their parent), which is
+// what prev/next must follow; the raw `order` alone would not.
+const navOrder = flattenDocsNav(navGroups);
 
 const enPath = Astro.url.pathname.replace(/^\/es(?=\/|$)/, '') || '/docs';
 const esPath = `/es${enPath}`;
@@ -104,7 +106,7 @@ const isActive = (slug: string) => isActiveDocPath(here, slug);
  * its structure dropped them; they are restored because under /docs they are
  * the only clue to where you are when you arrive from a search engine.
  */
-const breadcrumb = enPath
+const pathCrumbs = enPath
   .split('/')
   .filter(Boolean)
   .map((part, i, parts) => {
@@ -118,11 +120,20 @@ const breadcrumb = enPath
       isCurrent: path === here,
     };
   });
+// A page nested in the nav (frontmatter `parent`) has a flat URL, so its
+// parents are not in the path: they are slotted in before the current crumb so
+// the breadcrumb tells the same story as the sidebar.
+const parentCrumbs = docsNavAncestors(navItems, here).map((p) => ({
+  label: p.label,
+  path: p.slug,
+  isCurrent: false,
+}));
+const breadcrumb = [...pathCrumbs.slice(0, -1), ...parentCrumbs, ...pathCrumbs.slice(-1)];
 
-const currentIndex = navItems.findIndex((item) => isActive(item.slug));
-const prevPage = currentIndex > 0 ? navItems[currentIndex - 1] : null;
+const currentIndex = navOrder.findIndex((item) => isActive(item.slug));
+const prevPage = currentIndex > 0 ? navOrder[currentIndex - 1] : null;
 const nextPage =
-  currentIndex >= 0 && currentIndex < navItems.length - 1 ? navItems[currentIndex + 1] : null;
+  currentIndex >= 0 && currentIndex < navOrder.length - 1 ? navOrder[currentIndex + 1] : null;
 
 /*
  * Search index.
@@ -137,7 +148,7 @@ const collectionIndex = await Promise.all(
     const { headings } = await render(entry);
     return {
       title: entry.data.title,
-      href: entry.id === 'intro' ? `${pfx}/docs` : `${pfx}/docs/${entry.id}`,
+      href: docSlug(entry.id, pfx),
       description: entry.data.description,
       headings: headings
         .filter((h) => h.depth >= 2 && h.depth <= 3)
@@ -235,28 +246,7 @@ const searchData = [
           <div id="docs-search-results" class="ds-results" hidden></div>
         </div>
 
-        <nav class="docs-nav" aria-label="Docs sections">
-          {
-            navGroups.map((g) => (
-              <div class="docs-nav-group">
-                <p class="docs-nav-label">{g.group}</p>
-                <ul>
-                  {g.items.map((item) => (
-                    <li>
-                      <a
-                        href={item.slug}
-                        class:list={['docs-nav-link', { 'is-active': isActive(item.slug) }]}
-                        aria-current={isActive(item.slug) ? 'page' : undefined}
-                      >
-                        {item.label}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))
-          }
-        </nav>
+        <DocsSidebarNav groups={navGroups} here={here} />
       </aside>
 
       <div class="docs-pane">

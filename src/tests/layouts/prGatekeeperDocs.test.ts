@@ -142,13 +142,21 @@ describe.each(Object.entries(pages))('PR gatekeeper guide (%s)', (_locale, page)
   const blocks = codeBlocks(body);
   const instructions = blocks.find((b) => b.startsWith('```text')) ?? '';
 
-  test('sits in the guides group, right after Webhooks and before Examples and Apps', () => {
+  /**
+   * Owner's call (2026-10-12): the guide lives UNDER Automations in the
+   * sidebar, as its sub-item, not as a sibling. Its order is the slot right
+   * after Automations so the flat order (the /api/docs manifest) and the
+   * sidebar's visual order agree; Webhooks comes next.
+   */
+  test('is nested under Automations, right after it and before Webhooks', () => {
     expect(fm.title).toBe('PR gatekeeper');
     expect(fm.group).toBe(page.group);
+    expect((fm as { parent?: string }).parent).toBe('automations');
     const order = (f: string) => (parseFrontmatter(read(page.dir + f)).frontmatter as { order: number }).order;
-    expect(fm.order).toBe(order('webhooks.mdx') + 1);
-    expect(order('examples.md')).toBe(fm.order + 1);
-    expect(order('apps.md')).toBe(fm.order + 2);
+    expect(fm.order).toBe(order('automations.mdx') + 1);
+    expect(order('webhooks.mdx')).toBe(fm.order + 1);
+    expect(order('examples.md')).toBe(order('webhooks.mdx') + 1);
+    expect(order('apps.md')).toBe(order('examples.md') + 1);
   });
 
   test('is served by /api/docs without errors', async () => {

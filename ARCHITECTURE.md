@@ -128,6 +128,8 @@ The community-tier signup page (`/community`) reuses `LanguageSwitcher.astro` an
 | `/docs/examples` | Code snippets (Python, Node.js, curl) |
 | `/docs/api` | OpenAI-compatible API reference (endpoints, auth, rate limits) |
 
+Sidebar navigation comes from each guide's frontmatter (`src/content.config.ts`): `group` picks the section, `order` the position, and an optional `parent` (the entry id of another guide, identical in EN and ES) lists the page as an indented sub-item right under that guide, in the parent's group. URLs stay flat (`/docs/<id>`); the breadcrumb and prev/next follow the sidebar's visual order. Logic and tests: `src/lib/docsNav.ts`; markup: `src/components/docs/DocsSidebarNav.astro` + `DocsNavList.astro` (rendered in tests with the Astro Container API, `*.render.test.ts`, see `vitest.render.config.ts`).
+
 ### API Endpoints
 
 #### `POST /api/waitlist`

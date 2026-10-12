@@ -1,0 +1,27 @@
+---
+/**
+ * The docs sidebar's page list: one block per group, each a (possibly nested)
+ * list of pages. Split out of Docs.astro so it can be rendered on its own in
+ * tests; the layout itself drags in the content collections and Cloudflare.
+ */
+import DocsNavList from './DocsNavList.astro';
+import type { DocsNavGroup } from '../../lib/docsNav';
+
+interface Props {
+  groups: DocsNavGroup[];
+  here: string;
+}
+
+const { groups, here } = Astro.props;
+---
+
+<nav class="docs-nav" aria-label="Docs sections">
+  {
+    groups.map((g) => (
+      <div class="docs-nav-group">
+        <p class="docs-nav-label">{g.group}</p>
+        <DocsNavList items={g.items} here={here} />
+      </div>
+    ))
+  }
+</nav>
