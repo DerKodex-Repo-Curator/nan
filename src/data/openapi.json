@@ -60,7 +60,7 @@
     },
     {
       "name": "Runs",
-      "description": "Give an agent (Pi or Hermes) a task inside one of your workspaces and follow it. A run keeps going if the client disconnects. Accepts a member API key or a platform token with the `runs` scope. Guide: [Agent runs](https://nan.builders/docs/runs)."
+      "description": "Give an agent (Pi, Pi + Gentle Shell or Hermes) a task inside one of your workspaces and follow it. A run keeps going if the client disconnects. Accepts a member API key or a platform token with the `runs` scope. Guide: [Agent runs](https://nan.builders/docs/runs)."
     },
     {
       "name": "Automations",
@@ -1794,18 +1794,34 @@
             }
           },
           "409": {
-            "description": "`workspace_not_running`: start the workspace first. `agent_not_installed`: install the agent from the workspace's Software panel. `no_inference_key`: the workspace has no inference key. `idempotency_conflict`: the `Idempotency-Key` was used with a different body.",
+            "description": "`workspace_not_running`: start the workspace first. `agent_not_installed` (`param: \"agent\"`): the workspace does not have that agent installed (see its `run_agents`); install it from the workspace's Software panel or pick another. `no_inference_key`: the workspace has no inference key. `idempotency_conflict`: the `Idempotency-Key` was used with a different body.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": {
-                    "message": "the workspace is not running",
-                    "type": "invalid_request_error",
-                    "param": null,
-                    "code": "workspace_not_running"
+                "examples": {
+                  "workspace_not_running": {
+                    "summary": "Stopped workspace.",
+                    "value": {
+                      "error": {
+                        "message": "the workspace is not running",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_not_running"
+                      }
+                    }
+                  },
+                  "agent_not_installed": {
+                    "summary": "The agent is not installed in the workspace.",
+                    "value": {
+                      "error": {
+                        "message": "Pi + Gentle Shell is not installed in this workspace",
+                        "type": "invalid_request_error",
+                        "param": "agent",
+                        "code": "agent_not_installed"
+                      }
+                    }
                   }
                 }
               }
@@ -3500,7 +3516,7 @@
             }
           },
           "409": {
-            "description": "The run cannot start: the automation is disabled (`automation_disabled`), its workspace is not running (`workspace_not_running`), the agent is not installed (`agent_not_installed`), the workspace has no inference key (`no_inference_key`), or the `Idempotency-Key` was used with a different input (`idempotency_conflict`).",
+            "description": "The run cannot start: the automation is disabled (`automation_disabled`), its workspace is not running (`workspace_not_running`), the automation's agent is not installed in its workspace (`agent_not_installed`, `param: \"agent\"`), the workspace has no inference key (`no_inference_key`), or the `Idempotency-Key` was used with a different input (`idempotency_conflict`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3526,6 +3542,17 @@
                         "type": "invalid_request_error",
                         "param": null,
                         "code": "workspace_not_running"
+                      }
+                    }
+                  },
+                  "agent_not_installed": {
+                    "summary": "The automation's agent is not installed in its workspace.",
+                    "value": {
+                      "error": {
+                        "message": "Hermes is not installed in this workspace",
+                        "type": "invalid_request_error",
+                        "param": "agent",
+                        "code": "agent_not_installed"
                       }
                     }
                   }
@@ -4136,6 +4163,11 @@
                       "pi",
                       "hermes"
                     ],
+                    "run_agents": [
+                      "pi",
+                      "pi_gentle",
+                      "hermes"
+                    ],
                     "status": "running",
                     "ssh_command": "ssh 3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15@ssh.nan.builders -p 30222",
                     "vcpus": 2,
@@ -4255,6 +4287,11 @@
                   "name": "develop",
                   "agent_selection": [
                     "pi",
+                    "hermes"
+                  ],
+                  "run_agents": [
+                    "pi",
+                    "pi_gentle",
                     "hermes"
                   ],
                   "status": "running",
@@ -5350,9 +5387,10 @@
             "type": "string",
             "enum": [
               "pi",
+              "pi_gentle",
               "hermes"
             ],
-            "description": "The agent. It must be installed in the workspace, otherwise `409 agent_not_installed`."
+            "description": "The agent: `pi` (Pi), `pi_gentle` (Pi + Gentle Shell: Pi started through gentle-shell) or `hermes` (Hermes). It must be installed in the workspace (see `run_agents` on the workspace), otherwise `409 agent_not_installed` with `param: \"agent\"`."
           },
           "prompt": {
             "type": "string",
@@ -5524,8 +5562,10 @@
             "type": "string",
             "enum": [
               "pi",
+              "pi_gentle",
               "hermes"
-            ]
+            ],
+            "description": "The agent: `pi` (Pi), `pi_gentle` (Pi + Gentle Shell: Pi started through gentle-shell) or `hermes` (Hermes)."
           },
           "model": {
             "type": [
@@ -5879,6 +5919,7 @@
             "type": "string",
             "enum": [
               "pi",
+              "pi_gentle",
               "hermes"
             ]
           },
@@ -6269,6 +6310,18 @@
               "type": "string"
             },
             "description": "Agents and tools chosen for the workspace."
+          },
+          "run_agents": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "pi",
+                "pi_gentle",
+                "hermes"
+              ]
+            },
+            "description": "The agents a run or an automation can use in this workspace, in display order (`pi`, `pi_gentle`, `hermes`). `pi` needs Pi installed, `pi_gentle` needs Pi and gentle-shell, `hermes` needs Hermes chosen for the workspace or installed and switched on. Any other `agent` in `POST /v1/runs` answers `409 agent_not_installed`. Empty when no agent is installed."
           },
           "status": {
             "type": "string",
@@ -6797,8 +6850,10 @@
             "type": "string",
             "enum": [
               "pi",
+              "pi_gentle",
               "hermes"
-            ]
+            ],
+            "description": "The agent: `pi` (Pi), `pi_gentle` (Pi + Gentle Shell: Pi started through gentle-shell) or `hermes` (Hermes). Creating an automation, moving it to another workspace, changing its agent or switching it back on needs the agent installed in the workspace (`409 agent_not_installed`). If the agent is removed from the workspace later, the automation keeps it and its runs are refused with `agent_not_installed`."
           },
           "model": {
             "type": [

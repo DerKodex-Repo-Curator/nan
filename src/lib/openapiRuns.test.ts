@@ -97,7 +97,7 @@ describe('openapi.json: the Runs contract (cloud-api)', () => {
     expect(Object.keys(body.properties)).toEqual([
       'workspace', 'agent', 'prompt', 'cwd', 'git_isolation', 'timeout_seconds', 'model', 'trigger',
     ]);
-    expect(body.properties.agent.enum).toEqual(['pi', 'hermes']);
+    expect(body.properties.agent.enum).toEqual(['pi', 'pi_gentle', 'hermes']);
     expect(body.properties.prompt.description).toContain('32768 bytes');
     expect(body.properties.cwd.default).toBe('/home/nan');
     expect(body.properties.git_isolation.type).toEqual(['boolean', 'null']);
@@ -349,5 +349,97 @@ describe('the text the docs API serves for the reference', () => {
       Object.entries(s.components.schemas).filter(([k]) => /^(Run|Workspace|CreateRun|PlatformError)/.test(k)),
     ]);
     expect(added).not.toContain('—');
+  });
+});
+
+/**
+ * The run agents (cloud-api #345): `pi`, `pi_gentle` (Pi + Gentle Shell) and
+ * `hermes`, in the display order of software.RunAgentIDs. Every agent enum of
+ * the reference mirrors protocol.Agents; the workspace object carries
+ * `run_agents`; an agent the workspace lacks is `409 agent_not_installed`
+ * with `param: "agent"` and a message naming the agent (runs.AgentName).
+ */
+describe('openapi.json: run agents (Pi, Pi + Gentle Shell, Hermes)', () => {
+  const AGENTS = ['pi', 'pi_gentle', 'hermes'];
+  const sc = s.components.schemas;
+
+  it.each([
+    ['CreateRunRequest', sc.CreateRunRequest.properties.agent],
+    ['Run', sc.Run.properties.agent],
+    ['RunEventDataStarted', sc.RunEventDataStarted.properties.agent],
+    ['Automation', sc.Automation.properties.agent],
+  ])('%s.agent is exactly pi, pi_gentle, hermes', (_name, prop) => {
+    expect(prop.enum).toEqual(AGENTS);
+  });
+
+  it('no schema anywhere still lists only pi and hermes', () => {
+    const stale: string[] = [];
+    const walk = (node: any, path: string) => {
+      if (Array.isArray(node)) return node.forEach((v, i) => walk(v, `${path}/${i}`));
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node.enum) && node.enum.includes('hermes') && !node.enum.includes('pi_gentle')) stale.push(path);
+      for (const [k, v] of Object.entries(node)) walk(v, `${path}/${k}`);
+    };
+    walk(s, '');
+    expect(stale).toEqual([]);
+  });
+
+  it('describes each agent value by its portal label', () => {
+    for (const prop of [sc.CreateRunRequest.properties.agent, sc.Run.properties.agent, sc.Automation.properties.agent]) {
+      expect(prop.description).toContain('`pi` (Pi)');
+      expect(prop.description).toContain('`pi_gentle` (Pi + Gentle Shell');
+      expect(prop.description).toContain('`hermes` (Hermes)');
+    }
+    expect(sc.CreateRunRequest.properties.agent.description).toMatch(/`409 agent_not_installed` with `param: "agent"`/);
+    expect(s.tags.find((t: any) => t.name === 'Runs').description).toContain('(Pi, Pi + Gentle Shell or Hermes)');
+  });
+
+  it('the workspace carries run_agents, right after agent_selection, with the same enum', () => {
+    const keys = Object.keys(sc.Workspace.properties);
+    expect(keys.indexOf('run_agents')).toBe(keys.indexOf('agent_selection') + 1);
+    const ra = sc.Workspace.properties.run_agents;
+    expect(ra.type).toBe('array');
+    expect(ra.items.enum).toEqual(AGENTS);
+    expect(ra.description).toMatch(/display order/);
+    expect(ra.description).toContain('`pi_gentle` needs Pi and gentle-shell');
+    expect(ra.description).toContain('409 agent_not_installed');
+  });
+
+  it('both workspace examples show run_agents in display order', () => {
+    const list = op('/api/workspaces', 'get').responses['200'].content['application/json'].example;
+    const one = op('/api/workspaces/{id}', 'get').responses['200'].content['application/json'].example;
+    for (const ws of [list[0], one]) {
+      expect(ws.run_agents).toEqual(AGENTS.filter((a) => ws.run_agents.includes(a)));
+      expect(ws.run_agents).toContain('pi_gentle');
+    }
+  });
+
+  it.each([
+    ['/runs', 'Pi + Gentle Shell'],
+    ['/automations/{id}/runs', 'Hermes'],
+  ])('POST %s: the 409 agent_not_installed example names the agent and the agent field', (path, label) => {
+    const r = op(path, 'post').responses['409'];
+    const ex = r.content['application/json'].examples.agent_not_installed.value;
+    expect(ex).toEqual({
+      error: { message: `${label} is not installed in this workspace`, type: 'invalid_request_error', param: 'agent', code: 'agent_not_installed' },
+    });
+    expect(validate(ex, r.content['application/json'].schema)).toEqual([]);
+    expect(r.description).toContain('`agent_not_installed`');
+    expect(r.description).toContain('`param: "agent"`');
+  });
+
+  it('POST /runs keeps the workspace_not_running example next to the new one', () => {
+    const ex = op('/runs', 'post').responses['409'].content['application/json'].examples;
+    expect(Object.keys(ex)).toEqual(['workspace_not_running', 'agent_not_installed']);
+    expect(ex.workspace_not_running.value.error.code).toBe('workspace_not_running');
+  });
+
+  it('the validator accepts every agent and rejects near misses', () => {
+    for (const agent of AGENTS) {
+      expect(validate({ workspace: 'w', agent, prompt: 'x' }, sc.CreateRunRequest), agent).toEqual([]);
+    }
+    for (const agent of ['pi-gentle', 'gentle_shell', 'gentle-shell', 'Pi', 'pi_gentle ']) {
+      expect(validate({ workspace: 'w', agent, prompt: 'x' }, sc.CreateRunRequest), agent).not.toEqual([]);
+    }
   });
 });

@@ -211,13 +211,13 @@ The **Software** panel on the workspace's Overview tab lists the agents and tool
 - **Update** one, or everything at once, when a new version is out. Updates keep your files, sessions and settings.
 - **Remove** one you no longer use.
 
-gentle-shell is an add-on for Pi (memory between sessions with Engram), so it needs Pi installed. If your Pi is too old for it, the panel offers to update Pi first.
+gentle-shell is an add-on for Pi (memory between sessions with Engram), so it needs Pi installed. If your Pi is too old for it, the panel offers to update Pi first. With both installed, runs and automations can also use **Pi + Gentle Shell**: see [Pick the agent](/docs/runs#pick-the-agent).
 
 On an inference plan, the agents come set up to use NaN models with your membership. The setup guides for [Pi](/docs/pi) and [Hermes](/docs/hermes) explain how to change the model or the provider by hand.
 
 ## Run agents on tasks
 
-You do not have to stay connected while an agent works. A **run** gives Pi or Hermes a task inside your workspace and lets it work on its own: you follow its log live, it keeps going when you close the page, and in a git repository its changes land on a branch for you to review. Start one from the **Runs** tab of the workspace, from your terminal with `nan run`, or from the API.
+You do not have to stay connected while an agent works. A **run** gives an agent installed in your workspace (Pi, Pi + Gentle Shell or Hermes) a task and lets it work on its own: you follow its log live, it keeps going when you close the page, and in a git repository its changes land on a branch for you to review. Start one from the **Runs** tab of the workspace, from your terminal with `nan run`, or from the API.
 
 How it works, the limits and the commands are in [Agent runs](/docs/runs).
 
