@@ -78,7 +78,8 @@ describe.each(Object.entries(pages))('run agents in the guides (%s)', (locale, p
   test('explains the installed-only rule: portal list, 409 with param agent, CLI exit 4, automations', () => {
     const sec = section(runs, page.heading).replace(/\s+/g, ' ');
     expect(sec).toContain('`409 agent_not_installed`');
-    expect(sec).toContain('`agent`');
+    expect(sec).toMatch(/\((the error names the `agent` field|el error señala el campo `agent`)\)/);
+    expect(sec).toContain('**(not installed)**');
     expect(sec).toMatch(/`nan run` (exits with code|sale con código) 4/);
     expect(sec).toContain('`run_agents`');
     expect(sec).toContain(`(${page.prefix}/docs/api#tag/workspaces)`);
@@ -119,6 +120,8 @@ describe.each(Object.entries(pages))('run agents in the guides (%s)', (locale, p
     for (const [label] of AGENTS) expect(row).toContain(`**${label}**`);
     expect(row).toContain('**(not installed)**');
     expect(row).toContain('`agent_not_installed`');
+    // Short cell: the details live in Pick the agent.
+    expect(row.length).toBeLessThan(420);
     expect(row).toContain(runsLink);
   });
 

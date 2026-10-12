@@ -58,7 +58,7 @@ The three GitHub templates act on a repository, so they need a **GitHub reposito
 | **Description (optional)** | For you. |
 | **Instructions** | What the agent must do, up to 16 KiB. Your instructions are trusted. Whatever a webhook or a manual run sends is given to the agent as data, never as instructions. |
 | **Workspace** | The workspace the agent runs in. |
-| **Agent** | **Pi**, **Pi + Gentle Shell** or **Hermes**. The list shows only the agents installed in the chosen **Workspace**, so pick the workspace first. If you change the workspace and it lacks the agent, the editor switches to one it has and tells you. If you remove the agent from the workspace later, the automation keeps it, marked **(not installed)**, and its runs are refused with `agent_not_installed` until you install it again or pick another. See [Pick the agent](/docs/runs#pick-the-agent). |
+| **Agent** | **Pi**, **Pi + Gentle Shell** or **Hermes**. Only the agents installed in the chosen **Workspace**, so pick the workspace first. An agent removed from the workspace later shows as **(not installed)** and its runs are refused with `agent_not_installed`. See [Pick the agent](/docs/runs#pick-the-agent). |
 | **Folder** | Where the agent works, inside `/home/nan`. Not used with **Fresh clone per run**. |
 | **Separate branch** | **On** (the default), **Auto** or **Off (work in the folder directly)**, as in a [run](/docs/runs#where-the-agent-works). Not used with **Fresh clone per run**. |
 | **Time limit (minutes)** | From 1 to 120. 30 by default. |

@@ -6321,7 +6321,7 @@
                 "hermes"
               ]
             },
-            "description": "The agents a run or an automation can use in this workspace, in display order (`pi`, `pi_gentle`, `hermes`). `pi` needs Pi installed, `pi_gentle` needs Pi and gentle-shell, `hermes` needs Hermes chosen for the workspace or installed and switched on. Any other `agent` in `POST /v1/runs` answers `409 agent_not_installed`. Empty when no agent is installed."
+            "description": "The agents a run or an automation can use in this workspace, in display order (`pi`, `pi_gentle`, `hermes`). `pi` needs Pi installed, `pi_gentle` needs Pi and gentle-shell, `hermes` needs Hermes chosen for the workspace or installed. A run (from `POST /v1/runs` or from an automation) with an agent that is not listed here is refused with `409 agent_not_installed`. Empty when no agent is installed."
           },
           "status": {
             "type": "string",

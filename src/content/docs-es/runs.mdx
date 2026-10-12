@@ -37,13 +37,13 @@ Un run puede usar uno de tres agentes. Cada uno necesita sus programas instalado
 |---|---|---|
 | **Pi** | `pi` | Pi. |
 | **Pi + Gentle Shell** | `pi_gentle` | Pi y gentle-shell. El run arranca Pi a través de gentle-shell, así que el agente trabaja con los subagentes, los guardarraíles y la memoria de gentle-shell. |
-| **Hermes** | `hermes` | Hermes, elegido al crear el workspace o instalado y activado en el panel de **Software**. |
+| **Hermes** | `hermes` | Hermes, elegido al crear el workspace o instalado desde el panel de **Software**. |
 
 Los runs y las automatizaciones solo aceptan un agente que el workspace tenga instalado:
 
-- **En el portal**, la lista **Agent** solo muestra los agentes de ese workspace. Si no tiene ninguno, instala uno antes desde su panel de **Software**.
+- **En el portal**, la lista **Agent** de un run nuevo o de una automatización solo muestra los agentes de ese workspace. Si no tiene ninguno, el portal te lo indica y enlaza a su panel de **Software**: instala uno ahí primero.
 - **Desde la CLI o la API**, pedir un agente que el workspace no tiene se rechaza antes de crear el run, con `409 agent_not_installed` (el error señala el campo `agent`). `nan run` sale con código 4. Instala el agente desde el panel de **Software**, o elige otro, y vuelve a intentarlo.
-- **Una automatización** conserva su agente aunque luego lo quites del workspace, pero sus runs se rechazan hasta que lo vuelvas a instalar o elijas otro agente.
+- **Una automatización** conserva su agente aunque luego lo quites del workspace (el editor lo marca **(not installed)**), pero sus runs se rechazan hasta que lo vuelvas a instalar o elijas otro agente. Si cambias el workspace de una automatización y el nuevo no tiene su agente, el editor pasa a uno que sí tenga y te lo indica.
 
 Para saber desde un script qué agentes puede usar un workspace, lee su campo `run_agents`: consulta [Referencia de la API → Workspaces](/es/docs/api#tag/workspaces).
 

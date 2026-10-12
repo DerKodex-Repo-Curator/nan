@@ -37,13 +37,13 @@ A run can use one of three agents. Each one needs its programs installed in the 
 |---|---|---|
 | **Pi** | `pi` | Pi. |
 | **Pi + Gentle Shell** | `pi_gentle` | Pi and gentle-shell. The run starts Pi through gentle-shell, so the agent works with gentle-shell's subagents, guardrails and memory. |
-| **Hermes** | `hermes` | Hermes, picked when you created the workspace or installed and switched on in the **Software** panel. |
+| **Hermes** | `hermes` | Hermes, picked when you created the workspace or installed from the **Software** panel. |
 
 Runs and automations only accept an agent the workspace has installed:
 
-- **In the portal**, the **Agent** list shows only the agents of that workspace. If it has none, install one from its **Software** panel first.
+- **In the portal**, the **Agent** list of a new run or an automation shows only the agents of that workspace. If it has none, the portal says so and links to its **Software** panel: install one there first.
 - **From the CLI or the API**, asking for an agent the workspace does not have is refused before the run is created, with `409 agent_not_installed` (the error names the `agent` field). `nan run` exits with code 4. Install the agent from the **Software** panel, or pick another one, and try again.
-- **An automation** keeps its agent if you remove that agent from the workspace later, but its runs are refused until you install it again or pick another agent.
+- **An automation** keeps its agent if you remove that agent from the workspace later (the editor marks it **(not installed)**), but its runs are refused until you install it again or pick another agent. If you change an automation's workspace and the new one lacks its agent, the editor switches to one it has and tells you.
 
 To know from a script which agents a workspace can run, read its `run_agents` field: see [API reference → Workspaces](/docs/api#tag/workspaces).
 

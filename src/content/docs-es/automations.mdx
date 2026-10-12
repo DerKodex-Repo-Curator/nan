@@ -58,7 +58,7 @@ Las tres plantillas de GitHub actúan sobre un repositorio, así que necesitan u
 | **Description (optional)** | Una descripción, para ti. |
 | **Instructions** | Lo que tiene que hacer el agente, hasta 16 KiB. Tus instrucciones son de confianza. Lo que envíe un webhook o un run manual le llega al agente como datos, nunca como instrucciones. |
 | **Workspace** | El workspace donde trabaja el agente. |
-| **Agent** | **Pi**, **Pi + Gentle Shell** o **Hermes**. La lista solo muestra los agentes instalados en el **Workspace** elegido, así que elige antes el workspace. Si cambias de workspace y no tiene el agente, el editor pasa a uno que sí tenga y te lo indica. Si luego quitas el agente del workspace, la automatización lo conserva, marcado **(not installed)**, y sus runs se rechazan con `agent_not_installed` hasta que lo vuelvas a instalar o elijas otro. Consulta [Elige el agente](/es/docs/runs#elige-el-agente). |
+| **Agent** | **Pi**, **Pi + Gentle Shell** o **Hermes**. Solo los agentes instalados en el **Workspace** elegido, así que elige antes el workspace. Un agente que quites luego del workspace aparece como **(not installed)** y sus runs se rechazan con `agent_not_installed`. Consulta [Elige el agente](/es/docs/runs#elige-el-agente). |
 | **Folder** | Dónde trabaja el agente, dentro de `/home/nan`. No se usa con **Fresh clone per run**. |
 | **Separate branch** | Rama aparte: **On** (por defecto), **Auto** u **Off (work in the folder directly)** (trabajar directamente en la carpeta), como en un [run](/es/docs/runs#dónde-trabaja-el-agente). No se usa con **Fresh clone per run**. |
 | **Time limit (minutes)** | El tiempo máximo, de 1 a 120. 30 por defecto. |
