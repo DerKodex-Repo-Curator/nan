@@ -90,7 +90,7 @@ And how it behaves:
 ## Before you start
 
 - **A running workspace with your repository's toolchain.** The agent runs the tests in one of your [workspaces](/docs/workspaces), so it needs what your CI needs: Go, Node, Python... Install them once in the workspace, as you would on your laptop, and keep it running: a stopped workspace cannot start runs, and the events that arrive meanwhile are lost. The example uses a workspace called `work` with Go installed.
-- **Pi or Hermes installed in that workspace**, from its [Software panel](/docs/workspaces#agents-and-the-software-panel). The example uses Pi.
+- **The agent installed in that workspace**: Pi, Pi + Gentle Shell or Hermes, from its [Software panel](/docs/workspaces#agents-and-the-software-panel). The automation can only use an agent the workspace has (see [Pick the agent](/docs/runs#pick-the-agent)). The example uses Pi.
 - **A plan with inference.** Each review is an [agent run](/docs/runs) and uses your plan like any other request.
 - **Admin access to the repository on GitHub**, to add the webhook and create the tokens.
 - **A browser sign-in at [cloud.nan.builders](https://cloud.nan.builders/)**, with the email link: creating automations and saving secrets need it.

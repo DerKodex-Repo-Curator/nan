@@ -12,7 +12,7 @@ import Screenshot from '../../components/docs/Screenshot.astro';
 
 # Agent runs.
 
-A **run** gives an agent a task inside one of your [workspaces](/docs/workspaces) and lets it work on its own. You write what you want done, pick the agent (Pi or Hermes, whichever is installed in that workspace) and the folder, and the run takes it from there. It keeps going if you close the page or the terminal.
+A **run** gives an agent a task inside one of your [workspaces](/docs/workspaces) and lets it work on its own. You write what you want done, pick the agent (Pi, Pi + Gentle Shell or Hermes, among the ones installed in that workspace) and the folder, and the run takes it from there. It keeps going if you close the page or the terminal.
 
 While it works you follow its log live. When it ends you get its result and, if the folder is a git repository, a branch with its changes, ready for you to review.
 
@@ -26,8 +26,26 @@ To run the same task again and again, from a webhook, on a schedule or with acti
 
 ## Before you start
 
-- **A workspace that is running**, with Pi or Hermes installed. You can install either one from the **Software** panel of the workspace.
+- **A workspace that is running**, with at least one agent installed: Pi, Pi + Gentle Shell or Hermes. You install them from the [Software panel](/docs/workspaces#agents-and-the-software-panel) of the workspace. See [Pick the agent](#pick-the-agent).
 - **A plan with inference.** A run uses your workspace's own inference key, and what the agent spends counts against your plan's usage like any other request. Without inference in your plan you cannot create runs: the portal shows you the upgrade options instead.
+
+## Pick the agent
+
+A run can use one of three agents. Each one needs its programs installed in the workspace:
+
+| Agent | Value for `--agent` and `agent` | What the workspace needs |
+|---|---|---|
+| **Pi** | `pi` | Pi. |
+| **Pi + Gentle Shell** | `pi_gentle` | Pi and gentle-shell. The run starts Pi through gentle-shell, so the agent works with gentle-shell's subagents, guardrails and memory. |
+| **Hermes** | `hermes` | Hermes, picked when you created the workspace or installed from the **Software** panel. |
+
+Runs and automations only accept an agent the workspace has installed:
+
+- **In the portal**, the **Agent** list of a new run or an automation shows only the agents of that workspace. If it has none, the portal says so and links to its **Software** panel: install one there first.
+- **From the CLI or the API**, asking for an agent the workspace does not have is refused before the run is created, with `409 agent_not_installed` (the error names the `agent` field). `nan run` exits with code 4. Install the agent from the **Software** panel, or pick another one, and try again.
+- **An automation** keeps its agent if you remove that agent from the workspace later (the editor marks it **(not installed)**), but its runs are refused until you install it again or pick another agent. If you change an automation's workspace and the new one lacks its agent, the editor switches to one it has and tells you.
+
+To know from a script which agents a workspace can run, read its `run_agents` field: see [API reference → Workspaces](/docs/api#tag/workspaces).
 
 ## Start a run from the portal
 
@@ -45,7 +63,7 @@ Press **New run** and fill in the form:
 
 | Field | What it is |
 |---|---|
-| **Agent** | Pi or Hermes, whichever is installed in the workspace. |
+| **Agent** | **Pi**, **Pi + Gentle Shell** or **Hermes**. The list shows only the agents installed in the workspace. See [Pick the agent](#pick-the-agent). |
 | **Task** | What you want done, in your own words, as you would write it to the agent in a chat. Up to 32 KiB (the counter under the box shows the bytes used). |
 | **Folder** | Where the agent works. It defaults to `/home/nan` and must be inside it. |
 | **Separate branch** | **Auto** (the default), **On** or **Off**. In a git repository, the agent works on its own branch and your checkout stays as it is. See [Where the agent works](#where-the-agent-works). |
@@ -136,7 +154,7 @@ The secrets you keep in your settings are not given to these runs: they go only 
 
 ## From the terminal: `nan run`
 
-The [NaN CLI](/docs/nan-cli) starts and follows runs from your own terminal. You need version **0.1.25** or newer: `nan --version` prints `nan <version>`.
+The [NaN CLI](/docs/nan-cli) starts and follows runs from your own terminal. You need version **0.1.25** or newer, and **0.1.29** or newer for `--agent pi_gentle`: `nan --version` prints `nan <version>`.
 
 <Steps>
 
@@ -170,6 +188,9 @@ A few more ways to start one:
 # A specific workspace, agent and folder
 nan run --ws develop --agent hermes --cwd /home/nan/projects/api "review the open TODOs"
 
+# Pi + Gentle Shell (the workspace needs Pi and gentle-shell)
+nan run --ws develop --agent pi_gentle "refactor the config loader and keep the tests green"
+
 # The task from a file, or from stdin
 nan run -f task.md
 git diff | nan run -
@@ -181,7 +202,7 @@ nan run --detach "upgrade the dependencies"
 | Flag | Default | What it does |
 |---|---|---|
 | `--ws NAME` | your only workspace | The workspace to run in. If you have more than one and leave it out, the CLI lists them and exits with code 64. |
-| `--agent pi\|hermes` | `pi` | The agent. |
+| `--agent pi\|pi_gentle\|hermes` | `pi` | The agent: `pi` (Pi), `pi_gentle` (Pi + Gentle Shell) or `hermes` (Hermes). It must be installed in the workspace. See [Pick the agent](#pick-the-agent). |
 | `--model M` | the agent's own | The model the agent uses. |
 | `--cwd PATH` | `/home/nan` | The folder in the workspace. |
 | `--worktree` / `--no-worktree` | auto | Force a separate branch on or off. See [Where the agent works](#where-the-agent-works). |
@@ -344,6 +365,19 @@ fi
 ```
 
 The fields match the portal form: **Agent** is `agent`, **Task** is `prompt`, **Folder** is `cwd`, and the optional **Separate branch** and **Time limit** are `git_isolation` and `timeout_seconds`.
+
+`agent` is `pi`, `pi_gentle` or `hermes`, as in [Pick the agent](#pick-the-agent). If the workspace does not have that agent installed, no run is created and the example prints the error instead:
+
+```json
+{
+  "error": {
+    "message": "Pi + Gentle Shell is not installed in this workspace",
+    "type": "invalid_request_error",
+    "param": "agent",
+    "code": "agent_not_installed"
+  }
+}
+```
 
 The stream sends one `run_event` frame per event of the log, a `state` frame when the run changes state, and an `end` frame with the finished run, after which it closes.
 
