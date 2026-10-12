@@ -62,7 +62,12 @@ const PORTAL_LABELS = [
 ];
 
 const INTERNAL = /firecracker|micro-?vms?\b|\bvm\b|\bkvm\b|kubernetes|\bk8s\b|\br2\b|nan-vmd|systemd|litellm|cgroup|\bvault\b|transit|dynamicuser|ephemeral|ef[ií]mer/i;
-/** Never published: UUIDs, private addresses, webhook paths, tokens, the owner's identity. */
+/**
+ * Never published: UUIDs, private addresses, webhook paths, tokens, the owner's identity.
+ * This guards the TEXT only (prose, alt, captions): the pixels of a capture cannot be
+ * scanned here, so every new or replaced capture needs a human check for the same things
+ * (the delivery ids, run ids in paths, webhook URL and secret hints are redacted).
+ */
 const PRIVATE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}|\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|\b192\.168\.|nan_whk_[A-Za-z0-9_-]{4,}|whsec_[A-Za-z0-9]{4,}|ghp_[A-Za-z0-9]|github_pat_[A-Za-z0-9]|nan_pat_[A-Za-z0-9]|sk-[A-Za-z0-9]{8,}|@helmcode\.com|cristian|barckcode/i;
 
 interface Shot {
@@ -163,10 +168,11 @@ describe.each(Object.entries(pages))('PR gatekeeper guide (%s)', (_locale, page)
   });
 
   test.each(SHOTS)('capture %s: file exists and its size matches the markup', (name) => {
-    const shot = shots.find((s) => s.src === `/docs/pr-gatekeeper/${name}.webp`)!;
+    const shot = shots.find((s) => s.src === `/docs/pr-gatekeeper/${name}.webp`);
+    expect(shot, `${name} is not in the markup`).toBeDefined();
     const file = resolve(pub, `docs/pr-gatekeeper/${name}.webp`);
     expect(existsSync(file)).toBe(true);
-    expect(webpSize(file)).toEqual({ width: shot.width, height: shot.height });
+    expect(webpSize(file)).toEqual({ width: shot!.width, height: shot!.height });
   });
 
   test('every link to a docs page and anchor resolves, in the same locale', () => {

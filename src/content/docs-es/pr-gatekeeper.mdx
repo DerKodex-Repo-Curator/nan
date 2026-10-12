@@ -62,14 +62,16 @@ El autor subió los tests y el cambio de versión. Diez minutos después, el ver
   secrets or HTML.
 - ✅ **VERSION**: bumped `0.8.255` to `0.8.256` (patch).
 
-### Suggestions
+## Suggestions
 1. Add zero and negative cases: `ClampPage(0)` and `ClampPage(-5)`
    pass through unclamped.
 
 Reviewed commit: `95f49678e09e`
 ```
 
-Qué comprueba lo decides tú: las instrucciones de esta guía piden cinco cosas.
+El agente redacta cada comentario a su manera, así que dos runs nunca dicen exactamente lo mismo; la línea del veredicto, la lista y las secciones salen de las instrucciones.
+
+Qué comprueba lo decides tú: las instrucciones de esta guía piden cinco cosas. Las cuatro primeras y `VERSION` tienen una línea cada una en la lista; las mejoras van en **Suggestions**.
 
 1. **Que haya tests para lo que dice la pull request.** El comportamiento nuevo o cambiado llega con tests que lo ejercitan.
 2. **Que los tests pasen**, ejecutados como los ejecuta tu CI.
@@ -82,28 +84,28 @@ Y cómo se comporta:
 - **Un comentario por pull request**, editado en cada push. Una pull request con diez pushes sigue teniendo un comentario, con el último resultado.
 - **Solo se revisa el último commit.** Un push mientras una review está en marcha la cancela y lanza una nueva.
 - **Cada review tiene su propia copia del código**, en el commit exacto del push, y NaN la borra con todas sus cachés cuando la review termina.
-- **Nada que aprobar.** El comentario se publica solo: el agente solo puede comentar, no puede hacer push.
+- **Nada que aprobar.** El comentario se publica solo. El agente puede comentar, revisar y etiquetar, pero no puede hacer push.
 
 ## Antes de empezar
 
-- **Un workspace con las herramientas de tu repositorio.** El agente ejecuta los tests en uno de tus [workspaces](/es/docs/workspaces), así que necesita lo mismo que tu CI: Go, Node, Python... Instálalas una vez en el workspace, como lo harías en tu portátil. El ejemplo usa un workspace llamado `work` con Go instalado.
-- **Pi o Hermes instalado en ese workspace.** El ejemplo usa Pi.
+- **Un workspace encendido con las herramientas de tu repositorio.** El agente ejecuta los tests en uno de tus [workspaces](/es/docs/workspaces), así que necesita lo mismo que tu CI: Go, Node, Python... Instálalas una vez en el workspace, como lo harías en tu portátil, y mantenlo encendido: un workspace parado no puede lanzar runs, y los eventos que llegan mientras tanto se pierden. El ejemplo usa un workspace llamado `work` con Go instalado.
+- **Pi o Hermes instalado en ese workspace**, desde su [panel de Software](/es/docs/workspaces#agentes-y-el-panel-de-software). El ejemplo usa Pi.
 - **Un plan con inferencia.** Cada review es un [run de agente](/es/docs/runs) y usa tu plan como cualquier otra petición.
 - **Acceso de administrador al repositorio en GitHub**, para añadir el webhook y crear los tokens.
-- **Una sesión en el navegador en [cloud.nan.builders](https://cloud.nan.builders/)**, con el enlace del correo: crear automatizaciones y guardar secretos la necesitan.
+- **Una sesión en el navegador en [cloud.nan.builders](https://cloud.nan.builders/)**, con el enlace del correo: la necesitas para crear automatizaciones y guardar secretos.
 
 ## Guarda tus tokens de GitHub
 
-La automatización tiene que hacer dos cosas en GitHub: clonar el repositorio, si es privado, y publicar el comentario. Usa un token para cada una, los dos [fine-grained personal access tokens](https://github.com/settings/personal-access-tokens/new) limitados a ese único repositorio:
+La automatización tiene que hacer dos cosas en GitHub: clonar el repositorio, si es privado, y publicar el comentario. Usa un token para cada una, los dos [fine-grained personal access tokens](https://github.com/settings/personal-access-tokens/new) limitados a ese único repositorio. En el formulario de GitHub, en **Repository access**, elige **Only select repositories** y márcalo, y ponle una fecha de caducidad.
 
-| Token | Permisos | Quién lo recibe |
+| Nombre con el que guardarlo | Permisos | Quién lo recibe |
 |---|---|---|
 | `GITHUB_WRITE_TOKEN` | **Contents** de lectura, **Pull requests** de lectura y escritura | Solo el paso que publica el comentario. El agente nunca lo ve. |
 | `GITHUB_READ_TOKEN` | **Contents** de lectura | El agente, para clonar. Nunca le des permisos de escritura. |
 
 Un repositorio público no necesita el token de lectura.
 
-Guarda los dos en el portal: tus ajustes, **Secrets**, **Add secret**. Un secreto es de solo escritura: una vez guardado, nadie puede volver a leerlo, ni siquiera tú. Consulta [Añade un secreto](/es/docs/automations#añade-un-secreto).
+Guarda los dos en el portal, con esos nombres: tus ajustes, **Secrets**, **Add secret**. Un secreto es de solo escritura: una vez guardado, nadie puede volver a leerlo, ni siquiera tú. Consulta [Añade un secreto](/es/docs/automations#añade-un-secreto).
 
 <Callout title="Por qué dos tokens" variant="warning">
 El agente ejecuta el código de la pull request, tests incluidos, y puede leer todos los secretos que recibe. Un test podría intentar mandar ese token a otra parte. Mantén el token que puede escribir fuera del alcance del agente: dale el de solo lectura y deja que NaN publique el comentario con el otro. Nuestra configuración de las capturas usa un único token para las dos filas; dos tokens es la opción más segura.
@@ -137,9 +139,9 @@ El editor tiene una tarjeta por tema. Estos son los valores de nuestro gatekeepe
 
 ### Secretos
 
-<Screenshot src="/docs/pr-gatekeeper/pg-04-secrets.webp" alt="Tarjeta Secrets con dos filas GITHUB_TOKEN: una con Actions only (write access) y la otra con Agent (read access)" width={896} height={223} caption="Una fila para el paso que publica el comentario y otra para el agente." />
+<Screenshot src="/docs/pr-gatekeeper/pg-04-secrets.webp" alt="Tarjeta Secrets con dos filas GITHUB_TOKEN: una con Actions only (write access) y la otra con Agent (read access)" width={896} height={223} caption="Nuestra configuración usa un mismo token guardado en las dos filas. Tú elige tus dos tokens." />
 
-La plantilla añade una fila `GITHUB_TOKEN`. Elige en ella `GITHUB_WRITE_TOKEN`, con **Actions only (write access)**. Para un repositorio privado, pulsa **Add a secret** y añade `GITHUB_READ_TOKEN` como `GITHUB_TOKEN`, con **Agent (read access)**: NaN lo usa para clonar. Las dos filas usan el nombre de variable `GITHUB_TOKEN`, cada una para su destinatario.
+Cada fila tiene tres campos: el secreto guardado, el nombre de variable con el que lo ve el run y quién lo recibe. La plantilla añade una fila `GITHUB_TOKEN`. Elige en ella `GITHUB_WRITE_TOKEN`, con **Actions only (write access)**. Para un repositorio privado, pulsa **Add a secret** y añade `GITHUB_READ_TOKEN` como `GITHUB_TOKEN`, con **Agent (read access)**: NaN lo usa para clonar. Las dos filas usan el nombre de variable `GITHUB_TOKEN`, cada una para su destinatario.
 
 ### Aprobación
 
@@ -287,7 +289,7 @@ Al final del log, `nan-run: checkout removed`: el clon, las dependencias y las c
 
 Cuando el agente termina, la página muestra lo que propuso en **Proposed actions**. Con **Fully automatic**, dice que se aplicó sin aprobación:
 
-<Screenshot src="/docs/pr-gatekeeper/pg-13-run-proposal.webp" alt="Proposed actions: aplicada automáticamente, una acción Comment on pull request para la pull request 342 del repositorio, con el texto del comentario que empieza con el veredicto PR gatekeeper meets the minimum bar y la lista de comprobaciones" width={914} height={404} caption="El comentario que escribió el agente, aplicado sin preguntar." />
+<Screenshot src="/docs/pr-gatekeeper/pg-13-run-proposal.webp" alt="Proposed actions: aplicada sin aprobación, como está configurada la automatización, una acción Comment on pull request para la pull request 342 del repositorio, con el texto del comentario que empieza con el veredicto PR gatekeeper changes needed y el commit revisado" width={914} height={227} caption="El comentario que escribió el agente, aplicado sin preguntar." />
 
 Más abajo, **Applying the actions** enlaza el **run de aplicación**: un paso aparte, sin agente, que publica el comentario con tu token **Actions only**. **View on GitHub** te lleva al comentario:
 
@@ -313,11 +315,12 @@ Empieza por la pestaña **Deliveries**: lista cada webhook que recibió la autom
 
 | Lo que ves | Por qué | Qué hacer |
 |---|---|---|
-| Ninguna entrega | GitHub no la envió, o la envió a otro sitio. | En GitHub, **Settings**, **Webhooks**, abre el webhook y mira **Recent Deliveries**. Una marca roja con `401` significa que el secreto no coincide: pégalo de nuevo o rótalo en NaN. |
+| Ninguna entrega | GitHub no la envió, o la envió a otro sitio. | En GitHub, **Settings**, **Webhooks**, abre el webhook y mira **Recent Deliveries**. `401`: el secreto no coincide, pégalo de nuevo o rótalo en NaN. `404`: la URL es incorrecta o el trigger está en pausa. `415`: el tipo de contenido no es `application/json`. |
 | **Ignored by a filter** en todos los eventos | El evento no es de pull request, la pull request es un borrador o es el `ping`. | Comprueba que GitHub envía **Pull requests** y que la pull request está lista para revisar. |
 | **Ignored by a filter** en una pull request | Con **Fresh clone per run**, las pull requests de forks o de autores sin permiso de escritura se ignoran. | Es lo esperado. Si confías en ellas, consulta [Pull requests de forks y de colaboradores externos](/es/docs/automations#pull-requests-de-forks-y-de-colaboradores-externos). |
+| **Not accepted: your membership does not include runs** | Tu plan no incluye inferencia, el workspace está parado o su agente no está instalado. GitHub no lo reintenta, así que ese evento se pierde. | Enciende el workspace y vuelve a hacer push. |
 | **Skipped: a run for the same subject is active** | **When a run is active** sigue en **Skip the new event**. | Cámbialo a **Cancel the previous run**. |
-| El run falla en el primer minuto | No pudo clonar: un repositorio privado sin token de lectura, o un token sin acceso a él. | Añade `GITHUB_READ_TOKEN` como `GITHUB_TOKEN` con **Agent (read access)**. El log dice por qué. |
+| El run falla pronto, durante el checkout | No pudo clonar: un repositorio privado sin token de lectura, o un token sin acceso a él. | Añade `GITHUB_READ_TOKEN` como `GITHUB_TOKEN` con **Agent (read access)**. El log dice por qué. |
 | El run falla con `proposal_invalid` | La propuesta no era válida: un push (rechazado con un clon nuevo), un `actions.json` mal formado o un `body_artifact` que no es `artifacts/<archivo>` de un archivo que escribió el agente. | Revisa **Output** y los archivos del run. Pide exactamente el `actions.json` de las instrucciones de arriba. |
 | El run se queda sin tiempo | Los tests tardaron más que el **Time limit (minutes)**. | Súbelo, o pide al agente que ejecute solo los tests relacionados con los archivos cambiados. |
 | Run **Succeeded**, sin comentario | El comentario lo publica el run de aplicación, que falló (`action_failed`). | Abre el run de aplicación: normalmente al token de escritura le falta **Pull requests** de escritura, o ha caducado. |

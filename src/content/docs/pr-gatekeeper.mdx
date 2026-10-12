@@ -62,14 +62,16 @@ The author pushed the tests and the version bump. Ten minutes later, the verdict
   secrets or HTML.
 - ✅ **VERSION**: bumped `0.8.255` to `0.8.256` (patch).
 
-### Suggestions
+## Suggestions
 1. Add zero and negative cases: `ClampPage(0)` and `ClampPage(-5)`
    pass through unclamped.
 
 Reviewed commit: `95f49678e09e`
 ```
 
-What it checks is up to you: the instructions in this guide ask for five things.
+The agent words each comment its own way, so two runs never read exactly the same; the verdict line, the checklist and the sections come from the instructions.
+
+What it checks is up to you: the instructions in this guide ask for five things. The first four and `VERSION` get a line each in the checklist; improvements go under **Suggestions**.
 
 1. **Tests exist for what the pull request claims.** New or changed behaviour comes with tests that exercise it.
 2. **The tests pass**, run the way your CI runs them.
@@ -82,28 +84,28 @@ And how it behaves:
 - **One comment per pull request**, edited on every push. A pull request pushed ten times still has one comment, with the latest result.
 - **Only the latest commit is reviewed.** A push while a review is running cancels that review and starts a new one.
 - **Each review gets its own copy of the code**, at the exact commit of the push, and NaN deletes it with all its caches when the review ends.
-- **Nothing to approve.** The comment is posted on its own: the agent can only comment, it cannot push.
+- **Nothing to approve.** The comment is posted on its own. The agent can comment, review and label, but it cannot push.
 
 ## Before you start
 
-- **A workspace with your repository's toolchain.** The agent runs the tests in one of your [workspaces](/docs/workspaces), so it needs what your CI needs: Go, Node, Python... Install them once in the workspace, as you would on your laptop. The example uses a workspace called `work` with Go installed.
-- **Pi or Hermes installed in that workspace.** The example uses Pi.
+- **A running workspace with your repository's toolchain.** The agent runs the tests in one of your [workspaces](/docs/workspaces), so it needs what your CI needs: Go, Node, Python... Install them once in the workspace, as you would on your laptop, and keep it running: a stopped workspace cannot start runs, and the events that arrive meanwhile are lost. The example uses a workspace called `work` with Go installed.
+- **Pi or Hermes installed in that workspace**, from its [Software panel](/docs/workspaces#agents-and-the-software-panel). The example uses Pi.
 - **A plan with inference.** Each review is an [agent run](/docs/runs) and uses your plan like any other request.
 - **Admin access to the repository on GitHub**, to add the webhook and create the tokens.
 - **A browser sign-in at [cloud.nan.builders](https://cloud.nan.builders/)**, with the email link: creating automations and saving secrets need it.
 
 ## Save your GitHub tokens
 
-The automation needs to do two things on GitHub: clone the repository, if it is private, and post the comment. Use one token for each, both [fine-grained personal access tokens](https://github.com/settings/personal-access-tokens/new) limited to that one repository:
+The automation needs to do two things on GitHub: clone the repository, if it is private, and post the comment. Use one token for each, both [fine-grained personal access tokens](https://github.com/settings/personal-access-tokens/new) limited to that one repository. In GitHub's form, under **Repository access**, choose **Only select repositories** and pick it, and set an expiration date.
 
-| Token | Permissions | Who receives it |
+| Name to save it as | Permissions | Who receives it |
 |---|---|---|
 | `GITHUB_WRITE_TOKEN` | **Contents** read, **Pull requests** read and write | Only the step that posts the comment. The agent never sees it. |
 | `GITHUB_READ_TOKEN` | **Contents** read | The agent, to clone. Never give it write permissions. |
 
 A public repository does not need the read token.
 
-Save both on the portal: your settings, **Secrets**, **Add secret**. A secret is write-only: once saved, nobody can read it back, not even you. See [Add a secret](/docs/automations#add-a-secret).
+Save both on the portal, with these names: your settings, **Secrets**, **Add secret**. A secret is write-only: once saved, nobody can read it back, not even you. See [Add a secret](/docs/automations#add-a-secret).
 
 <Callout title="Why two tokens" variant="warning">
 The agent runs the code of the pull request, tests included, and it can read every secret it receives. A test could try to send that token somewhere. Keep the token that can write out of the agent's hands: give it the read-only one, and let NaN post the comment with the other. Our own setup in the screenshots uses a single token for both rows; two tokens are the safer choice.
@@ -137,9 +139,9 @@ The editor has one card per topic. These are the values of our gatekeeper, card 
 
 ### Secrets
 
-<Screenshot src="/docs/pr-gatekeeper/pg-04-secrets.webp" alt="Secrets card with two GITHUB_TOKEN rows: one set to Actions only (write access), the other to Agent (read access)" width={896} height={223} caption="One row for the step that posts the comment, one for the agent." />
+<Screenshot src="/docs/pr-gatekeeper/pg-04-secrets.webp" alt="Secrets card with two GITHUB_TOKEN rows: one set to Actions only (write access), the other to Agent (read access)" width={896} height={223} caption="Our setup uses one saved token in both rows. Pick your two tokens instead." />
 
-The template adds a `GITHUB_TOKEN` row. Pick `GITHUB_WRITE_TOKEN` in it, with **Actions only (write access)**. For a private repository, press **Add a secret** and add `GITHUB_READ_TOKEN` as `GITHUB_TOKEN`, with **Agent (read access)**: NaN uses it to clone. Both rows use the variable name `GITHUB_TOKEN`, each for its own receiver.
+Each row has three fields: the saved secret, the variable name the run sees it as, and who receives it. The template adds a `GITHUB_TOKEN` row. Pick `GITHUB_WRITE_TOKEN` in it, with **Actions only (write access)**. For a private repository, press **Add a secret** and add `GITHUB_READ_TOKEN` as `GITHUB_TOKEN`, with **Agent (read access)**: NaN uses it to clone. Both rows use the variable name `GITHUB_TOKEN`, each for its own receiver.
 
 ### Approval
 
@@ -287,7 +289,7 @@ At the end of the log, `nan-run: checkout removed`: the clone, the dependencies 
 
 When the agent finishes, the page shows what it proposed under **Proposed actions**. With **Fully automatic**, it says it was applied without approval:
 
-<Screenshot src="/docs/pr-gatekeeper/pg-13-run-proposal.webp" alt="Proposed actions: applied automatically, one Comment on pull request action for the repository's pull request 342, with the comment's text starting with the verdict PR gatekeeper meets the minimum bar and the checklist" width={914} height={404} caption="The comment the agent wrote, applied without asking." />
+<Screenshot src="/docs/pr-gatekeeper/pg-13-run-proposal.webp" alt="Proposed actions: applied without approval, as configured in the automation, one Comment on pull request action for the repository's pull request 342, with the comment's text starting with the verdict PR gatekeeper changes needed and the reviewed commit" width={914} height={227} caption="The comment the agent wrote, applied without asking." />
 
 Further down, **Applying the actions** links the **apply run**: a separate step, with no agent, that posts the comment with your **Actions only** token. **View on GitHub** takes you to the comment:
 
@@ -313,11 +315,12 @@ Start with the **Deliveries** tab: it lists every webhook the automation receive
 
 | What you see | Why | What to do |
 |---|---|---|
-| No delivery at all | GitHub did not send it, or sent it somewhere else. | In GitHub, **Settings**, **Webhooks**, open the webhook and check **Recent Deliveries**. A red mark with `401` means the secret does not match: paste it again, or rotate it in NaN. |
+| No delivery at all | GitHub did not send it, or sent it somewhere else. | In GitHub, **Settings**, **Webhooks**, open the webhook and check **Recent Deliveries**. `401`: the secret does not match, paste it again or rotate it in NaN. `404`: wrong URL, or the trigger is paused. `415`: the content type is not `application/json`. |
 | **Ignored by a filter** for every event | The event is not a pull request event, the pull request is a draft, or it is the `ping`. | Check that GitHub sends **Pull requests** and that the pull request is ready for review. |
 | **Ignored by a filter** for one pull request | With **Fresh clone per run**, pull requests from forks or from authors without write access are ignored. | Expected. If you trust them, see [Pull requests from forks and outside contributors](/docs/automations#pull-requests-from-forks-and-outside-contributors). |
+| **Not accepted: your membership does not include runs** | Your plan has no inference, the workspace is stopped, or its agent is not installed. GitHub does not retry it, so that event is lost. | Start the workspace and push again. |
 | **Skipped: a run for the same subject is active** | **When a run is active** is still **Skip the new event**. | Set it to **Cancel the previous run**. |
-| The run failed in the first minute | It could not clone: a private repository without a read token, or a token without access to it. | Add `GITHUB_READ_TOKEN` as `GITHUB_TOKEN` with **Agent (read access)**. The log says why. |
+| The run failed early, during the checkout | It could not clone: a private repository without a read token, or a token without access to it. | Add `GITHUB_READ_TOKEN` as `GITHUB_TOKEN` with **Agent (read access)**. The log says why. |
 | The run failed with `proposal_invalid` | The proposal was not valid: a push (refused with a fresh clone), a malformed `actions.json`, or a `body_artifact` that is not `artifacts/<file>` for a file the agent wrote. | Check **Output** and the files of the run. Ask for exactly the `actions.json` in the instructions above. |
 | The run timed out | The tests took longer than the **Time limit (minutes)**. | Raise it, or ask the agent to run only the tests related to the changed files. |
 | Run **Succeeded**, no comment | The comment is posted by the apply run, which failed (`action_failed`). | Open the apply run: usually the write token lacks **Pull requests** write, or expired. |
