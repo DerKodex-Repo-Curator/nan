@@ -437,7 +437,7 @@ In the repository on GitHub, **Settings → Webhooks → Add webhook**: the URL 
 
 Open a pull request from a branch of the repository (not a fork, not a draft), or push to one. The run appears in **Runs** and, when it ends, the comment appears on the pull request. Push again: the same comment is updated.
 
-If nothing appears, check **Deliveries** first, then the apply run of the automation's run: `succeeded` means the proposal was accepted, not that the comment was posted.
+If nothing appears, check **Deliveries** first, then the apply run: the automation's own run ends as `succeeded` once its proposal is accepted, before the comment is posted. If posting fails, the apply run ends as `failed`.
 
 </Steps>
 

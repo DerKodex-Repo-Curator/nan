@@ -251,7 +251,7 @@ Dos runs nunca comparten esa carpeta, ni siquiera dos runs de la misma rama, as�
 | Un evento `workflow_run` sobre el repositorio de la automatización | El último commit (head) de esa ejecución de workflow. |
 | Cualquier otra cosa: issues, programaciones, **Run now**, emisores NaN | El último commit de la rama por defecto. |
 
-NaN siempre hace checkout del commit que indica el evento, aunque la pull request haya avanzado desde entonces: cada commit nuevo envía su propio evento. Si ese commit ya no se puede traer y la cabeza de la pull request es ahora otro commit, el run falla (`pull request head moved`) en vez de revisar otro distinto.
+NaN siempre hace checkout del commit que indica el evento, aunque la pull request haya avanzado desde entonces: cada commit nuevo envía su propio evento. Si ese commit ya no se puede traer y el último commit (head) de la pull request es ahora otro, el run falla (`pull request head moved`) en vez de revisar otro distinto.
 
 La página del run muestra lo que ha clonado en **Checkout**, por ejemplo `fresh @ 0123456789ab` y el número de la pull request. En la API es el campo `checkout` del run.
 
@@ -437,7 +437,7 @@ En el repositorio en GitHub, **Settings → Webhooks → Add webhook**: la URL c
 
 Abre una pull request desde una rama del repositorio (no desde un fork, y no como borrador), o haz push a una. El run aparece en **Runs** y, cuando termina, el comentario aparece en la pull request. Vuelve a hacer push: se actualiza el mismo comentario.
 
-Si no aparece nada, mira primero **Deliveries** y después el run de aplicación del run de la automatización: `succeeded` significa que la propuesta se aceptó, no que el comentario se publicara.
+Si no aparece nada, mira primero **Deliveries** y después el run de aplicación: el run propio de la automatización termina como `succeeded` en cuanto se acepta su propuesta, antes de publicar el comentario. Si la publicación falla, el run de aplicación termina como `failed`.
 
 </Steps>
 

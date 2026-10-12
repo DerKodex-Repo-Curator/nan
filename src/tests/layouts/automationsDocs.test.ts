@@ -345,6 +345,8 @@ describe.each(Object.entries(pages))('PR gatekeeper settings and recipe (%s)', (
       expect(recipe, v).toContain(`**${v}**`);
     }
     expect(recipe).toContain('`application/json`');
+    // runs/spec.go: a succeeded apply run applied every action; the propose run succeeds before that.
+    expect(recipe.replace(/\s+/g, ' ')).toMatch(/(the apply run ends as|el run de aplicación termina como) `failed`/);
     expect(recipe).toContain(`${page.prefix}/docs/webhooks#`);
     expect(recipe.replace(/\s+/g, ' ')).toMatch(/\*\*Pull requests\*\* (read and write|de lectura y escritura)/);
   });
