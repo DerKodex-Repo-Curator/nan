@@ -69,6 +69,24 @@ describe('Docs.astro: pieces that must not disappear', () => {
     expect(layout).toContain('aria-label="Pagination"');
   });
 
+  /**
+   * With today's content the raw `order` and the sidebar's visual order agree
+   * (a guard below keeps children right after their parent), so a page-level
+   * test cannot tell them apart. What makes prev/next follow the sidebar when
+   * they diverge is walking flattenDocsNav (unit-tested in docsNav.test.ts),
+   * so that wiring is pinned here.
+   */
+  it('scrolls the current page into view when the mobile drawer opens', () => {
+    expect(layout).toMatch(/if \(open\) side\.querySelector\('\[aria-current="page"\]'\)\?\.scrollIntoView/);
+  });
+
+  it('walks the sidebar\'s visual order for prev/next', () => {
+    expect(layout).toContain('const navOrder = flattenDocsNav(navGroups)');
+    expect(layout).toMatch(/const currentIndex = navOrder\.findIndex/);
+    expect(layout).toMatch(/prevPage = currentIndex > 0 \? navOrder\[currentIndex - 1\]/);
+    expect(layout).toMatch(/navOrder\[currentIndex \+ 1\]/);
+  });
+
   it('keeps the search box with its keyboard shortcut', () => {
     expect(layout).toContain('id="docs-search"');
     expect(layout).toMatch(/metaKey \|\| e\.ctrlKey/);

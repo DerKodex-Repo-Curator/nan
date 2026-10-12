@@ -388,6 +388,9 @@ const searchData = [
           backdrop.hidden = !open;
           menuBtn.setAttribute('aria-expanded', String(open));
           document.body.style.overflow = open ? 'hidden' : '';
+          // A nested or late page can sit below the fold of a short phone:
+          // bring the current link into view so the reader sees where they are.
+          if (open) side.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'center' });
         };
         menuBtn.addEventListener('click', () => setOpen(!side.classList.contains('open')));
         backdrop.addEventListener('click', () => setOpen(false));

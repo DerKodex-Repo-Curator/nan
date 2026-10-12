@@ -137,7 +137,9 @@ export function docsNavItemFromEntry(
  * chain there: a typo in frontmatter must cost the nesting, never the page.
  */
 export function docsNavAncestors(items: DocsNavItem[], slug: string): DocsNavItem[] {
-  const bySlug = new Map(items.map((i) => [i.slug, i]));
+  // First entry wins on a repeated slug, as in groupDocsNav.
+  const bySlug = new Map<string, DocsNavItem>();
+  for (const i of items) if (!bySlug.has(i.slug)) bySlug.set(i.slug, i);
   const chain: DocsNavItem[] = [];
   const seen = new Set<string>([slug]);
   let parent = bySlug.get(slug)?.parent;

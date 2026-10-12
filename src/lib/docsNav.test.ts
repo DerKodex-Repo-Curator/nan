@@ -173,6 +173,22 @@ describe('groupDocsNav: nesting under a parent', () => {
   });
 });
 
+describe('groupDocsNav: entries sharing a slug', () => {
+  it('keeps both and nests a child under the first of them', () => {
+    const groups = groupDocsNav([
+      item({ slug: '/docs/p', label: 'P1', order: 0 }),
+      item({ slug: '/docs/p', label: 'P2', order: 1 }),
+      item({ slug: '/docs/c', label: 'C', order: 2, parent: '/docs/p' }),
+    ]);
+    expect(groups[0].items.map((i) => i.label)).toEqual(['P1', 'P2']);
+    expect(groups[0].items[0].children.map((c) => c.label)).toEqual(['C']);
+    expect(docsNavAncestors(
+      [item({ slug: '/docs/p', label: 'P1' }), item({ slug: '/docs/p', label: 'P2' }), item({ slug: '/docs/c', parent: '/docs/p' })],
+      '/docs/c',
+    ).map((i) => i.label)).toEqual(['P1']);
+  });
+});
+
 describe('flattenDocsNav: the visual order, for prev/next', () => {
   it('puts each child right after its parent, before the parent\'s next sibling', () => {
     const flat = flattenDocsNav(
@@ -229,7 +245,7 @@ describe('docsNavAncestors: for the breadcrumb', () => {
       item({ slug: '/docs/a', label: 'A', parent: '/docs/b' }),
       item({ slug: '/docs/b', label: 'B', parent: '/docs/a' }),
     ];
-    expect(docsNavAncestors(cyclic, '/docs/a').length).toBeLessThanOrEqual(1);
+    expect(docsNavAncestors(cyclic, '/docs/a')).toEqual([]);
   });
 });
 
