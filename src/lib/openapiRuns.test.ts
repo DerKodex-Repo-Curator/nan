@@ -178,6 +178,9 @@ describe('openapi.json: the Runs contract (cloud-api)', () => {
     expect(s.components.schemas.Run.properties.checkout.oneOf).toEqual([{ $ref: '#/components/schemas/RunCheckout' }, { type: 'null' }]);
     expect(s.components.schemas.Run.properties.superseded_by.description).toContain('`concurrency_policy: "supersede"`');
     expect(Object.keys(s.components.schemas.RunEventDataStarted.properties)).toEqual(['agent', 'agent_version', 'model', 'cwd', 'worktree', 'branch', 'unit', 'checkout']);
+    expect(s.components.schemas.RunEventDataStarted.properties.checkout.properties.mode.enum).toEqual(['fresh']);
+    expect(s.components.schemas.RunEventDataStarted.properties.checkout.properties.sha.pattern).toBe('^[0-9a-f]{40}$');
+    expect(s.components.schemas.RunCheckout.properties.sha.pattern).toBe('^[0-9a-f]{40}$');
     expect(Object.keys(s.components.schemas.RunResult.properties)).toEqual([
       'status', 'summary', 'branch', 'commit', 'changed_files', 'artifacts', 'actions_applied',
     ]);

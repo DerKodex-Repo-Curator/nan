@@ -312,7 +312,10 @@ describe.each(Object.entries(pages))('PR gatekeeper settings and recipe (%s)', (
     expect(flat).toMatch(/10 (minutes|minutos)/);
     // The clone credential is the agent-exposure GITHUB_TOKEN (nanrun/checkout.go).
     expect(flat).toMatch(/`GITHUB_TOKEN` (with|con) \*\*Agent \(read access\)\*\*/);
-    expect(flat).toMatch(/succeeded[^.]*failed[^.]*cancel/);
+    expect(flat).toMatch(/(succeeded, failed, timed out or cancelled|bien, con error, por tiempo o cancelado)/);
+    // nanrun/checkout.go: the event's sha is fetched first; only a moved, unfetchable head fails.
+    expect(flat).toMatch(/(always checks out the commit the event names|siempre hace checkout del commit que indica el evento)/);
+    expect(body).toContain('(#' + (page.prefix ? 'receta' : 'recipe') + '-pr-gatekeeper)');
   });
 
   test('untrusted heads are ignored by default, opt-in is the member\'s decision', () => {

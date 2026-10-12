@@ -42,7 +42,7 @@ Press **New automation**. A template fills in sensible defaults that you can cha
 
 | Template | What it does | Starts on |
 |---|---|---|
-| **Pull request review** | Reviews every new or updated pull request and proposes a review. | GitHub webhook: `pull_request` opened, synchronize, reopened or ready for review. Drafts are ignored. |
+| **Pull request review** | Reviews every new or updated pull request and proposes a review. To check tests and keep one comment per pull request, see [Recipe: PR gatekeeper](#recipe-pr-gatekeeper). | GitHub webhook: `pull_request` opened, synchronize, reopened or ready for review. Drafts are ignored. |
 | **Issue triage** | Analyses new issues, comments and proposes labels. | GitHub webhook: `issues` opened or reopened. |
 | **CI failure** | Investigates failed workflow runs and proposes a fix (a push and a pull request) or an explanation. | GitHub webhook: `workflow_run` completed with conclusion `failure`. |
 | **Generic webhook** | Runs your instructions on any signed JSON event. | A webhook with the [NaN signature](/docs/webhooks#send-your-own-events). |
@@ -65,7 +65,7 @@ The three GitHub templates act on a repository, so they need a **GitHub reposito
 | **GitHub repository (optional)** | `owner/name`, for example `acme/api`. The repository the actions act on. |
 | **Checkout** | **Workspace folder** (the default): the agent works in **Folder**, in your workspace. **Fresh clone per run**: NaN clones the **GitHub repository** for each run, at the commit the event is about, and deletes the clone when the run ends. See [Fresh clone per run](#fresh-clone-per-run). |
 | **Run pull requests from forks and outside contributors** | Shown with **Fresh clone per run**. Off by default. See [Pull requests from forks and outside contributors](#pull-requests-from-forks-and-outside-contributors). |
-| **Keep one comment per pull request** | Each run edits the automation's comment on the pull request instead of adding a new one. Off by default. See [One comment per pull request](#one-comment-per-pull-request). |
+| **Keep one comment per pull request** | Each run edits the automation's comment on the pull request instead of adding a new one. Off by default, and available once **GitHub repository (optional)** is set. See [One comment per pull request](#one-comment-per-pull-request). |
 | **Secrets** | Which of your [secrets](#secrets) the runs receive, and who receives each one. |
 | **Approval** | Which kinds of action wait for you. See [Actions and approval](#actions-and-approval). |
 | **Runs per hour** | From 1 to 120, counted over the last hour. 30 by default. Beyond it, new starts are refused until older runs leave that hour. |
@@ -248,10 +248,10 @@ Two runs never share that folder, not even two runs of the same branch, so revie
 | The run was started by | NaN checks out |
 |---|---|
 | A `pull_request` event about the automation's repository | The pull request's head commit (`pull_request.head.sha`). The base branch is also fetched, as `origin/<base>`, so the agent can diff against it. |
-| A `workflow_run` event | The head commit of that workflow run. |
+| A `workflow_run` event about the automation's repository | The head commit of that workflow run. |
 | Anything else: issues, schedules, **Run now**, NaN senders | The latest commit of the default branch. |
 
-If the pull request got a new commit after the event was sent, the run fails instead of reviewing a different commit (`pull request head moved`). The new commit sends its own event.
+NaN always checks out the commit the event names, even if the pull request has moved on since: each new commit sends its own event. If that commit can no longer be fetched and the pull request's head is now a different commit, the run fails (`pull request head moved`) instead of reviewing a different one.
 
 The run's page shows what it checked out under **Checkout**, for example `fresh @ 0123456789ab` and the pull request number. In the API, it is the run's `checkout` field.
 
@@ -267,7 +267,7 @@ Some limits apply:
 
 - The **Time limit (minutes)** counts from the start: the clone and the agent share it. The clone may take up to 10 minutes.
 - A clone may hold up to 4 GiB and 500,000 files. Beyond that, the run fails with a message that says so.
-- No pushes: a fresh clone is for comments, reviews and labels. A proposal with `git_push` is refused (`proposal_invalid`).
+- No pushes: a fresh clone is for comments, reviews and labels. A proposal with `git_push` is refused (`proposal_invalid`), and the **Approval** card reminds you of it.
 
 ### Pull requests from forks and outside contributors
 
@@ -281,7 +281,7 @@ So, by default, an automation with **Fresh clone per run** ignores:
 
 They show in **Deliveries** as **Ignored by a filter**, and no run starts.
 
-To run them too, tick **Run pull requests from forks and outside contributors**. That is your decision: the portal warns you and never stops you. If you turn it on, give the agent only read tokens limited to that repository, and keep nothing in the workspace you would not want a stranger's code to see.
+To run them too, tick **Run pull requests from forks and outside contributors**. That is your decision: the portal warns you and never stops you. If you turn it on, give the agent no token, or only read tokens limited to that repository, and keep nothing in the workspace you would not want a stranger's code to see.
 
 With **Workspace folder**, nothing is ignored this way: use [Only some GitHub users](/docs/webhooks#only-some-github-users) to choose who can start it.
 
@@ -296,6 +296,8 @@ How NaN finds it: each comment it posts for the automation ends with a hidden ma
 - With a token GitHub does not let NaN identify (a GitHub App installation token), each run posts a new comment.
 
 The run's page shows **One comment, updated each run** when this is on.
+
+For a complete setup that uses all of this, see [Recipe: PR gatekeeper](#recipe-pr-gatekeeper).
 
 ## Run it now
 
@@ -413,7 +415,7 @@ For a private repository, NaN also needs a token to clone it: create a second on
 | **GitHub repository (optional)** | `owner/name` | The repository it checks and comments on. |
 | **Checkout** | **Fresh clone per run** | Each run works on the pull request's exact commit, in a folder nobody else uses, deleted at the end. |
 | **Keep one comment per pull request** | On | One comment per pull request, updated on every push. |
-| **Run pull requests from forks and outside contributors** | Off | See [why](#pull-requests-from-forks-and-outside-contributors). |
+| **Run pull requests from forks and outside contributors** | Off | Pull requests from forks and from authors without write access are not checked. See [why and how to change it](#pull-requests-from-forks-and-outside-contributors). |
 | **When a run is active** | **Cancel the previous run** | A new push cancels the check of the previous commit. |
 | **Approval** | **Fully automatic** | The comment is posted without waiting for you. |
 | **Time limit (minutes)** | 30, more if your tests are slow | The clone, the tests and the review share it. |
@@ -421,25 +423,27 @@ For a private repository, NaN also needs a token to clone it: create a second on
 
 In the **Secrets** card, pick `GITHUB_WRITE_TOKEN` in the `GITHUB_TOKEN` row the template adds (**Actions only (write access)**). For a private repository, **Add a secret**: `GITHUB_READ_TOKEN` as `GITHUB_TOKEN`, **Agent (read access)**.
 
-With **Fully automatic**, whatever the agent proposes applies without asking, and the instructions ask for one comment only. For a safety net, choose **Custom** and leave only **Comment on pull requests** unticked: anything else it proposes, such as a review that approves or labels, waits for you.
+With **Fully automatic**, the editor shows a notice that outside events can act without asking: that is expected here. Whatever the agent proposes applies without asking, and the instructions ask for one comment only. For a safety net, choose **Custom** and leave only **Comment on pull requests** unticked: anything else it proposes, such as a review that approves or labels, waits for you.
 
 Press **Create automation**.
 
 ### Connect GitHub
 
-In the **Triggers** tab, press **+ Webhook**. The sender (**GitHub**) and the event filter of the template are already filled in: `pull_request` opened, synchronize, reopened and ready for review, drafts ignored. Press **Add webhook** and copy the URL and the secret.
+In the **Triggers** tab, press **+ Webhook**. The sender (**GitHub**) and the event filter of the template are already filled in: `pull_request` opened, synchronize, reopened and ready for review, drafts ignored. Press **Add webhook**, copy the URL and the secret (they are shown **only once**) and press **I've saved them**.
 
 In the repository on GitHub, **Settings → Webhooks → Add webhook**: the URL as **Payload URL**, `application/json` as **Content type**, the secret as **Secret**, and under **Which events**, **Let me select individual events** with only **Pull requests** ticked. The details are in [From GitHub](/docs/webhooks#from-github).
 
 ### Try it
 
-Open a pull request, or push to one. The run appears in **Runs** and, when it ends, the comment appears on the pull request. Push again: the same comment is updated.
+Open a pull request from a branch of the repository (not a fork, not a draft), or push to one. The run appears in **Runs** and, when it ends, the comment appears on the pull request. Push again: the same comment is updated.
+
+If nothing appears, check **Deliveries** first, then the apply run of the automation's run: `succeeded` means the proposal was accepted, not that the comment was posted.
 
 </Steps>
 
 ### Example instructions
 
-Adapt the checks to your repository. The pull request arrives as data with each event, and NaN already tells the agent how to propose the comment.
+Adapt the checks to your repository. The workspace needs the tools your tests use (Go, Node and so on). The pull request arrives as data with each event (`<base>` is its `pull_request.base.ref`), and NaN already tells the agent how to propose the comment.
 
 ```text
 You are the PR gatekeeper for this repository. A pull request was opened or

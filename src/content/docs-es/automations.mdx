@@ -42,7 +42,7 @@ Pulsa **New automation**. Una plantilla rellena valores razonables que puedes ca
 
 | Plantilla | Qué hace | Se lanza con |
 |---|---|---|
-| **Pull request review** | Revisa cada pull request nueva o actualizada y propone una review. | Webhook de GitHub: `pull_request` opened, synchronize, reopened o ready for review. Los borradores se ignoran. |
+| **Pull request review** | Revisa cada pull request nueva o actualizada y propone una review. Para comprobar tests y dejar un comentario por pull request, consulta [Receta: PR gatekeeper](#receta-pr-gatekeeper). | Webhook de GitHub: `pull_request` opened, synchronize, reopened o ready for review. Los borradores se ignoran. |
 | **Issue triage** | Analiza las issues nuevas, comenta y propone etiquetas. | Webhook de GitHub: `issues` opened o reopened. |
 | **CI failure** | Investiga las ejecuciones de workflow fallidas y propone un arreglo (un push y una pull request) o una explicación. | Webhook de GitHub: `workflow_run` completed con conclusion `failure`. |
 | **Generic webhook** | Ejecuta tus instrucciones con cualquier evento JSON firmado. | Un webhook con la [firma de NaN](/es/docs/webhooks#envía-tus-propios-eventos). |
@@ -64,8 +64,8 @@ Las tres plantillas de GitHub actúan sobre un repositorio, así que necesitan u
 | **Time limit (minutes)** | El tiempo máximo, de 1 a 120. 30 por defecto. |
 | **GitHub repository (optional)** | `owner/name`, por ejemplo `acme/api`. El repositorio sobre el que actúan las acciones. |
 | **Checkout** | **Workspace folder** (por defecto): el agente trabaja en **Folder**, en tu workspace. **Fresh clone per run** (clon nuevo por run): NaN clona el **GitHub repository** en cada run, en el commit del que trata el evento, y borra el clon cuando termina el run. Consulta [Clon nuevo por run](#clon-nuevo-por-run). |
-| **Run pull requests from forks and outside contributors** | Lanzar también las pull requests de forks y de colaboradores externos. Aparece con **Fresh clone per run**. Desactivado por defecto. Consulta [Pull requests de forks y de colaboradores externos](#pull-requests-de-forks-y-de-colaboradores-externos). |
-| **Keep one comment per pull request** | Un solo comentario por pull request: cada run edita el comentario de la automatización en vez de añadir uno nuevo. Desactivado por defecto. Consulta [Un comentario por pull request](#un-comentario-por-pull-request). |
+| **Run pull requests from forks and outside contributors** | Aparece con **Fresh clone per run**. Desactivado por defecto. Consulta [Pull requests de forks y de colaboradores externos](#pull-requests-de-forks-y-de-colaboradores-externos). |
+| **Keep one comment per pull request** | Cada run edita el comentario de la automatización en la pull request en vez de añadir uno nuevo. Desactivado por defecto, y disponible cuando hay un **GitHub repository (optional)**. Consulta [Un comentario por pull request](#un-comentario-por-pull-request). |
 | **Secrets** | Cuáles de tus [secretos](#secretos) reciben los runs, y quién recibe cada uno. |
 | **Approval** | Qué tipos de acción esperan tu aprobación. Consulta [Acciones y aprobación](#acciones-y-aprobación). |
 | **Runs per hour** | Runs por hora, de 1 a 120, contados sobre la última hora. 30 por defecto. Por encima, los nuevos arranques se rechazan hasta que los runs más antiguos salen de esa hora. |
@@ -247,11 +247,11 @@ Dos runs nunca comparten esa carpeta, ni siquiera dos runs de la misma rama, as�
 
 | El run lo lanzó | NaN hace checkout de |
 |---|---|
-| Un evento `pull_request` sobre el repositorio de la automatización | El commit de cabeza de la pull request (`pull_request.head.sha`). También trae la rama base, como `origin/<base>`, para que el agente pueda compararla. |
-| Un evento `workflow_run` | El commit de cabeza de esa ejecución de workflow. |
+| Un evento `pull_request` sobre el repositorio de la automatización | El último commit (head) de la pull request (`pull_request.head.sha`). También trae la rama base, como `origin/<base>`, para que el agente pueda compararla. |
+| Un evento `workflow_run` sobre el repositorio de la automatización | El último commit (head) de esa ejecución de workflow. |
 | Cualquier otra cosa: issues, programaciones, **Run now**, emisores NaN | El último commit de la rama por defecto. |
 
-Si la pull request recibió un commit nuevo después de enviarse el evento, el run falla en vez de revisar otro commit (`pull request head moved`). El commit nuevo envía su propio evento.
+NaN siempre hace checkout del commit que indica el evento, aunque la pull request haya avanzado desde entonces: cada commit nuevo envía su propio evento. Si ese commit ya no se puede traer y la cabeza de la pull request es ahora otro commit, el run falla (`pull request head moved`) en vez de revisar otro distinto.
 
 La página del run muestra lo que ha clonado en **Checkout**, por ejemplo `fresh @ 0123456789ab` y el número de la pull request. En la API es el campo `checkout` del run.
 
@@ -261,13 +261,13 @@ Para clonar, NaN usa el secreto que asignas a la automatización como `GITHUB_TO
 
 Las cachés de lenguaje y los archivos temporales del run también viven en su carpeta: módulos y caché de compilación de Go, npm, pip y `TMPDIR`. Instalar dependencias o pasar tests no deja nada en tu carpeta personal.
 
-Cuando termina el run, NaN borra el clon, las cachés y los archivos temporales, pase lo que pase: `succeeded`, `failed`, por tiempo o cancelado. Si el run se corta a medias (porque el workspace se reinicia, por ejemplo), los restos se borran la próxima vez que arrancan runs. Los artefactos del run se conservan, como en cualquier run.
+Cuando termina el run, NaN borra el clon, las cachés y los archivos temporales, haya terminado bien, con error, por tiempo o cancelado. Si el run se corta a medias (porque el workspace se reinicia, por ejemplo), los restos se borran la próxima vez que arrancan runs. Los artefactos del run se conservan, como en cualquier run.
 
 Hay algunos límites:
 
 - El **Time limit (minutes)** cuenta desde el principio: el clon y el agente lo comparten. El clon puede tardar hasta 10 minutos.
 - Un clon puede ocupar hasta 4 GiB y 500.000 archivos. Por encima, el run falla con un mensaje que lo dice.
-- Sin push: un clon nuevo es para comentarios, reviews y etiquetas. Una propuesta con `git_push` se rechaza (`proposal_invalid`).
+- Sin push: un clon nuevo es para comentarios, reviews y etiquetas. Una propuesta con `git_push` se rechaza (`proposal_invalid`), y la tarjeta **Approval** te lo recuerda.
 
 ### Pull requests de forks y de colaboradores externos
 
@@ -281,7 +281,7 @@ Por eso, por defecto, una automatización con **Fresh clone per run** ignora:
 
 Aparecen en **Deliveries** como **Ignored by a filter** y no se lanza ningún run.
 
-Para lanzarlas también, marca **Run pull requests from forks and outside contributors**. Es tu decisión: el portal te avisa y nunca te lo impide. Si lo activas, dale al agente solo tokens de lectura limitados a ese repositorio, y no guardes en el workspace nada que no quieras que vea el código de un desconocido.
+Para lanzarlas también, marca **Run pull requests from forks and outside contributors**. Es tu decisión: el portal te avisa y nunca te lo impide. Si lo activas, no le des ningún token al agente, o solo tokens de lectura limitados a ese repositorio, y no guardes en el workspace nada que no quieras que vea el código de un desconocido.
 
 Con **Workspace folder** no se ignora nada de esta forma: usa [Solo algunos usuarios de GitHub](/es/docs/webhooks#solo-algunos-usuarios-de-github) para elegir quién puede lanzarla.
 
@@ -296,6 +296,8 @@ Cómo lo encuentra NaN: cada comentario que publica para la automatización term
 - Con un token que GitHub no deja identificar a NaN (un token de instalación de una GitHub App), cada run publica un comentario nuevo.
 
 La página del run muestra **One comment, updated each run** (un comentario, actualizado en cada run) cuando está activado.
+
+Para una configuración completa que usa todo esto, consulta [Receta: PR gatekeeper](#receta-pr-gatekeeper).
 
 ## Lánzala ahora
 
@@ -413,7 +415,7 @@ Para un repositorio privado, NaN también necesita un token para clonarlo: crea 
 | **GitHub repository (optional)** | `owner/name` | El repositorio que comprueba y en el que comenta. |
 | **Checkout** | **Fresh clone per run** | Cada run trabaja sobre el commit exacto de la pull request, en una carpeta que nadie más usa y que se borra al final. |
 | **Keep one comment per pull request** | Activado | Un comentario por pull request, actualizado en cada push. |
-| **Run pull requests from forks and outside contributors** | Desactivado | Consulta [por qué](#pull-requests-de-forks-y-de-colaboradores-externos). |
+| **Run pull requests from forks and outside contributors** | Desactivado | Las pull requests de forks y de autores sin permiso de escritura no se comprueban. Consulta [por qué y cómo cambiarlo](#pull-requests-de-forks-y-de-colaboradores-externos). |
 | **When a run is active** | **Cancel the previous run** | Un push nuevo cancela la comprobación del commit anterior. |
 | **Approval** | **Fully automatic** | El comentario se publica sin esperarte. |
 | **Time limit (minutes)** | 30, más si tus tests son lentos | El clon, los tests y la review lo comparten. |
@@ -421,25 +423,27 @@ Para un repositorio privado, NaN también necesita un token para clonarlo: crea 
 
 En la tarjeta **Secrets**, elige `GITHUB_WRITE_TOKEN` en la fila `GITHUB_TOKEN` que añade la plantilla (**Actions only (write access)**). Para un repositorio privado, **Add a secret**: `GITHUB_READ_TOKEN` como `GITHUB_TOKEN`, **Agent (read access)**.
 
-Con **Fully automatic**, lo que proponga el agente se aplica sin preguntar, y las instrucciones solo piden un comentario. Si quieres una red de seguridad, elige **Custom** y deja sin marcar solo **Comment on pull requests**: cualquier otra cosa que proponga, como una review que aprueba o etiquetas, te espera.
+Con **Fully automatic**, el editor muestra un aviso de que los eventos de fuera pueden actuar sin preguntar: aquí es lo esperado. Lo que proponga el agente se aplica sin preguntar, y las instrucciones solo piden un comentario. Si quieres una red de seguridad, elige **Custom** y deja sin marcar solo **Comment on pull requests**: cualquier otra cosa que proponga, como una review que aprueba o etiquetas, te espera.
 
 Pulsa **Create automation**.
 
 ### Conecta GitHub
 
-En la pestaña **Triggers**, pulsa **+ Webhook**. El emisor (**GitHub**) y el filtro de eventos de la plantilla ya vienen rellenos: `pull_request` abierta, sincronizada, reabierta y lista para review, sin borradores. Pulsa **Add webhook** y copia la URL y el secreto.
+En la pestaña **Triggers**, pulsa **+ Webhook**. El emisor (**GitHub**) y el filtro de eventos de la plantilla ya vienen rellenos: `pull_request` opened, synchronize, reopened y ready for review, sin borradores. Pulsa **Add webhook**, copia la URL y el secreto (se muestran **solo una vez**) y pulsa **I've saved them**.
 
 En el repositorio en GitHub, **Settings → Webhooks → Add webhook**: la URL como **Payload URL**, `application/json` como **Content type**, el secreto como **Secret**, y en **Which events**, **Let me select individual events** con solo **Pull requests** marcado. Los detalles están en [Desde GitHub](/es/docs/webhooks#desde-github).
 
 ### Pruébalo
 
-Abre una pull request, o haz push a una. El run aparece en **Runs** y, cuando termina, el comentario aparece en la pull request. Vuelve a hacer push: se actualiza el mismo comentario.
+Abre una pull request desde una rama del repositorio (no desde un fork, y no como borrador), o haz push a una. El run aparece en **Runs** y, cuando termina, el comentario aparece en la pull request. Vuelve a hacer push: se actualiza el mismo comentario.
+
+Si no aparece nada, mira primero **Deliveries** y después el run de aplicación del run de la automatización: `succeeded` significa que la propuesta se aceptó, no que el comentario se publicara.
 
 </Steps>
 
 ### Instrucciones de ejemplo
 
-Adapta las comprobaciones a tu repositorio. Las instrucciones están en inglés, pero puedes escribirlas en español. La pull request llega como datos con cada evento, y NaN ya le explica al agente cómo proponer el comentario.
+Adapta las comprobaciones a tu repositorio. El workspace necesita las herramientas que usan tus tests (Go, Node, etc.). Las instrucciones están en inglés, pero puedes escribirlas en español; si quieres el comentario en español, cambia la línea "In English". La pull request llega como datos con cada evento (`<base>` es su `pull_request.base.ref`), y NaN ya le explica al agente cómo proponer el comentario.
 
 ```text
 You are the PR gatekeeper for this repository. A pull request was opened or

@@ -128,7 +128,8 @@ describe('openapi.json: the Automations contract (cloud-api)', () => {
     expect(p.checkout.description).toMatch(/clones `github_repo` for each run/);
     expect(p.checkout.description).toMatch(/deletes it when the run ends, whatever the outcome/);
     expect(p.checkout.description).toMatch(/`git_push` is refused/);
-    expect(p.checkout.description).toMatch(/`cwd` and `git_isolation` are not used/);
+    expect(p.checkout.description).toMatch(/`git_isolation` must be `null` or `false`/);
+    expect(op('/automations/{id}/runs', 'post').description).toContain('or cancelled by `supersede`');
     expect(p.sticky_pr_comment).toMatchObject({ type: 'boolean', default: false });
     expect(p.sticky_pr_comment.description).toMatch(/only edits a comment it posted itself/);
     expect(p.checkout_untrusted_heads).toMatchObject({ type: 'boolean', default: false });

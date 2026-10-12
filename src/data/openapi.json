@@ -3239,7 +3239,7 @@
             "platformToken": []
           }
         ],
-        "description": "Starts a run of the automation now, with its saved instructions, secrets and approval settings: the same run a webhook or a schedule would start. Its agent proposes actions, which apply automatically or wait for your approval as the automation says. Follow it like any run (`GET /v1/runs/{id}/events`). Runs you start this way are never skipped by `skip_if_active`, but they count towards the automation's `max_runs_per_hour` and the limits of every run.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:run` scope. Runs need a plan with inference.",
+        "description": "Starts a run of the automation now, with its saved instructions, secrets and approval settings: the same run a webhook or a schedule would start. Its agent proposes actions, which apply automatically or wait for your approval as the automation says. Follow it like any run (`GET /v1/runs/{id}/events`). Runs you start this way are never skipped by `skip_if_active` or cancelled by `supersede`, but they count towards the automation's `max_runs_per_hour` and the limits of every run.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:run` scope. Runs need a plan with inference.",
         "parameters": [
           {
             "name": "id",
@@ -5830,7 +5830,7 @@
                 "type": "null"
               }
             ],
-            "description": "On a run of an automation with `checkout: \"fresh\"`: the commit it works on. `null` for every other run."
+            "description": "On an automation run (`phase: \"propose\"`) whose automation uses `checkout: \"fresh\"`: the commit it works on. `null` for every other run, apply runs included."
           },
           "superseded_by": {
             "type": [
@@ -5842,7 +5842,7 @@
           },
           "sticky_pr_comment": {
             "type": "boolean",
-            "description": "Whether this run's pull request comments edit the automation's one comment per pull request (`sticky_pr_comment` of the automation when the run started)."
+            "description": "On an automation run (`phase: \"propose\"`): whether its pull request comments edit the automation's one comment per pull request (`sticky_pr_comment` of the automation when the run started). `false` on other runs."
           }
         }
       },
@@ -6938,7 +6938,7 @@
               "fresh"
             ],
             "default": "workspace",
-            "description": "Where the agent works. `workspace`: in `cwd`, in your workspace, as any run. `fresh`: NaN clones `github_repo` for each run into a folder of its own, at the event's exact commit (the pull request's head commit for a `pull_request` event on that repository, the run's head commit for a `workflow_run` event, the latest commit of the default branch otherwise), and deletes it when the run ends, whatever the outcome; `cwd` and `git_isolation` are not used. A `git_push` is refused in `fresh` mode. Needs `github_repo`."
+            "description": "Where the agent works. `workspace`: in `cwd`, in your workspace, as any run. `fresh`: NaN clones `github_repo` for each run into a folder of its own, at the event's exact commit (the pull request's head commit for a `pull_request` event on that repository, the run's head commit for a `workflow_run` event on that repository, the latest commit of the default branch otherwise), and deletes it when the run ends, whatever the outcome; `cwd` is not used and `git_isolation` must be `null` or `false`. A `git_push` is refused in `fresh` mode. Needs `github_repo`."
           },
           "sticky_pr_comment": {
             "type": "boolean",
