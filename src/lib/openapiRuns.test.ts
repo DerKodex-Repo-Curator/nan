@@ -170,7 +170,14 @@ describe('openapi.json: the Runs contract (cloud-api)', () => {
       // Phase 2 (handlers/runs.go runJSON), same order.
       'phase', 'inference', 'automation_id', 'parent_run_id', 'apply_run_ids', 'approval', 'instructions', 'input',
       'approval_kinds', 'github_repo', 'trigger_depth', 'secrets', 'agent_finished_at',
+      // Migration 110 (PR gatekeeper), same order.
+      'checkout', 'superseded_by', 'sticky_pr_comment',
     ]);
+    expect(Object.keys(s.components.schemas.RunCheckout.properties)).toEqual(['mode', 'sha', 'pr_number', 'base_ref', 'label']);
+    expect(s.components.schemas.RunCheckout.properties.mode.enum).toEqual(['fresh']);
+    expect(s.components.schemas.Run.properties.checkout.oneOf).toEqual([{ $ref: '#/components/schemas/RunCheckout' }, { type: 'null' }]);
+    expect(s.components.schemas.Run.properties.superseded_by.description).toContain('`concurrency_policy: "supersede"`');
+    expect(Object.keys(s.components.schemas.RunEventDataStarted.properties)).toEqual(['agent', 'agent_version', 'model', 'cwd', 'worktree', 'branch', 'unit', 'checkout']);
     expect(Object.keys(s.components.schemas.RunResult.properties)).toEqual([
       'status', 'summary', 'branch', 'commit', 'changed_files', 'artifacts', 'actions_applied',
     ]);
