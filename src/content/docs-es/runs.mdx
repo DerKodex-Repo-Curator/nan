@@ -68,7 +68,7 @@ Pulsa **New run** y rellena el formulario (el portal está en inglés):
 | **Folder** | La carpeta donde trabaja el agente. Por defecto es `/home/nan` y tiene que estar dentro de ella. |
 | **Separate branch** | Rama aparte: **Auto** (por defecto), **On** u **Off**. En un repositorio git, el agente trabaja en su propia rama y tu checkout se queda como está. Consulta [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
 | **Time limit** | El tiempo máximo: **30 min** por defecto, igual que en la CLI y la API. Las opciones son 15 min, 30 min, 1 hour y 2 hours (1 hora y 2 horas). El run se para al llegar a él. |
-| **Inference** | La inferencia: **NaN (included in your plan)**, la predeterminada, o **My own key**, una **Provider key** tuya y el **Model** que usar. Consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok). |
+| **Inference** | La inferencia: **NaN (included in your plan)**, la predeterminada (aparece como **NaN (not in your plan)** si tu plan no incluye inferencia), o **My own key**, una **Provider key** tuya y el **Model** que usar. Consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok). |
 
 Pulsa **Start run**, o `Ctrl+Enter` (`⌘+Enter` en un Mac) desde la caja de la tarea.
 
@@ -176,14 +176,14 @@ Escribe el id del modelo tal como lo llama tu proveedor. NaN no lo comprueba con
 
 Abre tus ajustes en el portal, **Secrets**, y pulsa **Add secret** (guardar un secreto necesita que hayas iniciado sesión en el navegador). Rellena (el portal está en inglés):
 
+- **Name**: cómo la nombran los runs y las automatizaciones, por ejemplo `ANTHROPIC_KEY`. Mayúsculas, dígitos y `_`, empezando por una letra.
 - **Kind**: **Provider key**.
 - **Provider**: **Anthropic**, **OpenAI**, **Google Gemini** u **OpenAI-compatible**. No se puede cambiar después: para cambiar de proveedor, añade otra clave.
 - **Base URL**, solo para **OpenAI-compatible**: la raíz del endpoint, que suele acabar en `/v1`, por ejemplo `https://api.together.xyz/v1`. Mira las reglas más abajo.
 - **Value**: la clave, una sola línea sin espacios, de 8 a 4096 caracteres.
-- **Name**: cómo la nombran los runs y las automatizaciones, por ejemplo `ANTHROPIC_KEY`. Mayúsculas, dígitos y `_`, empezando por una letra.
 - **Description (optional)**.
 
-Como todo secreto, una provider key es de **solo escritura**: nadie puede volver a leerla, ni siquiera tú. La lista la muestra como **Provider key · Anthropic** (o su proveedor) con los 4 últimos caracteres y, en una clave OpenAI-compatible, su URL base, que puedes cambiar con **Base URL**. **Replace value** cambia la clave para todos los runs que arranquen a partir de ese momento. `nan secrets ls` la muestra con **KIND** `provider_key`, su **PROVIDER** y su **BASE URL**.
+Como todo secreto, una provider key es de **solo escritura**: nadie puede volver a leerla, ni siquiera tú. La lista la muestra como **Provider key · Anthropic** (o su proveedor) normalmente con sus 4 últimos caracteres y, en una clave OpenAI-compatible, su URL base, que puedes cambiar con **Base URL**. **Replace value** cambia la clave para todos los runs que arranquen a partir de ese momento. `nan secrets ls` la muestra con **KIND** `provider_key`, su **PROVIDER** y su **BASE URL**.
 
 **Reglas de la URL base.** NaN comprueba la URL base al guardarla y nunca se conecta a ella: solo lo hace el agente de tu workspace.
 
@@ -208,7 +208,7 @@ nan run --byok-secret ANTHROPIC_KEY --model claude-sonnet-4-5 "arregla el test i
 
 `--byok-secret` recibe el **nombre** del secreto, nunca la clave, y necesita `--model`. `nan runs show <id>` muestra la elección en su línea **inference**, y `nan runs ls` en su columna **INFERENCE**.
 
-**Desde la API**, añade un objeto `inference` y no mandes el `model` de primer nivel:
+**Desde la API**, con una sesión iniciada (consulta [Quién puede usarla](#quién-puede-usarla)), añade un objeto `inference` y no mandes el `model` de primer nivel:
 
 ```json
 {
@@ -225,11 +225,11 @@ El run que recibes dice lo mismo en su `inference` (`"source": "byok"`, el `prov
 
 - **Sin un plan con inferencia de NaN**, los runs y las automatizaciones con tu propia clave funcionan si tienes **un workspace propio activo**. Con un plan con inferencia, puedes elegir una u otra en cada run.
 - **Un run que lanzas tú con tu clave necesita una sesión iniciada**: el portal, o la CLI después de `nan auth login`. Una API key (`sk-...`) o un token de plataforma (`nan_pat_...`) recibe `403 session_required`, y `nan run` rechaza `NAN_TOKEN` y `--token-file` para estos runs. El motivo: el prompt de un run puede hacer que el agente imprima la clave que tiene, y esas credenciales no pueden leer tus secretos, así que tampoco deben poder conseguir que un agente revele uno. Sí pueden lanzar una [automatización que usa tu clave](/es/docs/automations#usa-tu-propia-clave-de-proveedor-byok): sus instrucciones son las que tú guardaste.
-- Si **My own key** aparece desactivado con "isn't available for your account yet", todavía no está abierto para tu cuenta.
+- Si **My own key** aparece desactivado con "isn't available for your account yet", se está abriendo poco a poco y tu cuenta todavía no lo tiene: mientras tanto usa la inferencia de NaN, o pregunta en `#support` en Discord.
 
 ### Facturación y uso
 
-Tu proveedor factura todos los tokens de estos runs, en tu cuenta con él. NaN no los mide: nada cuenta para tu plan de NaN ni para su uso. Los tokens que muestra un run son los que ha informado el agente (Pi los informa, Hermes no); la referencia es la factura de tu proveedor.
+Tu proveedor factura todos los tokens de estos runs, en tu cuenta con él. NaN no los mide: nada cuenta para tu plan de NaN ni para su uso. Los tokens que muestra un run son los que ha informado el agente (Pi y Pi + Gentle Shell los informan, Hermes no); la referencia es la factura de tu proveedor.
 
 ### Límites
 
@@ -252,6 +252,7 @@ Tu proveedor factura todos los tokens de estos runs, en tu cuenta con él. NaN n
 | `404 not_found`, `param: inference.secret` | No tienes ningún secreto con ese nombre. Comprueba los nombres con `nan secrets ls`. |
 | `400 invalid_request`, `param: inference.secret` | Ese secreto es un secreto genérico, no una **Provider key**. Añade tu clave como provider key. |
 | `400 invalid_request`, `param: inference.model` | Falta el modelo, o no es un id de modelo (letras, dígitos y `. _ : / -`, hasta 128, sin empezar por `-`). |
+| `400 invalid_request`, `param: model` | Un `model` de primer nivel enviado con `"source": "byok"`. Muévelo a `inference.model`. |
 | `400 invalid_request`, `param: inference` | Tu propia clave todavía no está disponible para tu cuenta, o el objeto `inference` está mal formado. |
 | `403 session_required` | Un run con tu clave lanzado con una API key o un token. Lánzalo con la sesión iniciada, o lanza una automatización. |
 | `403 tier_restricted` | Ni plan con inferencia de NaN ni un workspace propio activo. |

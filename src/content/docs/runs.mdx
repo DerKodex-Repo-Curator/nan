@@ -68,7 +68,7 @@ Press **New run** and fill in the form:
 | **Folder** | Where the agent works. It defaults to `/home/nan` and must be inside it. |
 | **Separate branch** | **Auto** (the default), **On** or **Off**. In a git repository, the agent works on its own branch and your checkout stays as it is. See [Where the agent works](#where-the-agent-works). |
 | **Time limit** | **30 min** by default, the same as the CLI and the API. The options are 15 min, 30 min, 1 hour and 2 hours. The run is stopped when it reaches it. |
-| **Inference** | **NaN (included in your plan)**, the default, or **My own key**: a **Provider key** of yours and the **Model** to use. See [Use your own provider key](#use-your-own-provider-key-byok). |
+| **Inference** | **NaN (included in your plan)**, the default (shown as **NaN (not in your plan)** when your plan has no inference), or **My own key**: a **Provider key** of yours and the **Model** to use. See [Use your own provider key](#use-your-own-provider-key-byok). |
 
 Press **Start run**, or `Ctrl+Enter` (`⌘+Enter` on a Mac) from the task box.
 
@@ -176,14 +176,14 @@ Type the model id exactly as your provider names it. NaN does not check it again
 
 Open your settings on the portal, **Secrets**, and press **Add secret** (saving a secret needs you signed in through the browser). Fill in:
 
+- **Name**: how runs and automations refer to it, for example `ANTHROPIC_KEY`. Capitals, digits and `_`, starting with a letter.
 - **Kind**: **Provider key**.
 - **Provider**: **Anthropic**, **OpenAI**, **Google Gemini** or **OpenAI-compatible**. It cannot be changed later: to switch providers, add another key.
 - **Base URL**, only for **OpenAI-compatible**: the root of the endpoint, usually ending in `/v1`, for example `https://api.together.xyz/v1`. See the rules below.
 - **Value**: the key, one line without spaces, 8 to 4096 characters.
-- **Name**: how runs and automations refer to it, for example `ANTHROPIC_KEY`. Capitals, digits and `_`, starting with a letter.
 - **Description (optional)**.
 
-Like every secret, a provider key is **write-only**: nobody can read it back, not even you. The list shows it as **Provider key · Anthropic** (or its provider) with the last 4 characters, and, for an OpenAI-compatible key, its base URL, which you can change with **Base URL**. **Replace value** changes the key for every run that starts from then on. `nan secrets ls` shows it with **KIND** `provider_key`, its **PROVIDER** and its **BASE URL**.
+Like every secret, a provider key is **write-only**: nobody can read it back, not even you. The list shows it as **Provider key · Anthropic** (or its provider) usually with its last 4 characters, and, for an OpenAI-compatible key, its base URL, which you can change with **Base URL**. **Replace value** changes the key for every run that starts from then on. `nan secrets ls` shows it with **KIND** `provider_key`, its **PROVIDER** and its **BASE URL**.
 
 **Base URL rules.** NaN checks the base URL when you save it, and never connects to it: only the agent in your workspace does.
 
@@ -208,7 +208,7 @@ nan run --byok-secret ANTHROPIC_KEY --model claude-sonnet-4-5 "fix the flaky tes
 
 `--byok-secret` takes the **name** of the secret, never the key itself, and needs `--model`. `nan runs show <id>` shows the choice on its **inference** line, and `nan runs ls` in its **INFERENCE** column.
 
-**From the API**, add an `inference` object and leave the top-level `model` out:
+**From the API**, with a signed-in session (see [Who can use it](#who-can-use-it)), add an `inference` object and leave the top-level `model` out:
 
 ```json
 {
@@ -225,11 +225,11 @@ The run you get back says the same in its `inference` (`"source": "byok"`, the `
 
 - **Without a NaN inference plan**, runs and automations on your own key work if you have **a workspace of your own that is active**. With a NaN inference plan, you can choose either for each run.
 - **A run you start yourself on your key needs a signed-in session**: the portal, or the CLI after `nan auth login`. An API key (`sk-...`) or a platform token (`nan_pat_...`) gets `403 session_required`, and `nan run` refuses `NAN_TOKEN` and `--token-file` for it. The reason: the prompt of a run can make the agent print the key it holds, and those credentials cannot read your secrets, so they must not be able to make an agent reveal one. They can still start an [automation that uses your key](/docs/automations#use-your-own-provider-key-byok): its instructions are the ones you saved.
-- If **My own key** is disabled with "isn't available for your account yet", it is not open to your account yet.
+- If **My own key** is disabled with "isn't available for your account yet", it is being opened gradually and your account does not have it yet: use NaN inference meanwhile, or ask in `#support` on Discord.
 
 ### Billing and usage
 
-Your provider bills every token of these runs, under your account with them. NaN does not meter them: nothing counts against your NaN plan or its usage. The tokens a run shows are the ones the agent reported (Pi reports them, Hermes does not); your provider's bill is the reference.
+Your provider bills every token of these runs, under your account with them. NaN does not meter them: nothing counts against your NaN plan or its usage. The tokens a run shows are the ones the agent reported (Pi and Pi + Gentle Shell report them, Hermes does not); your provider's bill is the reference.
 
 ### Limits
 
@@ -252,6 +252,7 @@ Your provider bills every token of these runs, under your account with them. NaN
 | `404 not_found`, `param: inference.secret` | You have no secret with that name. Check the names with `nan secrets ls`. |
 | `400 invalid_request`, `param: inference.secret` | That secret is a generic secret, not a **Provider key**. Add your key as a provider key. |
 | `400 invalid_request`, `param: inference.model` | The model is missing, or it is not a model id (letters, digits and `. _ : / -`, up to 128, not starting with `-`). |
+| `400 invalid_request`, `param: model` | A top-level `model` sent with `"source": "byok"`. Move it into `inference.model`. |
 | `400 invalid_request`, `param: inference` | Your own key is not available for your account yet, or the `inference` object is malformed. |
 | `403 session_required` | A run on your key with an API key or a token. Start it signed in, or run an automation instead. |
 | `403 tier_restricted` | No NaN inference plan and no active workspace of your own. |

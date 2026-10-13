@@ -331,7 +331,7 @@ Desde la terminal, `nan automations deliveries <automation>` muestra la misma li
 
 ## Lo que cuesta
 
-Cada review es un run en tu workspace, y los tokens que usa su agente cuentan para tu plan como cualquier otra petición. Nuestras reviews de un repositorio de Go de tamaño medio tardan de 8 a 20 minutos; la de las capturas usó 430K tokens de entrada y 5K de salida. Casi todo es el agente leyendo código y la salida de los tests, así que un repositorio pequeño cuesta mucho menos. El run de aplicación no usa inferencia.
+Cada review es un run en tu workspace, y los tokens que usa su agente cuentan para tu plan como cualquier otra petición (con tu propia clave de proveedor, los factura tu proveedor). Nuestras reviews de un repositorio de Go de tamaño medio tardan de 8 a 20 minutos; la de las capturas usó 430K tokens de entrada y 5K de salida. Casi todo es el agente leyendo código y la salida de los tests, así que un repositorio pequeño cuesta mucho menos. El run de aplicación no usa inferencia.
 
 Algunas cosas lo mantienen a raya:
 

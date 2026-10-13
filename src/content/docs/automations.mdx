@@ -62,7 +62,7 @@ The three GitHub templates act on a repository, so they need a **GitHub reposito
 | **Folder** | Where the agent works, inside `/home/nan`. Not used with **Fresh clone per run**. |
 | **Separate branch** | **On** (the default), **Auto** or **Off (work in the folder directly)**, as in a [run](/docs/runs#where-the-agent-works). Not used with **Fresh clone per run**. |
 | **Time limit (minutes)** | From 1 to 120. 30 by default. |
-| **Inference** | **NaN (included in your plan)**, the default, or **My own key**: a **Provider key** of yours and the **Model**. See [Use your own provider key](#use-your-own-provider-key-byok). |
+| **Inference** | **NaN (included in your plan)**, the default (**NaN (not in your plan)** when your plan has no inference), or **My own key**: a **Provider key** of yours and the **Model**. See [Use your own provider key](#use-your-own-provider-key-byok). |
 | **GitHub repository (optional)** | `owner/name`, for example `acme/api`. The repository the actions act on. |
 | **Checkout** | **Workspace folder** (the default): the agent works in **Folder**, in your workspace. **Fresh clone per run**: NaN clones the **GitHub repository** for each run, at the commit the event is about, and deletes the clone when the run ends. See [Fresh clone per run](#fresh-clone-per-run). |
 | **Run pull requests from forks and outside contributors** | Shown with **Fresh clone per run**. Off by default. See [Pull requests from forks and outside contributors](#pull-requests-from-forks-and-outside-contributors). |

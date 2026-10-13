@@ -62,7 +62,7 @@ Las tres plantillas de GitHub actúan sobre un repositorio, así que necesitan u
 | **Folder** | Dónde trabaja el agente, dentro de `/home/nan`. No se usa con **Fresh clone per run**. |
 | **Separate branch** | Rama aparte: **On** (por defecto), **Auto** u **Off (work in the folder directly)** (trabajar directamente en la carpeta), como en un [run](/es/docs/runs#dónde-trabaja-el-agente). No se usa con **Fresh clone per run**. |
 | **Time limit (minutes)** | El tiempo máximo, de 1 a 120. 30 por defecto. |
-| **Inference** | La inferencia: **NaN (included in your plan)**, la predeterminada, o **My own key**, una **Provider key** tuya y el **Model**. Consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok). |
+| **Inference** | La inferencia: **NaN (included in your plan)**, la predeterminada (**NaN (not in your plan)** si tu plan no incluye inferencia), o **My own key**, una **Provider key** tuya y el **Model**. Consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok). |
 | **GitHub repository (optional)** | `owner/name`, por ejemplo `acme/api`. El repositorio sobre el que actúan las acciones. |
 | **Checkout** | **Workspace folder** (por defecto): el agente trabaja en **Folder**, en tu workspace. **Fresh clone per run** (clon nuevo por run): NaN clona el **GitHub repository** en cada run, en el commit del que trata el evento, y borra el clon cuando termina el run. Consulta [Clon nuevo por run](#clon-nuevo-por-run). |
 | **Run pull requests from forks and outside contributors** | Aparece con **Fresh clone per run**. Desactivado por defecto. Consulta [Pull requests de forks y de colaboradores externos](#pull-requests-de-forks-y-de-colaboradores-externos). |
