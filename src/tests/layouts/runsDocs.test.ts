@@ -167,7 +167,9 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
     for (const [size, n] of CONCURRENCY) {
       expect(body, size).toMatch(new RegExp(`^\\| ${size}\\b[^|]*\\| ${n} \\|$`, 'm'));
     }
-    expect(flat).toMatch(/\*\*5 runs/);
+    expect(flat).toMatch(/\*\*5 (of them|de ellos)/);
+    // BYOK runs: their own per-member cap (MemberBYOKCap = 8).
+    expect(flat).toMatch(/\*\*8 (at once|a la vez)\*\*/);
     expect(flat).toMatch(/\*\*8 (on|con) Premium\*\*/);
     expect(flat).toMatch(/\*\*20 runs (per|por) workspace\*\*/);
     expect(flat).toMatch(/\*\*50 (in total|en total)\*\*/);
@@ -175,7 +177,7 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
   });
 
   test('says runs need inference, count as usage and mask secrets', () => {
-    expect(flat).toMatch(/\*\*(A plan with inference|Un plan con inferencia)\.\*\*/);
+    expect(flat).toMatch(/\*\*(A plan with inference, or your own provider key|Un plan con inferencia, o tu propia clave de proveedor)\.\*\*/);
     expect(body).toContain('`***`');
   });
 

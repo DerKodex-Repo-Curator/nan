@@ -91,7 +91,7 @@ Y cómo se comporta:
 
 - **Un workspace encendido con las herramientas de tu repositorio.** El agente ejecuta los tests en uno de tus [workspaces](/es/docs/workspaces), así que necesita lo mismo que tu CI: Go, Node, Python... Instálalas una vez en el workspace, como lo harías en tu portátil, y mantenlo encendido: un workspace parado no puede lanzar runs, y los eventos que llegan mientras tanto se pierden. El ejemplo usa un workspace llamado `work` con Go instalado.
 - **El agente instalado en ese workspace**: Pi, Pi + Gentle Shell o Hermes, desde su [panel de Software](/es/docs/workspaces#agentes-y-el-panel-de-software). La automatización solo puede usar un agente que el workspace tenga (consulta [Elige el agente](/es/docs/runs#elige-el-agente)). El ejemplo usa Pi.
-- **Un plan con inferencia.** Cada review es un [run de agente](/es/docs/runs) y usa tu plan como cualquier otra petición.
+- **Un plan con inferencia, o tu propia clave de proveedor.** Cada review es un [run de agente](/es/docs/runs) y usa tu plan como cualquier otra petición, o [tu propia clave de proveedor](/es/docs/automations#usa-tu-propia-clave-de-proveedor-byok), que factura tu proveedor.
 - **Acceso de administrador al repositorio en GitHub**, para añadir el webhook y crear los tokens.
 - **Una sesión en el navegador en [cloud.nan.builders](https://cloud.nan.builders/)**, con el enlace del correo: la necesitas para crear automatizaciones y guardar secretos.
 

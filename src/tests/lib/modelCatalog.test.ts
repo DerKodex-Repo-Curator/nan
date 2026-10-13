@@ -126,10 +126,24 @@ describe('the snippets in the guides', () => {
    * Every id a reader can copy out of a code block and paste into a request.
    * Both the JSON field and the keyword-argument form the SDK snippets use.
    */
-  const inSnippets = (source: string) => [
-    ...[...source.matchAll(/"model"\s*:\s*"([^"]+)"/g)].map((m) => m[1]),
-    ...[...source.matchAll(/\bmodel\s*=\s*"([^"]+)"/g)].map((m) => m[1]),
-  ];
+  const inSnippets = (source: string) => {
+    // A BYOK inference object names a model of the member's own provider
+    // (/docs/runs#use-your-own-provider-key-byok), not one of ours: its line
+    // carries "source": "byok" and is left out. Nothing else is.
+    const ours = source
+      .split('\n')
+      .filter((line) => !/"source"\s*:\s*"byok"/.test(line))
+      .join('\n');
+    return [
+      ...[...ours.matchAll(/"model"\s*:\s*"([^"]+)"/g)].map((m) => m[1]),
+      ...[...ours.matchAll(/\bmodel\s*=\s*"([^"]+)"/g)].map((m) => m[1]),
+    ];
+  };
+
+  it('a BYOK inference line is the only exemption', () => {
+    expect(inSnippets('{ "inference": { "source": "byok", "secret": "K", "model": "claude-sonnet-4-5" } }')).toEqual([]);
+    expect(inSnippets('{ "source": "nan", "model": "claude-sonnet-4-5" }')).toEqual(['claude-sonnet-4-5']);
+  });
 
   for (const [label, source] of docFiles) {
     it(`only name models that exist (${label})`, () => {

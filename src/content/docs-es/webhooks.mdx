@@ -237,7 +237,7 @@ La pestaña **Deliveries** lista los últimos 50 webhooks que ha recibido la aut
 | **Ignored by a filter** | El filtro de eventos o de autores no ha coincidido o, con **Fresh clone per run**, la pull request venía de un fork o de un autor sin permiso de escritura. |
 | **Stopped: caused by one of its own runs** | Se ha parado un [bucle](#bucles). |
 | **Skipped: a run for the same subject is active** | Consulta [Cuando ya hay un run activo](/es/docs/automations#cuando-ya-hay-un-run-activo). |
-| **Not accepted: your membership does not include runs** | No se ha podido crear el run: tu plan no tiene inferencia, o el workspace está parado o borrado, su agente no está instalado o no tiene clave de inferencia. El emisor no lo reintenta, así que el evento se pierde: mantén el workspace encendido. |
+| **Not accepted: your membership does not include runs** | No se ha podido crear el run: tu plan no tiene inferencia (o, en una automatización con [tu propia clave de proveedor](/es/docs/automations#usa-tu-propia-clave-de-proveedor-byok), no tienes un workspace activo), o el workspace está parado o borrado, su agente no está instalado o no tiene clave de inferencia. El emisor no lo reintenta, así que el evento se pierde: mantén el workspace encendido. |
 | **Too large** | El evento no cabía en lo que puede recibir el agente. |
 
 No se guarda ningún payload ni ninguna cabecera. Las entregas con una firma incorrecta nunca se guardan, y las limitadas (límite de peticiones, cola llena, no disponible temporalmente) se responden pidiendo un reintento y no se listan.
@@ -293,7 +293,7 @@ Cada programación muestra su próxima ejecución y cómo fue la última:
 | **Skipped: too many runs waiting** | Tu cola de runs está llena. |
 | **Skipped: automation disabled** | La automatización no está activada. |
 | **Skipped: workspace deleted** | Su workspace ya no existe. |
-| **Not accepted: your membership does not include runs** | No se ha podido crear el run: tu plan no tiene inferencia, o el workspace está parado o no está listo para el agente. |
+| **Not accepted: your membership does not include runs** | No se ha podido crear el run: tu plan no tiene inferencia (o, en una automatización con [tu propia clave de proveedor](/es/docs/automations#usa-tu-propia-clave-de-proveedor-byok), no tienes un workspace activo), o el workspace está parado o no está listo para el agente. |
 | **Missed (more than 15 minutes late)** | No pudo arrancar a tiempo y se ha saltado. |
 | **Error** | Algo ha fallado en nuestro lado. |
 

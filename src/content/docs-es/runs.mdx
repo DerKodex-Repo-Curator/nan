@@ -27,7 +27,7 @@ Para lanzar la misma tarea una y otra vez, desde un webhook, con una programaci�
 ## Antes de empezar
 
 - **Un workspace encendido**, con al menos un agente instalado: Pi, Pi + Gentle Shell o Hermes. Se instalan desde el [panel de Software](/es/docs/workspaces#agentes-y-el-panel-de-software) del workspace. Consulta [Elige el agente](#elige-el-agente).
-- **Un plan con inferencia.** Un run usa la clave de inferencia del propio workspace, y lo que gasta el agente cuenta para el uso de tu plan como cualquier otra petición. Si tu plan no incluye inferencia no puedes crear runs: el portal te enseña las opciones para mejorarlo.
+- **Un plan con inferencia, o tu propia clave de proveedor.** Con la inferencia de NaN (lo predeterminado), un run usa la clave de inferencia del propio workspace, y lo que gasta el agente cuenta para el uso de tu plan como cualquier otra petición. Con [tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok), la factura tu proveedor y no hace falta un plan con inferencia: basta con un workspace propio activo.
 
 ## Elige el agente
 
@@ -68,6 +68,7 @@ Pulsa **New run** y rellena el formulario (el portal está en inglés):
 | **Folder** | La carpeta donde trabaja el agente. Por defecto es `/home/nan` y tiene que estar dentro de ella. |
 | **Separate branch** | Rama aparte: **Auto** (por defecto), **On** u **Off**. En un repositorio git, el agente trabaja en su propia rama y tu checkout se queda como está. Consulta [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
 | **Time limit** | El tiempo máximo: **30 min** por defecto, igual que en la CLI y la API. Las opciones son 15 min, 30 min, 1 hour y 2 hours (1 hora y 2 horas). El run se para al llegar a él. |
+| **Inference** | La inferencia: **NaN (included in your plan)**, la predeterminada, o **My own key**, una **Provider key** tuya y el **Model** que usar. Consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok). |
 
 Pulsa **Start run**, o `Ctrl+Enter` (`⌘+Enter` en un Mac) desde la caja de la tarea.
 
@@ -138,7 +139,7 @@ Cuántos runs trabajan a la vez depende del tamaño del workspace:
 | Medium | 5 |
 | Large | 8 |
 
-Además, los runs comparten tu concurrencia de inferencia, así que puedes tener como mucho **5 runs trabajando a la vez entre todos tus workspaces** (**8 con Premium**).
+Además, los runs con la inferencia de NaN comparten tu concurrencia de inferencia, así que puedes tener como mucho **5 de ellos trabajando a la vez entre todos tus workspaces** (**8 con Premium**). Los runs con [tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok) tienen su propio límite: hasta **8 a la vez** entre todos tus workspaces.
 
 Los runs que pasan de esos límites no se rechazan: esperan en una cola y arrancan por orden de llegada. En la cola caben hasta **20 runs por workspace** y **50 en total**, y puedes crear hasta **60 runs por hora**.
 
@@ -146,11 +147,121 @@ Cada run trabaja en su propio proceso dentro del workspace, con su parte de CPU 
 
 ## Inferencia y secretos
 
-Los runs usan la clave de inferencia del workspace, la misma que usan sus agentes cuando trabajas con ellos a mano. Sus peticiones cuentan para el uso de tu plan como cualquier otra.
+Los runs con la inferencia de NaN usan la clave de inferencia del workspace, la misma que usan sus agentes cuando trabajas con ellos a mano. Sus peticiones cuentan para el uso de tu plan como cualquier otra. Los runs con [tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok) usan tu clave en su lugar, y nunca reciben la del workspace.
 
 Los secretos del archivo de entorno de tu workspace, como esa clave de inferencia o un token de bot de Telegram, aparecen como `***` en los logs y resultados de los runs, así que un log no los filtra.
 
 Los secretos que guardas en tus ajustes no se les dan a estos runs: solo llegan a los runs de las [automatizaciones](/es/docs/automations#secretos) a las que los asignas.
+
+## Usa tu propia clave de proveedor (BYOK)
+
+Un run puede usar **tu propia clave** con un proveedor de IA en lugar de la inferencia de NaN: trae tu propia clave (BYOK, *bring your own key*). El agente trabaja exactamente igual, pero sus llamadas al modelo salen de tu workspace directamente hacia tu proveedor, con tu clave, y es tu proveedor quien las factura.
+
+Lo eliges en cada run y en cada [automatización](/es/docs/automations#usa-tu-propia-clave-de-proveedor-byok): **NaN** sigue siendo lo predeterminado.
+
+### Proveedores
+
+| Proveedor | `provider` | Id de modelo, por ejemplo |
+|---|---|---|
+| **Anthropic** | `anthropic` | `claude-sonnet-4-5` |
+| **OpenAI** | `openai` | `gpt-5` |
+| **Google Gemini** | `gemini` | `gemini-2.5-pro` |
+| **OpenAI-compatible** | `openai_compatible` | El que sirva el endpoint, por ejemplo `meta-llama/Llama-3.3-70B-Instruct` |
+
+**OpenAI-compatible** es cualquier endpoint que hable la API de OpenAI en una URL base que tú indicas: un proveedor como Together, Groq u OpenRouter, o tu propio servidor, siempre que se pueda alcanzar desde internet por `https`.
+
+Escribe el id del modelo tal como lo llama tu proveedor. NaN no lo comprueba con tu proveedor: un id equivocado, o una clave equivocada, aparece como un run fallido con el error de tu proveedor en su log (con la clave enmascarada).
+
+### Guarda tu clave como provider key
+
+Abre tus ajustes en el portal, **Secrets**, y pulsa **Add secret** (guardar un secreto necesita que hayas iniciado sesión en el navegador). Rellena (el portal está en inglés):
+
+- **Kind**: **Provider key**.
+- **Provider**: **Anthropic**, **OpenAI**, **Google Gemini** u **OpenAI-compatible**. No se puede cambiar después: para cambiar de proveedor, añade otra clave.
+- **Base URL**, solo para **OpenAI-compatible**: la raíz del endpoint, que suele acabar en `/v1`, por ejemplo `https://api.together.xyz/v1`. Mira las reglas más abajo.
+- **Value**: la clave, una sola línea sin espacios, de 8 a 4096 caracteres.
+- **Name**: cómo la nombran los runs y las automatizaciones, por ejemplo `ANTHROPIC_KEY`. Mayúsculas, dígitos y `_`, empezando por una letra.
+- **Description (optional)**.
+
+Como todo secreto, una provider key es de **solo escritura**: nadie puede volver a leerla, ni siquiera tú. La lista la muestra como **Provider key · Anthropic** (o su proveedor) con los 4 últimos caracteres y, en una clave OpenAI-compatible, su URL base, que puedes cambiar con **Base URL**. **Replace value** cambia la clave para todos los runs que arranquen a partir de ese momento. `nan secrets ls` la muestra con **KIND** `provider_key`, su **PROVIDER** y su **BASE URL**.
+
+**Reglas de la URL base.** NaN comprueba la URL base al guardarla y nunca se conecta a ella: solo lo hace el agente de tu workspace.
+
+- Solo `https`, hasta 512 caracteres. Un puerto vale (`https://llm.example.com:8443/v1`).
+- Un nombre de host público (con al menos un punto) o una dirección IP pública. Se rechazan `localhost`, las direcciones privadas y de enlace local, y los nombres que acaban en `.local`, `.internal`, `.lan`, `.home.arpa` o `.svc`.
+- No valen los hosts de NaN (`nan.builders`, `helmcode.com` y sus subdominios): para los modelos de NaN, elige **NaN** como inferencia.
+- Sin `usuario:contraseña@`, sin parámetros (`?...`) y sin fragmento (`#...`).
+
+<Callout title="No pongas nunca un token en la URL base" variant="warning">
+La clave va en **Value**, donde se guarda cifrada y enmascarada. La URL base no es un secreto: el portal, `nan secrets ls` y la API la muestran tal cual. Una URL con un token dentro se rechaza si lleva `usuario:contraseña@` o parámetros, pero cualquier otra forma de esconder un token en ella quedaría a la vista de quien lea tus ajustes.
+</Callout>
+
+### Elígela para un run
+
+**En el portal**, en el formulario **New run**, pon **Inference** en **My own key**, elige la **Provider key** y escribe el **Model**.
+
+**Desde la terminal** (CLI **0.1.32** o posterior):
+
+```bash
+nan run --byok-secret ANTHROPIC_KEY --model claude-sonnet-4-5 "arregla el test inestable del parser de fechas"
+```
+
+`--byok-secret` recibe el **nombre** del secreto, nunca la clave, y necesita `--model`. `nan runs show <id>` muestra la elección en su línea **inference**, y `nan runs ls` en su columna **INFERENCE**.
+
+**Desde la API**, añade un objeto `inference` y no mandes el `model` de primer nivel:
+
+```json
+{
+  "workspace": "develop",
+  "agent": "pi",
+  "prompt": "arregla el test inestable del parser de fechas",
+  "inference": { "source": "byok", "secret": "ANTHROPIC_KEY", "model": "claude-sonnet-4-5" }
+}
+```
+
+El run que recibes dice lo mismo en su `inference` (`"source": "byok"`, el `provider`, el `secret` y el `model`), y su `usage.source` es `byok`. Sin `inference`, o con `{"source": "nan"}`, el run usa la inferencia de NaN como siempre.
+
+### Quién puede usarla
+
+- **Sin un plan con inferencia de NaN**, los runs y las automatizaciones con tu propia clave funcionan si tienes **un workspace propio activo**. Con un plan con inferencia, puedes elegir una u otra en cada run.
+- **Un run que lanzas tú con tu clave necesita una sesión iniciada**: el portal, o la CLI después de `nan auth login`. Una API key (`sk-...`) o un token de plataforma (`nan_pat_...`) recibe `403 session_required`, y `nan run` rechaza `NAN_TOKEN` y `--token-file` para estos runs. El motivo: el prompt de un run puede hacer que el agente imprima la clave que tiene, y esas credenciales no pueden leer tus secretos, así que tampoco deben poder conseguir que un agente revele uno. Sí pueden lanzar una [automatización que usa tu clave](/es/docs/automations#usa-tu-propia-clave-de-proveedor-byok): sus instrucciones son las que tú guardaste.
+- Si **My own key** aparece desactivado con "isn't available for your account yet", todavía no está abierto para tu cuenta.
+
+### Facturación y uso
+
+Tu proveedor factura todos los tokens de estos runs, en tu cuenta con él. NaN no los mide: nada cuenta para tu plan de NaN ni para su uso. Los tokens que muestra un run son los que ha informado el agente (Pi los informa, Hermes no); la referencia es la factura de tu proveedor.
+
+### Límites
+
+- Hasta **8 runs con tus propias claves trabajando a la vez** entre todos tus workspaces. No ocupan plazas de tu límite de inferencia de NaN (5, u 8 con Premium).
+- El tamaño de cada workspace sigue limitando **todos** sus runs juntos, sean de NaN o no: consulta [Cuántos runs a la vez](#cuántos-runs-a-la-vez). Igual que la cola (20 por workspace, 50 en total) y los 60 runs por hora.
+
+### Seguridad
+
+- Tu clave se guarda como cualquier [secreto](/es/docs/automations#secretos): cifrada, de solo escritura y enmascarada en logs, resultados y propuestas.
+- Solo llega al agente del run, dentro de tu propio workspace, como variable de entorno: nunca en la línea de comandos, en un archivo ni en los logs de NaN. El run no recibe la clave de inferencia de NaN de tu workspace.
+- **NaN nunca llama a tu URL base ni a tu proveedor.** Lo hace el agente de tu workspace, por la red de tu workspace.
+- El run lee los ajustes de tu agente para conservar tus skills y preferencias, pero usa su propia copia de la configuración, con solo el proveedor de tu clave: tus archivos de configuración no cambian.
+- **El agente tiene la clave.** Un prompt, o unos datos que lea, que lo convenzan de imprimirla o enviarla pueden filtrarla. Usa una clave limitada a lo que necesita el run, con un límite de gasto en tu proveedor, y cámbiala si se filtra.
+- Una [automatización](/es/docs/automations#usa-tu-propia-clave-de-proveedor-byok) que lanza un webhook le da al agente un texto que ha escrito otra persona, mientras tiene tu clave. Tenlo en cuenta antes de conectar un webhook público a una automatización con tu clave.
+
+### Si algo sale mal
+
+| Lo que ves | Por qué, y qué hacer |
+|---|---|
+| `404 not_found`, `param: inference.secret` | No tienes ningún secreto con ese nombre. Comprueba los nombres con `nan secrets ls`. |
+| `400 invalid_request`, `param: inference.secret` | Ese secreto es un secreto genérico, no una **Provider key**. Añade tu clave como provider key. |
+| `400 invalid_request`, `param: inference.model` | Falta el modelo, o no es un id de modelo (letras, dígitos y `. _ : / -`, hasta 128, sin empezar por `-`). |
+| `400 invalid_request`, `param: inference` | Tu propia clave todavía no está disponible para tu cuenta, o el objeto `inference` está mal formado. |
+| `403 session_required` | Un run con tu clave lanzado con una API key o un token. Lánzalo con la sesión iniciada, o lanza una automatización. |
+| `403 tier_restricted` | Ni plan con inferencia de NaN ni un workspace propio activo. |
+| El run falla con `secret_missing` | La provider key se borró después de que el run entrara en la cola. |
+| El run falla con `config_error` | No se ha podido preparar el agente para tu clave, por ejemplo Hermes con una clave de Anthropic (abajo). |
+| El run falla con el error de tu proveedor en el log | Una clave equivocada, un id de modelo equivocado, sin saldo en tu proveedor, o una URL base que no responde. |
+
+### Limitación conocida: Hermes con una clave de Anthropic
+
+Hermes todavía no puede usar una clave de **Anthropic** en los workspaces: sus runs fallan con `config_error` hasta que la imagen del workspace incluya soporte para Anthropic. Usa **Pi** o **Pi + Gentle Shell** con una clave de Anthropic, o apunta Hermes a un endpoint **OpenAI-compatible**.
 
 ## Desde la terminal: `nan run`
 
@@ -203,7 +314,8 @@ nan run --detach "actualiza las dependencias"
 |---|---|---|
 | `--ws NAME` | tu único workspace | El workspace donde se ejecuta. Si tienes más de uno y no lo pones, la CLI te los lista y sale con código 64. |
 | `--agent pi\|pi_gentle\|hermes` | `pi` | El agente: `pi` (Pi), `pi_gentle` (Pi + Gentle Shell) o `hermes` (Hermes). Tiene que estar instalado en el workspace. Consulta [Elige el agente](#elige-el-agente). |
-| `--model M` | el del agente | El modelo que usa el agente. |
+| `--model M` | el del agente | El modelo que usa el agente. Obligatorio con `--byok-secret`. |
+| `--byok-secret NAME` | inferencia de NaN | Ejecuta el run con tu propia clave de proveedor: el nombre de un secreto de tipo provider key. Necesita `--model` y tu sesión de `nan auth login`. Consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok). |
 | `--cwd PATH` | `/home/nan` | La carpeta en el workspace. |
 | `--worktree` / `--no-worktree` | auto | Fuerza la rama aparte a on u off. Consulta [Dónde trabaja el agente](#dónde-trabaja-el-agente). |
 | `--timeout D` | `30m` | El tiempo máximo, de `1m` a `2h`. |
@@ -253,7 +365,7 @@ nan runs cancel <id>
 | 4 | el workspace no está listo: agente no instalado, sin clave de inferencia o configuración incorrecta |
 | 10 | el run espera tu aprobación (solo runs de [automatizaciones](/es/docs/automations#aprueba-o-rechaza-una-propuesta)) |
 | 64 | error de uso, también tener más de un workspace y no pasar `--ws` |
-| 65 | sin sesión, sesión caducada o sin permiso |
+| 65 | sin sesión, sesión caducada o sin permiso (también un token o una API key para un run con tu propia clave) |
 | 69 | nan.builders no disponible, o se ha perdido el stream (el run sigue, y se imprime el id) |
 | 75 | el run se ha aceptado y sigue en marcha (`--detach`, o Ctrl-C una vez) |
 
@@ -281,6 +393,8 @@ nan auth login --api-token < token.txt  # o pásalo por stdin
 ```
 
 No pongas nunca un token en la propia línea de comandos: acabaría en el historial de tu shell y en `ps`.
+
+Un run con [tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok) (`--byok-secret`) usa solo tu sesión de `nan auth login`: la CLI rechaza `NAN_TOKEN` y `--token-file` para él, y se salta un token o una API key guardados.
 
 En la CLI, un token de plataforma solo sirve para `nan run`, `nan runs`, `nan automations` y `nan approvals` (consulta [API keys y tokens](#api-keys-y-tokens)). `nan me`, `nan metrics usage` y el panel siguen necesitando una sesión de `nan auth login`.
 
@@ -332,7 +446,7 @@ Un **token** es lo que conviene darle a un script que solo gestiona runs. No sir
 - Puedes revocar cualquiera en cualquier momento.
 - Lleva **scopes**, lo que puede hacer: `runs` y `workspaces:read` por defecto. Para listar o lanzar automatizaciones, añade `automations:read` o `automations:run`. Consulta [Tokens para automatizaciones](/es/docs/automations#tokens-para-automatizaciones).
 
-Para crear runs sigue haciendo falta un plan con inferencia, uses la credencial que uses. La [referencia de la API](/es/docs/api#description/platform-tokens) indica qué credencial acepta cada endpoint.
+Para crear runs con la inferencia de NaN sigue haciendo falta un plan con inferencia, uses la credencial que uses. Los runs con [tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok) necesitan una sesión iniciada en lugar de una API key o un token. La [referencia de la API](/es/docs/api#description/platform-tokens) indica qué credencial acepta cada endpoint.
 
 <Callout title="Un agente no puede lanzar runs por su cuenta" variant="warning">
 La clave que hay dentro de un workspace, la que usan sus agentes para la inferencia, no puede gestionar runs: la API le responde con un `403`. Un agente que trabaja en tu workspace no puede lanzar runs nuevos por su cuenta, salvo que le des una de tus propias API keys o tokens.
@@ -399,7 +513,7 @@ Nada: el run sigue en el workspace. Abre su página en la pestaña **Runs**, o e
 
 <Details summary="¿Puedo usar runs si mi plan no incluye inferencia?">
 
-No. Los runs usan los modelos a través de la clave de inferencia del workspace, así que para crearlos necesitas un plan con inferencia. Sí puedes crear un token y listar tus workspaces y tus runs.
+Sí, con [tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok) y un workspace propio activo: los tokens los factura tu proveedor. Los runs con la inferencia de NaN necesitan un plan con inferencia.
 
 </Details>
 

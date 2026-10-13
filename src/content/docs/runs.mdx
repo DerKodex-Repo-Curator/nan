@@ -27,7 +27,7 @@ To run the same task again and again, from a webhook, on a schedule or with acti
 ## Before you start
 
 - **A workspace that is running**, with at least one agent installed: Pi, Pi + Gentle Shell or Hermes. You install them from the [Software panel](/docs/workspaces#agents-and-the-software-panel) of the workspace. See [Pick the agent](#pick-the-agent).
-- **A plan with inference.** A run uses your workspace's own inference key, and what the agent spends counts against your plan's usage like any other request. Without inference in your plan you cannot create runs: the portal shows you the upgrade options instead.
+- **A plan with inference, or your own provider key.** With NaN inference (the default), a run uses your workspace's own inference key, and what the agent spends counts against your plan's usage like any other request. With [your own provider key](#use-your-own-provider-key-byok), your provider bills it and a plan with inference is not needed: an active workspace of your own is enough.
 
 ## Pick the agent
 
@@ -68,6 +68,7 @@ Press **New run** and fill in the form:
 | **Folder** | Where the agent works. It defaults to `/home/nan` and must be inside it. |
 | **Separate branch** | **Auto** (the default), **On** or **Off**. In a git repository, the agent works on its own branch and your checkout stays as it is. See [Where the agent works](#where-the-agent-works). |
 | **Time limit** | **30 min** by default, the same as the CLI and the API. The options are 15 min, 30 min, 1 hour and 2 hours. The run is stopped when it reaches it. |
+| **Inference** | **NaN (included in your plan)**, the default, or **My own key**: a **Provider key** of yours and the **Model** to use. See [Use your own provider key](#use-your-own-provider-key-byok). |
 
 Press **Start run**, or `Ctrl+Enter` (`⌘+Enter` on a Mac) from the task box.
 
@@ -138,7 +139,7 @@ How many runs work at the same time depends on the size of the workspace:
 | Medium | 5 |
 | Large | 8 |
 
-On top of that, runs share your inference concurrency, so you can have at most **5 runs working at once across all your workspaces** (**8 on Premium**).
+On top of that, runs on NaN inference share your inference concurrency, so you can have at most **5 of them working at once across all your workspaces** (**8 on Premium**). Runs on [your own provider key](#use-your-own-provider-key-byok) have their own limit: up to **8 at once** across all your workspaces.
 
 Runs beyond those limits are not refused: they wait in a queue and start in order, first in, first out. The queue holds up to **20 runs per workspace** and **50 in total**, and you can create up to **60 runs per hour**.
 
@@ -146,11 +147,121 @@ Each run works in its own process inside the workspace, with its own share of CP
 
 ## Inference and secrets
 
-Runs use the inference key of the workspace, the same one its agents use when you work with them by hand. Their requests count against your plan's usage like any other.
+Runs on NaN inference use the inference key of the workspace, the same one its agents use when you work with them by hand. Their requests count against your plan's usage like any other. Runs on [your own provider key](#use-your-own-provider-key-byok) use your key instead, and never get the workspace's.
 
 Secrets in your workspace's environment file, such as that inference key or a Telegram bot token, are shown as `***` in run logs and results, so a log does not leak them.
 
 The secrets you keep in your settings are not given to these runs: they go only to the runs of the [automations](/docs/automations#secrets) you assign them to.
+
+## Use your own provider key (BYOK)
+
+A run can use **your own key** with an AI provider instead of NaN inference: bring your own key (BYOK). The agent works exactly the same way, but its model calls go from your workspace straight to your provider, with your key, and your provider bills them.
+
+You choose it per run, and per [automation](/docs/automations#use-your-own-provider-key-byok): **NaN** stays the default.
+
+### Providers
+
+| Provider | `provider` | Model id, for example |
+|---|---|---|
+| **Anthropic** | `anthropic` | `claude-sonnet-4-5` |
+| **OpenAI** | `openai` | `gpt-5` |
+| **Google Gemini** | `gemini` | `gemini-2.5-pro` |
+| **OpenAI-compatible** | `openai_compatible` | Whatever the endpoint serves, for example `meta-llama/Llama-3.3-70B-Instruct` |
+
+**OpenAI-compatible** is any endpoint that speaks the OpenAI API at a base URL you give: a hosted provider such as Together, Groq or OpenRouter, or your own server, as long as it is reachable on the internet over `https`.
+
+Type the model id exactly as your provider names it. NaN does not check it against your provider: a wrong id, or a wrong key, shows up as a failed run with your provider's error in its log (with the key masked).
+
+### Save your key as a provider key
+
+Open your settings on the portal, **Secrets**, and press **Add secret** (saving a secret needs you signed in through the browser). Fill in:
+
+- **Kind**: **Provider key**.
+- **Provider**: **Anthropic**, **OpenAI**, **Google Gemini** or **OpenAI-compatible**. It cannot be changed later: to switch providers, add another key.
+- **Base URL**, only for **OpenAI-compatible**: the root of the endpoint, usually ending in `/v1`, for example `https://api.together.xyz/v1`. See the rules below.
+- **Value**: the key, one line without spaces, 8 to 4096 characters.
+- **Name**: how runs and automations refer to it, for example `ANTHROPIC_KEY`. Capitals, digits and `_`, starting with a letter.
+- **Description (optional)**.
+
+Like every secret, a provider key is **write-only**: nobody can read it back, not even you. The list shows it as **Provider key · Anthropic** (or its provider) with the last 4 characters, and, for an OpenAI-compatible key, its base URL, which you can change with **Base URL**. **Replace value** changes the key for every run that starts from then on. `nan secrets ls` shows it with **KIND** `provider_key`, its **PROVIDER** and its **BASE URL**.
+
+**Base URL rules.** NaN checks the base URL when you save it, and never connects to it: only the agent in your workspace does.
+
+- `https` only, up to 512 characters. A port is fine (`https://llm.example.com:8443/v1`).
+- A public host name (with at least one dot) or a public IP address. `localhost`, private and link-local addresses, and names ending in `.local`, `.internal`, `.lan`, `.home.arpa` or `.svc` are refused.
+- Not NaN's own hosts (`nan.builders`, `helmcode.com` and their subdomains): for NaN models, choose **NaN** as the inference.
+- No `user:password@`, no query string (`?...`) and no fragment (`#...`).
+
+<Callout title="Never put a token in the base URL" variant="warning">
+The key goes in **Value**, where it is stored encrypted and masked. The base URL is not a secret: the portal, `nan secrets ls` and the API show it as it is. A URL with a token inside is refused when it has `user:password@` or a query string, but any other way of hiding a token in it would be shown to whoever reads your settings.
+</Callout>
+
+### Choose it for a run
+
+**In the portal**, in the **New run** form, set **Inference** to **My own key**, pick the **Provider key** and type the **Model**.
+
+**From the terminal** (CLI **0.1.32** or newer):
+
+```bash
+nan run --byok-secret ANTHROPIC_KEY --model claude-sonnet-4-5 "fix the flaky test in the date parser"
+```
+
+`--byok-secret` takes the **name** of the secret, never the key itself, and needs `--model`. `nan runs show <id>` shows the choice on its **inference** line, and `nan runs ls` in its **INFERENCE** column.
+
+**From the API**, add an `inference` object and leave the top-level `model` out:
+
+```json
+{
+  "workspace": "develop",
+  "agent": "pi",
+  "prompt": "fix the flaky test in the date parser",
+  "inference": { "source": "byok", "secret": "ANTHROPIC_KEY", "model": "claude-sonnet-4-5" }
+}
+```
+
+The run you get back says the same in its `inference` (`"source": "byok"`, the `provider`, the `secret` and the `model`), and its `usage.source` is `byok`. Without `inference`, or with `{"source": "nan"}`, the run uses NaN inference as always.
+
+### Who can use it
+
+- **Without a NaN inference plan**, runs and automations on your own key work if you have **a workspace of your own that is active**. With a NaN inference plan, you can choose either for each run.
+- **A run you start yourself on your key needs a signed-in session**: the portal, or the CLI after `nan auth login`. An API key (`sk-...`) or a platform token (`nan_pat_...`) gets `403 session_required`, and `nan run` refuses `NAN_TOKEN` and `--token-file` for it. The reason: the prompt of a run can make the agent print the key it holds, and those credentials cannot read your secrets, so they must not be able to make an agent reveal one. They can still start an [automation that uses your key](/docs/automations#use-your-own-provider-key-byok): its instructions are the ones you saved.
+- If **My own key** is disabled with "isn't available for your account yet", it is not open to your account yet.
+
+### Billing and usage
+
+Your provider bills every token of these runs, under your account with them. NaN does not meter them: nothing counts against your NaN plan or its usage. The tokens a run shows are the ones the agent reported (Pi reports them, Hermes does not); your provider's bill is the reference.
+
+### Limits
+
+- Up to **8 runs on your own keys working at once** across all your workspaces. They do not take places from your NaN inference limit (5, or 8 on Premium).
+- The size of each workspace still limits **all** its runs together, NaN or not: see [How many runs at once](#how-many-runs-at-once). So do the queue (20 per workspace, 50 in total) and the 60 runs per hour.
+
+### Security
+
+- Your key is stored like any [secret](/docs/automations#secrets): encrypted, write-only and masked in logs, results and proposals.
+- It reaches only the agent of the run, inside your own workspace, as an environment variable: never on the command line, in a file or in NaN's logs. The run does not get your workspace's NaN inference key.
+- **NaN never calls your base URL or your provider.** The agent in your workspace does, over your workspace's network.
+- The run reads your agent's settings to keep your skills and preferences, but it uses its own copy of the configuration, with only your key's provider in it: your own configuration files are not changed.
+- **The agent holds the key.** A prompt, or data it reads, that convinces it to print or send the key can leak it. Use a key limited to what the run needs, with a spending limit at your provider, and replace it if it leaks.
+- An [automation](/docs/automations#use-your-own-provider-key-byok) started by a webhook gives the agent text that someone else wrote, while it holds your key. Keep that in mind before you connect a public webhook to an automation on your key.
+
+### If something goes wrong
+
+| What you see | Why, and what to do |
+|---|---|
+| `404 not_found`, `param: inference.secret` | You have no secret with that name. Check the names with `nan secrets ls`. |
+| `400 invalid_request`, `param: inference.secret` | That secret is a generic secret, not a **Provider key**. Add your key as a provider key. |
+| `400 invalid_request`, `param: inference.model` | The model is missing, or it is not a model id (letters, digits and `. _ : / -`, up to 128, not starting with `-`). |
+| `400 invalid_request`, `param: inference` | Your own key is not available for your account yet, or the `inference` object is malformed. |
+| `403 session_required` | A run on your key with an API key or a token. Start it signed in, or run an automation instead. |
+| `403 tier_restricted` | No NaN inference plan and no active workspace of your own. |
+| The run fails with `secret_missing` | The provider key was deleted after the run was queued. |
+| The run fails with `config_error` | The agent could not be set up for your key, for example Hermes with an Anthropic key (below). |
+| The run fails with your provider's error in the log | A wrong key, a wrong model id, no credit at your provider, or a base URL that does not answer. |
+
+### Known limitation: Hermes with an Anthropic key
+
+Hermes cannot use an **Anthropic** key in workspaces yet: its runs fail with `config_error` until the workspace image includes Anthropic support. Use **Pi** or **Pi + Gentle Shell** with an Anthropic key, or point Hermes at an **OpenAI-compatible** endpoint.
 
 ## From the terminal: `nan run`
 
@@ -203,7 +314,8 @@ nan run --detach "upgrade the dependencies"
 |---|---|---|
 | `--ws NAME` | your only workspace | The workspace to run in. If you have more than one and leave it out, the CLI lists them and exits with code 64. |
 | `--agent pi\|pi_gentle\|hermes` | `pi` | The agent: `pi` (Pi), `pi_gentle` (Pi + Gentle Shell) or `hermes` (Hermes). It must be installed in the workspace. See [Pick the agent](#pick-the-agent). |
-| `--model M` | the agent's own | The model the agent uses. |
+| `--model M` | the agent's own | The model the agent uses. Required with `--byok-secret`. |
+| `--byok-secret NAME` | NaN inference | Run on your own provider key: the name of a provider key secret. Needs `--model` and your `nan auth login` session. See [Use your own provider key](#use-your-own-provider-key-byok). |
 | `--cwd PATH` | `/home/nan` | The folder in the workspace. |
 | `--worktree` / `--no-worktree` | auto | Force a separate branch on or off. See [Where the agent works](#where-the-agent-works). |
 | `--timeout D` | `30m` | The time limit, from `1m` to `2h`. |
@@ -253,7 +365,7 @@ nan runs cancel <id>
 | 4 | the workspace is not ready for it: agent not installed, no inference key or a bad configuration |
 | 10 | the run is waiting for your approval (only [automation](/docs/automations#approve-or-reject-a-proposal) runs) |
 | 64 | usage error, including more than one workspace and no `--ws` |
-| 65 | not signed in, session expired or not allowed |
+| 65 | not signed in, session expired or not allowed (also a token or an API key for a run on your own key) |
 | 69 | nan.builders unavailable, or the stream was lost (the run goes on, and the id is printed) |
 | 75 | the run was accepted and is still going (`--detach`, or Ctrl-C once) |
 
@@ -281,6 +393,8 @@ nan auth login --api-token < token.txt  # or pipe it in
 ```
 
 Never put a token on the command line itself: it would end up in your shell history and in `ps`.
+
+A run on [your own provider key](#use-your-own-provider-key-byok) (`--byok-secret`) uses only your session from `nan auth login`: the CLI refuses `NAN_TOKEN` and `--token-file` for it, and skips a saved token or API key.
 
 In the CLI, a platform token only works for `nan run`, `nan runs`, `nan automations` and `nan approvals` (see [API keys and tokens](#api-keys-and-tokens)). `nan me`, `nan metrics usage` and the dashboard still need a session from `nan auth login`.
 
@@ -332,7 +446,7 @@ A **token** is the one to give a script that only manages runs. It cannot call t
 - You can revoke any of them at any time.
 - It carries **scopes**, what it may do: `runs` and `workspaces:read` by default. To list or run automations, add `automations:read` or `automations:run`. See [Tokens for automations](/docs/automations#tokens-for-automations).
 
-Creating runs still needs a plan with inference, whatever credential you use. The [API reference](/docs/api#description/platform-tokens) lists which credential each endpoint accepts.
+Creating runs on NaN inference still needs a plan with inference, whatever credential you use. Runs on [your own provider key](#use-your-own-provider-key-byok) need a signed-in session instead of a key or a token. The [API reference](/docs/api#description/platform-tokens) lists which credential each endpoint accepts.
 
 <Callout title="An agent cannot launch runs by itself" variant="warning">
 The key inside a workspace, the one its agents use for inference, cannot manage runs: the API answers it with `403`. An agent working in your workspace cannot start new runs on its own, unless you give it one of your own API keys or tokens.
@@ -399,7 +513,7 @@ Nothing: the run keeps going in the workspace. Open its page in the **Runs** tab
 
 <Details summary="Can I use runs without inference in my plan?">
 
-No. Runs use the models through your workspace's inference key, so creating them needs a plan with inference. You can still create a token and list your workspaces and runs.
+Yes, with [your own provider key](#use-your-own-provider-key-byok) and an active workspace of your own: your provider bills the tokens. Runs on NaN inference need a plan with inference.
 
 </Details>
 

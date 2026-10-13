@@ -237,7 +237,7 @@ The **Deliveries** tab lists the last 50 webhooks the automation received in the
 | **Ignored by a filter** | The event or actor filter did not match, or, with **Fresh clone per run**, the pull request came from a fork or an author without write access. |
 | **Stopped: caused by one of its own runs** | A [loop](#loops) was stopped. |
 | **Skipped: a run for the same subject is active** | See [When a run is already active](/docs/automations#when-a-run-is-already-active). |
-| **Not accepted: your membership does not include runs** | The run could not be created: your plan has no inference, or the workspace is stopped or deleted, its agent is not installed or it has no inference key. The sender does not retry it, so the event is lost: keep the workspace running. |
+| **Not accepted: your membership does not include runs** | The run could not be created: your plan has no inference (or, for an automation on [your own provider key](/docs/automations#use-your-own-provider-key-byok), you have no active workspace), or the workspace is stopped or deleted, its agent is not installed or it has no inference key. The sender does not retry it, so the event is lost: keep the workspace running. |
 | **Too large** | The event did not fit in what the agent can receive. |
 
 No payload and no headers are kept. Deliveries with a bad signature are never stored, and throttled ones (rate limit, full queue, temporarily unavailable) are answered with a retry and not listed.
@@ -293,7 +293,7 @@ Each schedule shows its next run and how the last one went:
 | **Skipped: too many runs waiting** | Your run queue is full. |
 | **Skipped: automation disabled** | The automation is not enabled. |
 | **Skipped: workspace deleted** | Its workspace no longer exists. |
-| **Not accepted: your membership does not include runs** | The run could not be created: your plan has no inference, or the workspace is stopped or not ready for the agent. |
+| **Not accepted: your membership does not include runs** | The run could not be created: your plan has no inference (or, for an automation on [your own provider key](/docs/automations#use-your-own-provider-key-byok), you have no active workspace), or the workspace is stopped or not ready for the agent. |
 | **Missed (more than 15 minutes late)** | It could not start in time and was skipped. |
 | **Error** | Something failed on our side. |
 
