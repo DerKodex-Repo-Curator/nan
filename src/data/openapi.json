@@ -60,7 +60,7 @@
     },
     {
       "name": "Runs",
-      "description": "Give an agent (Pi, Pi + Gentle Shell or Hermes) a task inside one of your workspaces and follow it. A run keeps going if the client disconnects. Accepts a member API key or a platform token with the `runs` scope. Guide: [Agent runs](https://nan.builders/docs/runs)."
+      "description": "Give an agent (Pi, Pi + Gentle Shell or Hermes) a task inside one of your workspaces and follow it. A run keeps going if the client disconnects. Accepts a member API key or a platform token with the `runs` scope. Guide: [Agent runs](https://nan.builders/docs/runs). Runs can use NaN inference or your own provider key: [Use your own provider key](https://nan.builders/docs/runs#use-your-own-provider-key-byok)."
     },
     {
       "name": "Automations",
@@ -1614,7 +1614,7 @@
             "platformToken": []
           }
         ],
-        "description": "Gives an agent a task in one of your workspaces. The run is queued and starts as soon as there is a free place: a workspace runs 1 (Micro and the free workspace), 2 (Nano), 3 (Basic), 5 (Medium) or 8 (Large) runs at once, never more than your per-member total: at most 5 runs working across all your workspaces (8 on Premium). Extra runs wait, first in, first out.\n\nLimits: up to 20 queued runs per workspace and 50 in total (`429 run_queue_full`), and 60 new runs per rolling hour (`429 rate_limited`).\n\nCreating runs needs a plan with inference (`403 tier_restricted`): the run uses the workspace's inference key and counts against your plan's usage. The workspace must be `running` and have the agent installed.\n\n**Idempotency.** Send an `Idempotency-Key` header to make retries safe: the same key with the same body returns the run already created (`200`), the same key with a different body answers `409 idempotency_conflict`.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `runs` scope.",
+        "description": "Gives an agent a task in one of your workspaces. The run is queued and starts as soon as there is a free place: a workspace runs 1 (Micro and the free workspace), 2 (Nano), 3 (Basic), 5 (Medium) or 8 (Large) runs at once, never more than your per-member total: at most 5 runs working across all your workspaces (8 on Premium). Extra runs wait, first in, first out.\n\nLimits: up to 20 queued runs per workspace and 50 in total (`429 run_queue_full`), and 60 new runs per rolling hour (`429 rate_limited`).\n\nWith NaN inference (the default), creating runs needs a plan with inference (`403 tier_restricted`): the run uses the workspace's inference key and counts against your plan's usage. With your own provider key (`inference.source: byok`) a plan with inference is not needed, an active workspace of yours is enough; your provider bills the run, NaN does not meter it, and these runs need a signed-in session (`403 session_required` for API keys and platform tokens). Up to 8 runs on your own keys work at once across your workspaces, on top of the workspace's own limit. The workspace must be `running` and have the agent installed. Guide: [Use your own provider key](https://nan.builders/docs/runs#use-your-own-provider-key-byok).\n\n**Idempotency.** Send an `Idempotency-Key` header to make retries safe: the same key with the same body returns the run already created (`200`), the same key with a different body answers `409 idempotency_conflict`.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `runs` scope (not for `inference.source: byok`, which needs a signed-in session).",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -1634,13 +1634,31 @@
               "schema": {
                 "$ref": "#/components/schemas/CreateRunRequest"
               },
-              "example": {
-                "workspace": "develop",
-                "agent": "pi",
-                "prompt": "add tests for the date parser and make them pass",
-                "cwd": "/home/nan/projects/api",
-                "git_isolation": null,
-                "timeout_seconds": 1800
+              "examples": {
+                "nan": {
+                  "summary": "NaN inference (the default).",
+                  "value": {
+                    "workspace": "develop",
+                    "agent": "pi",
+                    "prompt": "add tests for the date parser and make them pass",
+                    "cwd": "/home/nan/projects/api",
+                    "git_isolation": null,
+                    "timeout_seconds": 1800
+                  }
+                },
+                "byok": {
+                  "summary": "Your own provider key (needs a signed-in session).",
+                  "value": {
+                    "workspace": "develop",
+                    "agent": "pi",
+                    "prompt": "add tests for the date parser and make them pass",
+                    "inference": {
+                      "source": "byok",
+                      "secret": "TOGETHER_KEY",
+                      "model": "meta-llama/Llama-3.3-70B-Instruct"
+                    }
+                  }
+                }
               }
             }
           }
@@ -1727,18 +1745,45 @@
             }
           },
           "400": {
-            "description": "A field is invalid; `param` names it (`workspace`, `agent`, `prompt`, `cwd`, `timeout_seconds`, `model`, `trigger`, `Idempotency-Key`, or an unknown field). The body is limited to 128 KiB, and must be one JSON object.",
+            "description": "A field is invalid; `param` names it (`workspace`, `agent`, `prompt`, `cwd`, `timeout_seconds`, `model`, `trigger`, `inference`, `inference.secret`, `inference.model`, `Idempotency-Key`, or an unknown field). The body is limited to 128 KiB, and must be one JSON object. With your own key: `inference` when the object is malformed or your account cannot use your own key yet; `inference.secret` when the secret is not of kind `provider_key`; `inference.model` when the model is missing or invalid; `model` when a top-level `model` is sent with `byok`.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": {
-                    "message": "must be between 60 and 7200",
-                    "type": "invalid_request_error",
-                    "param": "timeout_seconds",
-                    "code": "invalid_request"
+                "examples": {
+                  "invalid_field": {
+                    "summary": "An invalid field.",
+                    "value": {
+                      "error": {
+                        "message": "must be between 60 and 7200",
+                        "type": "invalid_request_error",
+                        "param": "timeout_seconds",
+                        "code": "invalid_request"
+                      }
+                    }
+                  },
+                  "not_a_provider_key": {
+                    "summary": "The secret is not a provider key.",
+                    "value": {
+                      "error": {
+                        "message": "the secret is not a provider key",
+                        "type": "invalid_request_error",
+                        "param": "inference.secret",
+                        "code": "invalid_request"
+                      }
+                    }
+                  },
+                  "byok_unavailable": {
+                    "summary": "Your own key is not available for your account.",
+                    "value": {
+                      "error": {
+                        "message": "bring-your-own-key inference is not available for your account",
+                        "type": "invalid_request_error",
+                        "param": "inference",
+                        "code": "invalid_request"
+                      }
+                    }
                   }
                 }
               }
@@ -1748,7 +1793,7 @@
             "$ref": "#/components/responses/RunsUnauthorized"
           },
           "403": {
-            "description": "`tier_restricted`: your plan does not include inference. `workspace_key_not_allowed`: the bearer is the key inside a workspace.",
+            "description": "`tier_restricted`: with NaN inference, your plan does not include inference; with your own key, you have no active workspace either. `session_required` (`param: \"inference\"`): a run on your own key with an API key or a platform token; create it signed in (portal or `nan auth login`), or run an automation that uses your key. `workspace_key_not_allowed`: the bearer is the key inside a workspace.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1774,24 +1819,50 @@
                         "code": "workspace_key_not_allowed"
                       }
                     }
+                  },
+                  "session_required": {
+                    "value": {
+                      "error": {
+                        "message": "runs with your own key need a signed-in session (portal or nan CLI); API keys and platform tokens can trigger an automation that uses your key",
+                        "type": "permission_error",
+                        "param": "inference",
+                        "code": "session_required"
+                      }
+                    }
                   }
                 }
               }
             }
           },
           "404": {
-            "description": "No workspace with that name or id among yours.",
+            "description": "No workspace with that name or id among yours, or (`param: \"inference.secret\"`) no secret with that name among yours.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
-                "example": {
-                  "error": {
-                    "message": "workspace not found",
-                    "type": "invalid_request_error",
-                    "param": null,
-                    "code": "not_found"
+                "examples": {
+                  "workspace": {
+                    "summary": "No such workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace not found",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "not_found"
+                      }
+                    }
+                  },
+                  "secret": {
+                    "summary": "No such provider key secret.",
+                    "value": {
+                      "error": {
+                        "message": "secret not found",
+                        "type": "invalid_request_error",
+                        "param": "inference.secret",
+                        "code": "not_found"
+                      }
+                    }
                   }
                 }
               }
@@ -3259,7 +3330,7 @@
             "platformToken": []
           }
         ],
-        "description": "Starts a run of the automation now, with its saved instructions, secrets and approval settings: the same run a webhook or a schedule would start. Its agent proposes actions, which apply automatically or wait for your approval as the automation says. Follow it like any run (`GET /v1/runs/{id}/events`). Runs you start this way are never skipped by `skip_if_active` or cancelled by `supersede`, but they count towards the automation's `max_runs_per_hour` and the limits of every run.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:run` scope. Runs need a plan with inference.",
+        "description": "Starts a run of the automation now, with its saved instructions, secrets and approval settings: the same run a webhook or a schedule would start. Its agent proposes actions, which apply automatically or wait for your approval as the automation says. Follow it like any run (`GET /v1/runs/{id}/events`). Runs you start this way are never skipped by `skip_if_active` or cancelled by `supersede`, but they count towards the automation's `max_runs_per_hour` and the limits of every run.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:run` scope. Runs on NaN inference need a plan with inference; an automation that uses your own provider key needs an active workspace of yours instead. Any of these credentials may run an automation that uses your key: its instructions are fixed in the portal, and what you send as `input` reaches an agent that holds your key, so treat it as untrusted. Guide: [Use your own provider key](https://nan.builders/docs/runs#use-your-own-provider-key-byok).",
         "parameters": [
           {
             "name": "id",
@@ -3436,7 +3507,7 @@
             }
           },
           "400": {
-            "description": "Invalid body: `input` not a JSON object, too large (48 KiB) or nested too deep (8 levels); unknown fields; a bad `Idempotency-Key`.",
+            "description": "Invalid body: `input` not a JSON object, too large (48 KiB) or nested too deep (8 levels); unknown fields; a bad `Idempotency-Key`. On an automation that uses your own key, `invalid_request` with `param: \"inference\"` when your own key is not available for your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3457,7 +3528,7 @@
             "$ref": "#/components/responses/RunsUnauthorized"
           },
           "403": {
-            "description": "A platform token without the `automations:run` scope (`token_scope_denied`), or the key that lives inside a workspace (`workspace_key_not_allowed`): agents cannot manage automations. A membership without runs: `tier_restricted`.",
+            "description": "A platform token without the `automations:run` scope (`token_scope_denied`), or the key that lives inside a workspace (`workspace_key_not_allowed`): agents cannot manage automations. A membership without runs (no plan with inference, or, for an automation on your own key, no active workspace): `tier_restricted`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5430,7 +5501,7 @@
             ],
             "pattern": "^[A-Za-z0-9._:/-]{1,128}$",
             "default": null,
-            "description": "Model for the agent. `null` uses the agent's own default."
+            "description": "Model for the agent on NaN inference. `null` uses the agent's own default. With `inference.source: byok` leave it out: the model is `inference.model` (`400` with `param: \"model\"` otherwise)."
           },
           "trigger": {
             "type": "string",
@@ -5441,6 +5512,9 @@
             ],
             "default": "api",
             "description": "Who started the run. Informational only."
+          },
+          "inference": {
+            "$ref": "#/components/schemas/CreateRunInference"
           }
         }
       },
@@ -5575,7 +5649,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The model the run asked for, or `null` for the agent's default. With `byok` inference it is `inference.model`."
           },
           "trigger": {
             "type": "string",
@@ -5710,9 +5785,10 @@
                 "enum": [
                   "litellm",
                   "agent",
+                  "byok",
                   null
                 ],
-                "description": "Where the counts come from: `litellm` (measured by the NaN gateway) or `agent` (reported by the agent)."
+                "description": "Where the counts come from: `litellm` (measured by the NaN gateway), `agent` (reported by the agent) or `byok` (a run on your own provider key: the counts are what the agent reported, `null` when it reports none, and nothing is charged against your NaN plan; your provider's bill is the reference)."
               }
             }
           },
@@ -5748,16 +5824,7 @@
             "description": "`run`: a run you start with `POST /v1/runs`. `propose`: an automation run, whose agent proposes actions instead of acting. `apply`: the step that applies a proposal's actions, with no agent."
           },
           "inference": {
-            "type": "object",
-            "description": "Where the run's inference comes from. Always NaN.",
-            "properties": {
-              "source": {
-                "type": "string",
-                "enum": [
-                  "nan"
-                ]
-              }
-            }
+            "$ref": "#/components/schemas/RunInference"
           },
           "automation_id": {
             "type": [
@@ -5864,6 +5931,29 @@
             ],
             "format": "date-time",
             "description": "When the agent of an automation run finished, before any approval."
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Why a finished run failed, or `null`: `code` is its `error_code`, and on `GET /v1/runs/{id}` `message` is the text of its last `error` event (masked; render it as plain text; `null` when there is none). On a run on your own provider key, a provider error (a wrong key, an unknown model) shows up here.",
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
           },
           "checkout": {
             "oneOf": [
@@ -6863,7 +6953,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The model of its runs, or `null` for the agent's default. With `byok` inference it is `inference.model` and is never `null`."
           },
           "instructions": {
             "type": "string",
@@ -6906,15 +6997,7 @@
             "description": "How long a proposal waits for you. 259200 (72 hours) by default."
           },
           "inference": {
-            "type": "object",
-            "properties": {
-              "source": {
-                "type": "string",
-                "enum": [
-                  "nan"
-                ]
-              }
-            }
+            "$ref": "#/components/schemas/RunInference"
           },
           "github_repo": {
             "type": [
@@ -7491,6 +7574,93 @@
             "description": "For display, for example `fresh @ 0123456789ab` or `fresh @ default branch`."
           }
         }
+      },
+      "RunInference": {
+        "type": "object",
+        "description": "Where the model calls of a run or an automation go. `{\"source\":\"nan\"}`: NaN inference, through the workspace's inference key, counted against your plan. `{\"source\":\"byok\"}`: your own provider key (bring your own key): a secret of kind `provider_key` you saved in the portal (Settings > Secrets > Provider key). Its provider bills the run and NaN does not meter it. The key itself never appears here. Guide: [Use your own provider key](https://nan.builders/docs/runs#use-your-own-provider-key-byok).",
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "nan",
+              "byok"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "openai_compatible",
+              "anthropic",
+              "openai",
+              "gemini"
+            ],
+            "description": "Only with `byok`: the provider of the key (`openai_compatible` is any endpoint that speaks the OpenAI API, at the base URL saved with the key)."
+          },
+          "secret": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+            "description": "Only with `byok`: the name of the provider key secret. On a run it is the name when the run was created, and it stays after the secret is deleted."
+          },
+          "model": {
+            "type": "string",
+            "description": "Only with `byok`: the model id, as your provider names it."
+          }
+        }
+      },
+      "CreateRunInference": {
+        "description": "The inference of the run. Leave it out (or send `{\"source\":\"nan\"}`) for NaN inference. `{\"source\":\"byok\",\"secret\":\"<NAME>\",\"model\":\"<id>\"}` uses your own provider key: `secret` is the name of a secret of kind `provider_key` (created in the portal; the secrets API is portal-only) and `model` the model id your provider serves. With `byok`, leave the top-level `model` out. A run with `byok` needs a signed-in session: an API key or a platform token gets `403 session_required` (they can run an automation that uses your key). Guide: [Use your own provider key](https://nan.builders/docs/runs#use-your-own-provider-key-byok).",
+        "oneOf": [
+          {
+            "type": "object",
+            "title": "NaN inference",
+            "required": [
+              "source"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": [
+                  "nan"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "Your own provider key",
+            "required": [
+              "source",
+              "secret",
+              "model"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": [
+                  "byok"
+                ]
+              },
+              "secret": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+                "description": "Name of one of your secrets of kind `provider_key`.",
+                "example": "TOGETHER_KEY"
+              },
+              "model": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._:/-]{1,128}$",
+                "description": "The model id, as your provider names it. It cannot start with `-`.",
+                "example": "meta-llama/Llama-3.3-70B-Instruct"
+              }
+            }
+          }
+        ]
       }
     },
     "responses": {

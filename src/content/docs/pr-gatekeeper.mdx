@@ -91,7 +91,7 @@ And how it behaves:
 
 - **A running workspace with your repository's toolchain.** The agent runs the tests in one of your [workspaces](/docs/workspaces), so it needs what your CI needs: Go, Node, Python... Install them once in the workspace, as you would on your laptop, and keep it running: a stopped workspace cannot start runs, and the events that arrive meanwhile are lost. The example uses a workspace called `work` with Go installed.
 - **The agent installed in that workspace**: Pi, Pi + Gentle Shell or Hermes, from its [Software panel](/docs/workspaces#agents-and-the-software-panel). The automation can only use an agent the workspace has (see [Pick the agent](/docs/runs#pick-the-agent)). The example uses Pi.
-- **A plan with inference.** Each review is an [agent run](/docs/runs) and uses your plan like any other request.
+- **A plan with inference, or your own provider key.** Each review is an [agent run](/docs/runs) and uses your plan like any other request, or [your own provider key](/docs/automations#use-your-own-provider-key-byok), billed by your provider.
 - **Admin access to the repository on GitHub**, to add the webhook and create the tokens.
 - **A browser sign-in at [cloud.nan.builders](https://cloud.nan.builders/)**, with the email link: creating automations and saving secrets need it.
 
@@ -331,7 +331,7 @@ From the terminal, `nan automations deliveries <automation>` shows the same list
 
 ## What it costs
 
-Each review is a run in your workspace, and the tokens its agent uses count against your plan like any other request. Our reviews of a mid-sized Go repository take 8 to 20 minutes; the one in the screenshots used 430K input tokens and 5K output tokens. Most of it is the agent reading code and test output, so a small repository costs far less. The apply run uses no inference.
+Each review is a run in your workspace, and the tokens its agent uses count against your plan like any other request (on your own provider key, your provider bills them instead). Our reviews of a mid-sized Go repository take 8 to 20 minutes; the one in the screenshots used 430K input tokens and 5K output tokens. Most of it is the agent reading code and test output, so a small repository costs far less. The apply run uses no inference.
 
 Some things keep it in check:
 

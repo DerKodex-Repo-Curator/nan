@@ -95,7 +95,7 @@ describe('openapi.json: the Runs contract (cloud-api)', () => {
     expect(body.required).toEqual(['workspace', 'agent', 'prompt']);
     expect(body.additionalProperties).toBe(false);
     expect(Object.keys(body.properties)).toEqual([
-      'workspace', 'agent', 'prompt', 'cwd', 'git_isolation', 'timeout_seconds', 'model', 'trigger',
+      'workspace', 'agent', 'prompt', 'cwd', 'git_isolation', 'timeout_seconds', 'model', 'trigger', 'inference',
     ]);
     expect(body.properties.agent.enum).toEqual(['pi', 'pi_gentle', 'hermes']);
     expect(body.properties.prompt.description).toContain('32768 bytes');
@@ -169,7 +169,7 @@ describe('openapi.json: the Runs contract (cloud-api)', () => {
       'result', 'usage', 'last_seq', 'created_at', 'started_at', 'finished_at',
       // Phase 2 (handlers/runs.go runJSON), same order.
       'phase', 'inference', 'automation_id', 'parent_run_id', 'apply_run_ids', 'approval', 'instructions', 'input',
-      'approval_kinds', 'github_repo', 'trigger_depth', 'secrets', 'agent_finished_at',
+      'approval_kinds', 'github_repo', 'trigger_depth', 'secrets', 'agent_finished_at', 'error',
       // Migration 110 (PR gatekeeper), same order.
       'checkout', 'superseded_by', 'sticky_pr_comment',
     ]);

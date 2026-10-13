@@ -24,7 +24,7 @@ El agente de una automatización no hace push ni publica nada por su cuenta. **P
 ## Antes de empezar
 
 - **Un workspace encendido**, con el agente que quieras instalado (Pi, Pi + Gentle Shell o Hermes), como para cualquier [run](/es/docs/runs#elige-el-agente).
-- **Un plan con inferencia.** Los runs de una automatización usan la clave de inferencia de tu workspace y cuentan para el uso de tu plan como cualquier otro run.
+- **Un plan con inferencia, o tu propia clave de proveedor.** Con la inferencia de NaN, los runs de una automatización usan la clave de inferencia de tu workspace y cuentan para el uso de tu plan como cualquier otro run. Con [tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok), los factura tu proveedor y basta con un workspace propio activo.
 - **Una sesión en el navegador.** Crear o cambiar automatizaciones, escribir secretos y aprobar acciones exige que hayas iniciado sesión en [cloud.nan.builders](https://cloud.nan.builders/) desde tu navegador, con el enlace por correo. Una sesión de la CLI, una API key o un token pueden listar automatizaciones y lanzarlas, pero nunca cambiarlas. Consulta [Por qué algunas acciones necesitan el navegador](#por-qué-algunas-acciones-necesitan-el-navegador).
 - **Para las plantillas de GitHub, un token de GitHub guardado como secreto.** Sin él la automatización no se puede guardar, así que créalo antes: consulta [Un token de GitHub para las acciones](#un-token-de-github-para-las-acciones).
 
@@ -62,6 +62,7 @@ Las tres plantillas de GitHub actúan sobre un repositorio, así que necesitan u
 | **Folder** | Dónde trabaja el agente, dentro de `/home/nan`. No se usa con **Fresh clone per run**. |
 | **Separate branch** | Rama aparte: **On** (por defecto), **Auto** u **Off (work in the folder directly)** (trabajar directamente en la carpeta), como en un [run](/es/docs/runs#dónde-trabaja-el-agente). No se usa con **Fresh clone per run**. |
 | **Time limit (minutes)** | El tiempo máximo, de 1 a 120. 30 por defecto. |
+| **Inference** | La inferencia: **NaN (included in your plan)**, la predeterminada (**NaN (not in your plan)** si tu plan no incluye inferencia), o **My own key**, una **Provider key** tuya y el **Model**. Consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok). |
 | **GitHub repository (optional)** | `owner/name`, por ejemplo `acme/api`. El repositorio sobre el que actúan las acciones. |
 | **Checkout** | **Workspace folder** (por defecto): el agente trabaja en **Folder**, en tu workspace. **Fresh clone per run** (clon nuevo por run): NaN clona el **GitHub repository** en cada run, en el commit del que trata el evento, y borra el clon cuando termina el run. Consulta [Clon nuevo por run](#clon-nuevo-por-run). |
 | **Run pull requests from forks and outside contributors** | Aparece con **Fresh clone per run**. Desactivado por defecto. Consulta [Pull requests de forks y de colaboradores externos](#pull-requests-de-forks-y-de-colaboradores-externos). |
@@ -89,7 +90,7 @@ Los secretos son los tokens y claves que usan tus automatizaciones: un token de 
 
 ### Añade un secreto
 
-Abre tus ajustes en el portal, **Secrets**, debajo de **Tokens**, y pulsa **Add secret**:
+Abre tus ajustes en el portal, **Secrets**, debajo de **Tokens**, y pulsa **Add secret**. En **Kind**, **Secret** es para los tokens y claves que reciben tus automatizaciones; **Provider key** es para tu propia clave con un proveedor de IA, que se usa como inferencia de runs y automatizaciones: consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok).
 
 - **Name**: el nombre de la variable que ven tus automatizaciones, en mayúsculas, dígitos y `_`, empezando por una letra. Por ejemplo `GITHUB_TOKEN`. Hasta 64 caracteres.
 - **Value**: se guarda tal cual lo pegas, hasta 16 KiB. Los saltos de línea dentro del valor están bien (una clave PEM, por ejemplo), pero no al principio ni al final.
@@ -99,7 +100,7 @@ Los secretos son de **solo escritura**: una vez guardados, nadie puede volver a 
 
 - **Replace value**: el valor nuevo lo usan todos los runs que arranquen a partir de ese momento, incluidos los que ya están en cola. El anterior no se puede recuperar.
 - Cambiar su **Description**.
-- **Delete**. El borrado se rechaza mientras una automatización lo use: quítalo antes de esas automatizaciones.
+- **Delete**. El borrado se rechaza mientras una automatización lo use, como uno de sus secretos o como su provider key: quítalo antes de esas automatizaciones.
 
 Puedes guardar hasta 100 secretos. Mejor tokens de vida corta, limitados a lo que necesita la automatización.
 
@@ -138,6 +139,24 @@ Crea un [fine-grained personal access token](https://github.com/settings/persona
 Si un push puede cambiar archivos dentro de `.github/workflows/` (la plantilla **CI failure** puede hacerlo), el token de escritura también necesita **Workflows** de lectura y escritura.
 
 Si el agente también necesita leer el repositorio (uno privado, o para traer logs de CI), crea un segundo token solo con permisos de lectura (**Contents**, **Pull requests**, **Issues**, y **Actions** para los logs de CI) y asígnalo como `GITHUB_TOKEN`, **Agent**.
+
+## Usa tu propia clave de proveedor (BYOK)
+
+Una automatización puede usar **tu propia clave** con un proveedor de IA en lugar de la inferencia de NaN, igual que [un run suelto](/es/docs/runs#usa-tu-propia-clave-de-proveedor-byok). Guarda antes la clave como **Provider key** en **Secrets** (Anthropic, OpenAI, Google Gemini o cualquier endpoint OpenAI-compatible): [Guarda tu clave como provider key](/es/docs/runs#guarda-tu-clave-como-provider-key) explica el formulario y las reglas de la URL base.
+
+En los ajustes de la automatización, pon **Inference** en **My own key**, elige la **Provider key** y escribe el **Model**, tal como lo llama tu proveedor. A partir de ahí todos los runs de la automatización usan esa clave y ese modelo, los lance quien los lance: un webhook, una programación, **Run now**, la CLI o la API. Si vuelves a poner **Inference** en **NaN (included in your plan)**, vuelve a la inferencia de NaN, con el modelo de NaN que elijas o, si no eliges ninguno, el predeterminado del agente.
+
+- **Quién puede usarla.** Sin un plan con inferencia de NaN, una automatización con tu propia clave funciona con un workspace propio activo. Crearla y cambiarla necesitan el navegador, como cualquier automatización.
+- **Cualquier credencial puede lanzarla.** A diferencia de [un run suelto con tu clave](/es/docs/runs#quién-puede-usarla), una automatización con tu clave se puede lanzar con una API key o con un token de plataforma con `automations:run`, por ejemplo desde CI: sus instrucciones son las que tú guardaste, y quien la lanza solo añade la entrada.
+- **Facturación.** Sus runs los factura tu proveedor; NaN no los mide. La clave cuenta para los 48 KiB de secretos que puede recibir un run.
+- **Límites.** Hasta 8 runs con tus propias claves a la vez entre todos tus workspaces, además de los límites de todos los runs. Consulta [Límites](/es/docs/runs#límites).
+- **La clave está en uso.** No puedes borrar una provider key mientras una automatización la use: cambia antes esas automatizaciones. `nan secrets ls` y la lista de secretos muestran qué automatizaciones usan cada clave. `nan automations show` muestra la elección en su línea **inference**.
+
+<Callout title="Un webhook le escribe a un agente que tiene tu clave" variant="warning">
+Lo que trae una entrega de webhook o un `input` lo escribe otra persona, y el agente lo lee mientras tiene tu clave en su entorno. Una pull request o una issue preparadas para ello podrían intentar que la imprima o la envíe. Dale a esas automatizaciones una clave limitada a lo que necesitan, con un límite de gasto en tu proveedor, y deja fuera a los emisores no fiables (forks, colaboradores externos) con los filtros del trigger. `nan automations show` te lo recuerda cuando un webhook lanza una automatización con tu clave.
+</Callout>
+
+Hermes todavía no puede usar una clave de **Anthropic** en los workspaces: sus runs fallan con `config_error`. Usa **Pi** o **Pi + Gentle Shell** con ella, o un endpoint **OpenAI-compatible**.
 
 ## Acciones y aprobación
 
@@ -375,7 +394,7 @@ Para CI, dale al token `automations:run` y `runs` (para seguir el run y conocer 
 | Instrucciones | 16 KiB |
 | Input de un run | Un objeto JSON de hasta 48 KiB, con 8 niveles de anidamiento como mucho |
 
-Los runs de las automatizaciones comparten los límites de todos los runs: cuántos trabajan a la vez en cada workspace, como mucho 5 a la vez entre todos tus workspaces (8 con Premium), y la cola. Consulta [Cuántos runs a la vez](/es/docs/runs#cuántos-runs-a-la-vez). Las automatizaciones necesitan un plan con inferencia: sin él, el portal te enseña las opciones para mejorarlo y los webhooks se responden sin lanzar ningún run.
+Los runs de las automatizaciones comparten los límites de todos los runs: cuántos trabajan a la vez en cada workspace, como mucho 5 a la vez entre todos tus workspaces (8 con Premium), y la cola. Consulta [Cuántos runs a la vez](/es/docs/runs#cuántos-runs-a-la-vez). Las automatizaciones con la inferencia de NaN necesitan un plan con inferencia: sin él, el portal te ofrece **My own key** (consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok)), y los webhooks de una automatización con la inferencia de NaN se responden sin lanzar ningún run. Los runs con tus propias claves tienen su propio límite: hasta 8 a la vez entre todos tus workspaces.
 
 ## Cambia o borra una automatización
 

@@ -164,6 +164,7 @@ Desde la v0.1.25 la CLI también pone a trabajar agentes en tareas dentro de tus
 nan run "añade tests al parser de fechas y haz que pasen"
 nan runs ls
 nan runs logs <id> -f
+nan run --byok-secret ANTHROPIC_KEY --model claude-sonnet-4-5 "arregla el test inestable"   # v0.1.32+, tu propia clave de proveedor
 ```
 
 El run se ejecuta en el workspace, no en tu máquina, así que sigue aunque cierres la terminal. Los comandos de runs usan tu sesión de `nan auth login`, o un token de plataforma desde `NAN_TOKEN`, `--token-file` o `nan auth login --api-token` para scripts, CI y servidores. Todos los flags, el orden de autenticación, los códigos de salida y la API están en [Runs de agentes](/es/docs/runs).

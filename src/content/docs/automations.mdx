@@ -24,7 +24,7 @@ The agent of an automation does not push or post on its own. It **proposes actio
 ## Before you start
 
 - **A workspace that is running**, with the agent you want installed (Pi, Pi + Gentle Shell or Hermes), as for any [run](/docs/runs#pick-the-agent).
-- **A plan with inference.** Automation runs use your workspace's inference key and count against your plan's usage like any other run.
+- **A plan with inference, or your own provider key.** On NaN inference, automation runs use your workspace's inference key and count against your plan's usage like any other run. On [your own provider key](#use-your-own-provider-key-byok), your provider bills them and an active workspace of your own is enough.
 - **A browser sign-in.** Creating or changing automations, writing secrets and approving actions need you signed in at [cloud.nan.builders](https://cloud.nan.builders/) in your browser, with the email link. A CLI session, an API key or a token can list automations and run them, but never change them. See [Why some actions need the browser](#why-some-actions-need-the-browser).
 - **For the GitHub templates, a GitHub token saved as a secret.** The automation cannot be saved without it, so create it first: see [A GitHub token for actions](#a-github-token-for-actions).
 
@@ -62,6 +62,7 @@ The three GitHub templates act on a repository, so they need a **GitHub reposito
 | **Folder** | Where the agent works, inside `/home/nan`. Not used with **Fresh clone per run**. |
 | **Separate branch** | **On** (the default), **Auto** or **Off (work in the folder directly)**, as in a [run](/docs/runs#where-the-agent-works). Not used with **Fresh clone per run**. |
 | **Time limit (minutes)** | From 1 to 120. 30 by default. |
+| **Inference** | **NaN (included in your plan)**, the default (**NaN (not in your plan)** when your plan has no inference), or **My own key**: a **Provider key** of yours and the **Model**. See [Use your own provider key](#use-your-own-provider-key-byok). |
 | **GitHub repository (optional)** | `owner/name`, for example `acme/api`. The repository the actions act on. |
 | **Checkout** | **Workspace folder** (the default): the agent works in **Folder**, in your workspace. **Fresh clone per run**: NaN clones the **GitHub repository** for each run, at the commit the event is about, and deletes the clone when the run ends. See [Fresh clone per run](#fresh-clone-per-run). |
 | **Run pull requests from forks and outside contributors** | Shown with **Fresh clone per run**. Off by default. See [Pull requests from forks and outside contributors](#pull-requests-from-forks-and-outside-contributors). |
@@ -89,7 +90,7 @@ Secrets are the tokens and keys your automations use: a GitHub token, an API key
 
 ### Add a secret
 
-Open your settings on the portal, **Secrets**, below **Tokens**, and press **Add secret**:
+Open your settings on the portal, **Secrets**, below **Tokens**, and press **Add secret**. **Kind** is **Secret** for the tokens and keys your automations receive; **Provider key** is for your own key with an AI provider, used as the inference of runs and automations: see [Use your own provider key](#use-your-own-provider-key-byok).
 
 - **Name**: the variable name your automations see, in capitals, digits and `_`, starting with a letter. For example `GITHUB_TOKEN`. Up to 64 characters.
 - **Value**: saved exactly as you paste it, up to 16 KiB. Line breaks inside the value are fine (a PEM key, for example), but not at its start or end.
@@ -99,7 +100,7 @@ Secrets are **write-only**: once saved, nobody can read a value back, not even y
 
 - **Replace value**: the new value is used by every run that starts from then on, including runs already queued. The old one cannot be recovered.
 - Change its **Description**.
-- **Delete** it. Deleting is refused while an automation uses it: remove it from those automations first.
+- **Delete** it. Deleting is refused while an automation uses it, as one of its secrets or as its provider key: remove it from those automations first.
 
 You can keep up to 100 secrets. Prefer short-lived tokens limited to what the automation needs.
 
@@ -138,6 +139,24 @@ Create a [fine-grained personal access token](https://github.com/settings/person
 If a push may change files under `.github/workflows/` (the **CI failure** template can), the write token also needs **Workflows** read and write.
 
 If the agent also needs to read the repository (a private one, or to fetch CI logs), create a second token with read permissions only (**Contents**, **Pull requests**, **Issues**, and **Actions** for CI logs) and assign it as `GITHUB_TOKEN`, **Agent**.
+
+## Use your own provider key (BYOK)
+
+An automation can run on **your own key** with an AI provider instead of NaN inference, as an [ad-hoc run can](/docs/runs#use-your-own-provider-key-byok). Save the key first as a **Provider key** in **Secrets** (Anthropic, OpenAI, Google Gemini or any OpenAI-compatible endpoint): [Save your key as a provider key](/docs/runs#save-your-key-as-a-provider-key) has the form and the base URL rules.
+
+In the automation's settings, set **Inference** to **My own key**, pick the **Provider key** and type the **Model**, exactly as your provider names it. Every run of the automation then uses that key and model, whatever starts it: a webhook, a schedule, **Run now**, the CLI or the API. Setting **Inference** back to **NaN (included in your plan)** returns it to NaN inference, with the NaN model you pick or, if you pick none, the agent's default.
+
+- **Who can use it.** Without a NaN inference plan, an automation on your own key works with an active workspace of your own. Creating it and changing it need the browser, like any automation.
+- **Any credential can start it.** Unlike an [ad-hoc run on your key](/docs/runs#who-can-use-it), an automation on your key can be started with an API key or a platform token with `automations:run`, for example from CI: its instructions are the ones you saved, and the caller only adds input.
+- **Billing.** Your provider bills its runs; NaN does not meter them. The key counts towards the 48 KiB of secrets a run can receive.
+- **Limits.** Up to 8 runs on your own keys at once across all your workspaces, plus the limits of every run. See [Limits](/docs/runs#limits).
+- **The key is in use.** You cannot delete a provider key while an automation uses it: change those automations first. `nan secrets ls` and the secrets list show which automations use each key. `nan automations show` shows the choice on its **inference** line.
+
+<Callout title="A webhook writes to an agent that holds your key" variant="warning">
+What a webhook delivery or an `input` carries is written by someone else, and the agent reads it while your key is in its environment. A crafted pull request or issue could try to make it print or send the key. Give such automations a key limited to what they need, with a spending limit at your provider, and keep untrusted senders (forks, outside contributors) out with the trigger's filters. `nan automations show` reminds you when a webhook starts an automation on your key.
+</Callout>
+
+Hermes cannot use an **Anthropic** key in workspaces yet: its runs fail with `config_error`. Use **Pi** or **Pi + Gentle Shell** with it, or an **OpenAI-compatible** endpoint.
 
 ## Actions and approval
 
@@ -375,7 +394,7 @@ For CI, give the token `automations:run` and `runs` (to follow the run and get i
 | Instructions | 16 KiB |
 | Input of a run | A JSON object of up to 48 KiB, nested at most 8 levels |
 
-Automation runs share the limits of every run: how many work at once in each workspace, at most 5 at once across all your workspaces (8 on Premium), and the queue. See [How many runs at once](/docs/runs#how-many-runs-at-once). Automations need a plan with inference: without one, the portal shows you the upgrade options and webhooks are answered without starting a run.
+Automation runs share the limits of every run: how many work at once in each workspace, at most 5 at once across all your workspaces (8 on Premium), and the queue. See [How many runs at once](/docs/runs#how-many-runs-at-once). Automations on NaN inference need a plan with inference: without one, the portal offers **My own key** (see [Use your own provider key](#use-your-own-provider-key-byok)), and webhooks of an automation on NaN inference are answered without starting a run. Runs on your own keys have their own limit: up to 8 at once across all your workspaces.
 
 ## Change or delete an automation
 

@@ -278,8 +278,21 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
     }
   });
 
-  test('ephemeral executors and BYOK are not documented', () => {
-    for (const body of [autoBody, hooksBody]) expect(body).not.toMatch(/ephemeral|ef[ií]mer|byok|bring your own key/i);
+  test('ephemeral executors are not documented', () => {
+    for (const body of [autoBody, hooksBody]) expect(body).not.toMatch(/ephemeral|ef[ií]mer/i);
+  });
+
+  // BYOK (AGENT-AUTOMATIONS-PHASE3-BYOK.md): portal labels from the cloud-ui
+  // automation editor and Settings > Secrets.
+  test('documents BYOK with the portal labels, the untrusted-input warning and the limits', () => {
+    expect(autoBody).toMatch(/^## .*\(BYOK\)$/m);
+    for (const label of ['**Inference**', '**My own key**', '**NaN (included in your plan)**', '**Provider key**', '**Model**']) {
+      expect(autoBody, label).toContain(label);
+    }
+    expect(autoBody).toMatch(/automations:run/);
+    expect(autoBody).toMatch(/48 KiB/);
+    expect(autoBody).toMatch(/8 (runs with|runs con|a la vez|at once)/);
+    expect(autoBody).toContain('config_error');
   });
 });
 
