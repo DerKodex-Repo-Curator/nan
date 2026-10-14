@@ -111,10 +111,31 @@ for (const lang of ['en', 'es'] as const) {
       expect(html).toMatch(
         new RegExp(
           `<ul class="docs-nav-sub" data-depth="1"[^>]*>\\s*<li[^>]*>\\s*<a href="${gatekeeper}"[^>]*>[^<]*</a>\\s*</li>\\s*` +
-            `<li[^>]*>\\s*<a href="${pfx}/docs/secrets"[^>]*>[^<]*</a>\\s*</li>\\s*</ul>`,
+            `<li[^>]*>\\s*<a href="${pfx}/docs/secrets"[^>]*>[^<]*</a>\\s*</li>`,
         ),
       );
       expect(html.match(new RegExp(`href="${pfx}/docs/secrets"`, 'g'))).toHaveLength(1);
+    });
+
+    // Owner's ask (2026-10-14): Notifications is the third sub-item of
+    // Automations, right after Secrets, closing the nested list.
+    it('renders Notifications last in the same nested list, right after Secrets', async () => {
+      const html = await sidebar(lang, `${pfx}/docs`);
+      expect(html).toMatch(
+        new RegExp(
+          `<ul class="docs-nav-sub" data-depth="1"[^>]*>\\s*<li[^>]*>\\s*<a href="${gatekeeper}"[^>]*>[^<]*</a>\\s*</li>\\s*` +
+            `<li[^>]*>\\s*<a href="${pfx}/docs/secrets"[^>]*>[^<]*</a>\\s*</li>\\s*` +
+            `<li[^>]*>\\s*<a href="${pfx}/docs/notifications"[^>]*>[^<]*</a>\\s*</li>\\s*</ul>`,
+        ),
+      );
+      expect(html.match(new RegExp(`href="${pfx}/docs/notifications"`, 'g'))).toHaveLength(1);
+    });
+
+    it('marks Notifications as the current page and Automations as the trail when it is open', async () => {
+      const html = await sidebar(lang, `${pfx}/docs/notifications`);
+      expect(html).toMatch(new RegExp(`<a href="${pfx}/docs/notifications" class="docs-nav-link is-active" aria-current="page"`));
+      expect(html).toMatch(new RegExp(`<a href="${pfx}/docs/automations" class="docs-nav-link is-trail"`));
+      expect(html.match(/aria-current="page"/g)).toHaveLength(1);
     });
 
     it('marks Secrets as the current page and Automations as the trail when it is open', async () => {

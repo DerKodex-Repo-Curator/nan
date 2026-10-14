@@ -1,0 +1,15 @@
+{
+  "automation": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "name": "PR review"
+  },
+  "created_at": "2026-10-14T10:00:00Z",
+  "event": "automation.disabled",
+  "id": "44444444-4444-4444-8444-444444444444",
+  "reason": "workspace_deleted",
+  "run": null,
+  "text": "Automation disabled: PR review (its workspace was deleted)",
+  "trigger": null,
+  "url": "https://cloud.nan.builders/automations/11111111-1111-4111-8111-111111111111",
+  "version": 1
+}

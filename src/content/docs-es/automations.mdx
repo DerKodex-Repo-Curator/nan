@@ -21,6 +21,8 @@ Qué puede lanzar una automatización:
 
 El agente de una automatización no hace push ni publica nada por su cuenta. **Propone acciones** (hacer push de una rama, abrir una pull request, comentar, revisar, añadir etiquetas) y NaN las aplica con un token que guardas aparte del agente. Tú decides qué tipos de acción esperan tu aprobación y cuáles se aplican solas: todas, ninguna o cualquier combinación.
 
+Para enterarte en Slack, Microsoft Teams, Discord o tu propio endpoint cuando un run espera tu aprobación o falla, añade un [canal de notificaciones](/es/docs/notifications).
+
 ## Antes de empezar
 
 - **Un workspace encendido**, con el agente que quieras instalado (Pi, Pi + Gentle Shell o Hermes), como para cualquier [run](/es/docs/runs#elige-el-agente).
@@ -475,8 +477,10 @@ Un token de plataforma lleva **scopes**: lo que puede hacer. Los eliges al crear
 | `automations:write` | Crear, cambiar, desactivar y borrar automatizaciones y sus triggers. **Puede darle cualquiera de tus secretos a un agente.** |
 | `secrets:read` | Leer los metadatos de tus secretos: nombres, pistas, descripciones y qué automatizaciones los usan. Nunca los valores. |
 | `secrets:write` | Crear secretos, reemplazar sus valores, cambiar sus descripciones y borrarlos. **Puede reemplazar cualquiera de tus secretos.** |
+| `notifications:read` | Leer tus [canales de notificaciones](/es/docs/notifications) y sus envíos. Nunca sus URLs. |
+| `notifications:write` | Crear, cambiar, probar y borrar canales de notificaciones y rotar sus secretos de firma. **Puede enviar tus notificaciones a cualquier URL.** |
 
-Los tokens nuevos llevan `runs` y `workspaces:read` por defecto. Un token con un scope `automations:` o `secrets:` solo se puede crear en el portal, con sesión iniciada en el navegador, no desde la CLI. Los tres últimos scopes aparecen ahí solo si tu cuenta tiene la API de escritura, con un aviso. Los scopes son independientes: `secrets:write` no incluye `secrets:read`, ni `automations:write` incluye `automations:read`, así que un token que gestiona secretos desde la CLI suele llevar los dos, y uno que cambia automatizaciones por su nombre también necesita `automations:read` para buscar el nombre. Un token sin el scope que necesita un endpoint recibe `403 token_scope_denied`.
+Los tokens nuevos llevan `runs` y `workspaces:read` por defecto. Un token con un scope `automations:`, `secrets:` o `notifications:` solo se puede crear en el portal, con sesión iniciada en el navegador, no desde la CLI. `automations:write` y los scopes `secrets:` aparecen ahí solo si tu cuenta tiene la API de escritura, y los scopes `notifications:` solo si además tiene notificaciones, con un aviso. Los scopes son independientes: `secrets:write` no incluye `secrets:read`, ni `automations:write` incluye `automations:read`, así que un token que gestiona secretos desde la CLI suele llevar los dos, y uno que cambia automatizaciones por su nombre también necesita `automations:read` para buscar el nombre. Un token sin el scope que necesita un endpoint recibe `403 token_scope_denied`.
 
 <Callout title="Lo que puede hacer un token de escritura" variant="warning">
 Un agente o un script con un token con `secrets:write` o `automations:write` puede cambiar tus secretos o tus automatizaciones. Con `automations:write` puede crear una automatización que reciba cualquiera de tus secretos y se ejecute sin esperar tu aprobación, lo que equivale a leerlos todos. Da estos scopes solo a los tokens que los necesiten, mantenlos fuera de los workspaces, ponles caducidad y revócalos cuando acabes.
@@ -512,7 +516,7 @@ Al borrarla con **Delete**, sus triggers se detienen al momento y se cancelan su
 Una automatización decide cuáles de tus secretos recibe un agente y qué puede hacer en tu repositorio sin preguntar. Estas acciones siempre te necesitan a ti, con sesión iniciada en el navegador:
 
 - **Aprobar una propuesta.** Aprobar es tu revisión de un cambio concreto que hizo un agente. Si una credencial que puede tener un script o un agente pudiera aprobar, un agente podría aprobar su propia propuesta.
-- **Crear un token con un scope `automations:` o `secrets:`.** Así una sesión de la CLI robada no puede convertirse en un token de larga duración, y cada uno de esos tokens lo creaste tú, después del aviso.
+- **Crear un token con un scope `automations:`, `secrets:` o `notifications:`.** Así una sesión de la CLI robada no puede convertirse en un token de larga duración, y cada uno de esos tokens lo creaste tú, después del aviso.
 
 Crear, cambiar o borrar automatizaciones, triggers y secretos también necesita el navegador mientras tu cuenta no tenga la API de escritura. Con ella, tu sesión de la CLI y los tokens con los scopes de escritura también pueden hacerlo: quién tiene esas credenciales lo decides tú, así que dalas solo donde confíes en quien las tiene (consulta [Gestiónalas desde la CLI o la API](#gestiónalas-desde-la-cli-o-la-api)).
 

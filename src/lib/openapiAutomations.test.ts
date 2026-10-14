@@ -50,7 +50,7 @@ describe('openapi.json: Automations and Approvals tags', () => {
   it('sit right after Runs, before Workspaces, and link their guides', () => {
     const names = s.tags.map((t: any) => t.name);
     const at = names.indexOf('Runs');
-    expect(names.slice(at, at + 5)).toEqual(['Runs', 'Automations', 'Secrets', 'Approvals', 'Workspaces']);
+    expect(names.slice(at, at + 6)).toEqual(['Runs', 'Automations', 'Secrets', 'Notifications', 'Approvals', 'Workspaces']);
     const tags = Object.fromEntries(s.tags.map((t: any) => [t.name, t.description]));
     expect(tags.Automations).toContain('https://nan.builders/docs/automations');
     expect(tags.Automations).toContain('https://nan.builders/docs/webhooks');
@@ -252,10 +252,10 @@ describe('openapi.json: credentials for the platform API', () => {
     expect(desc).toContain('### Browser sign-in');
     const blocks = [...desc.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => JSON.parse(m[1]));
     const byCode = Object.fromEntries(blocks.filter((b) => b.error?.code).map((b) => [b.error.code, b.error]));
-    // devops edge Worker TOKEN_NOT_VALID_FOR_INFERENCE, byte for byte.
+    // devops edge Worker TOKEN_NOT_VALID_FOR_INFERENCE (origin/main 6e4f7588, cloudflare/api-edge-normaliser/src/index.js), byte for byte.
     expect(byCode.token_not_valid_for_inference).toEqual({
       message:
-        'Platform tokens (nan_pat_) cannot be used for inference. Use an inference API key (sk-) instead. Platform tokens only work on the platform API (/v1/runs and GET /api/workspaces).',
+        'Platform tokens (nan_pat_) cannot be used for inference. Use an inference API key (sk-) instead. Platform tokens only work on the platform API (/v1/runs, /v1/automations, /v1/approvals, /v1/secrets, /v1/notification-channels and GET /api/workspaces).',
       type: 'invalid_request_error',
       param: null,
       code: 'token_not_valid_for_inference',
@@ -280,7 +280,7 @@ describe('openapi.json: credentials for the platform API', () => {
     const d = s.components.securitySchemes.platformToken.description;
     expect(d).toContain('`401 token_not_valid_for_inference`');
     expect(d).toContain('`403 token_scope_denied`');
-    expect(d).toMatch(/can never approve a run, and it changes automations or secrets only with `automations:write` or `secrets:write`/);
+    expect(d).toMatch(/can never approve a run, and it changes automations, secrets or notification channels only with `automations:write`, `secrets:write` or `notifications:write`/);
   });
 });
 

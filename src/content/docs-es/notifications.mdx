@@ -1,0 +1,477 @@
+---
+title: Notificaciones
+description: Entérate en Slack, Microsoft Teams, Discord o tu propio endpoint HTTPS cuando una automatización necesita tu aprobación, falla, se desactiva o su webhook no deja de fallar.
+order: 23
+group: Guías
+parent: automations
+---
+
+import Callout from '../../components/docs/Callout.astro';
+
+# Notificaciones.
+
+Un **canal de notificaciones** es un sitio donde NaN te cuenta qué hacen tus [automatizaciones](/es/docs/automations), para que no tengas que tener el portal abierto: un canal de Slack, un canal de Microsoft Teams, un canal de Discord o un endpoint HTTPS tuyo. Añades el canal una vez, eliges los eventos que recibe y NaN publica un mensaje corto con un enlace al portal cada vez que ocurre uno de ellos.
+
+Solo notifican los runs de automatizaciones. Un run que lanzas tú con `nan run` o desde la pestaña **Runs** de un workspace nunca envía una notificación.
+
+En resumen: consigue la URL de un webhook de [Slack](#consigue-la-url-de-un-webhook-de-slack), [Microsoft Teams](#consigue-la-url-de-un-webhook-de-microsoft-teams) o [Discord](#consigue-la-url-de-un-webhook-de-discord), [añade el canal](#añade-un-canal) en **Settings → Notifications** y pulsa **Test**.
+
+Las notificaciones se están abriendo poco a poco. Si no ves **Notifications** en **Settings**, tu cuenta aún no las tiene.
+
+## Canales
+
+Cada canal tiene:
+
+| Parte | Qué es |
+|---|---|
+| **Tipo** | `slack`, `teams`, `discord` o `https`. Se fija al crearlo. |
+| **Nombre** | Cómo lo reconoces, por ejemplo `team alerts`. De 1 a 64 caracteres, único en tu cuenta (sin distinguir mayúsculas). |
+| **URL** | Dónde publica NaN. De solo escritura: nunca se vuelve a mostrar, solo una pista. Mira [Las URLs son credenciales](#las-urls-son-credenciales). |
+| **Eventos** | Lo que recibe, para todas tus automatizaciones o para una. Mira [Eventos](#eventos). |
+
+Puedes tener hasta 10 canales. Cada uno envía el mensaje en el formato que espera su proveedor:
+
+| Tipo | Lo que recibes |
+|---|---|
+| **Slack** | Un mensaje con el título como enlace al portal, una línea con el evento, el estado del run y el código de error, y el resumen del run cuando lo tiene. |
+| **Microsoft Teams** | Una adaptive card con el título, el evento, el estado y el código de error, el resumen y un botón **Open in NaN**. |
+| **Discord** | Un embed con el título como enlace, el evento, el estado y el código de error, y el resumen. Nunca menciona a nadie. |
+| **HTTPS** | Un `POST` JSON firmado a tu endpoint, con el [esquema documentado](#contenido-del-mensaje). |
+
+### Consigue la URL de un webhook de Slack
+
+1. Ve a [api.slack.com/apps](https://api.slack.com/apps), pulsa **Create New App**, **From scratch**, ponle nombre (por ejemplo `NaN`) y elige tu workspace de Slack.
+2. En **Incoming Webhooks**, activa **Activate Incoming Webhooks**.
+3. Pulsa **Add New Webhook to Workspace**, elige el canal y pulsa **Allow**.
+4. Copia la **Webhook URL**. Tiene esta forma: `https://hooks.slack.com/services/T…/B…/…`.
+
+### Consigue la URL de un webhook de Microsoft Teams
+
+Teams publica webhooks con su app **Workflows**:
+
+1. En el canal de Teams, abre **…** (más opciones) y elige **Workflows**.
+2. Elige la plantilla **Post to a channel when a webhook request is received** (en algunos tenants, **Send webhook alerts to a channel**), ponle nombre y confirma el equipo y el canal.
+3. Copia la URL que muestra Teams al final. Está en un host que termina en `logic.azure.com`, `powerplatform.com` o `webhook.office.com`.
+
+NaN envía una adaptive card, que es lo que publica esa plantilla. La URL de un conector **Incoming Webhook** antiguo (en `webhook.office.com`) se sigue aceptando, pero Microsoft está retirando esos conectores: usa Workflows.
+
+### Consigue la URL de un webhook de Discord
+
+1. En Discord, abre **Server Settings**, luego **Integrations** y luego **Webhooks**. Necesitas el permiso **Manage Webhooks**.
+2. Pulsa **New Webhook** y abre el webhook que crea. Ponle nombre, elige el canal y pulsa **Copy Webhook URL**. Tiene esta forma: `https://discord.com/api/webhooks/…/…`.
+
+### Tu propio endpoint HTTPS
+
+Cualquier URL `https` en el puerto 443 con un nombre DNS público. NaN firma cada petición con un **secreto de firma** que crea para el canal y te muestra **una sola vez**, al crear el canal: mira [Verifica la firma](#verifica-la-firma). Los canales de Slack, Teams y Discord no tienen secreto de firma.
+
+## Eventos
+
+| Evento | En el portal | Cuándo se envía | Activo por defecto |
+|---|---|---|---|
+| `approval.pending` | **Approval needed** | Un run de una automatización espera tu aprobación. | Sí |
+| `run.failed` | **Run failed** | Un run de una automatización falló o agotó su tiempo (`timed_out`), o falló aplicar las acciones que aprobaste. | Sí |
+| `automation.disabled` | **Automation turned off** | Se desactivó una automatización: tú, porque se borró su workspace o porque se borró un secreto que usa. | Sí |
+| `trigger.failing` | **Webhook signatures failing** | El webhook de una automatización no deja de recibir peticiones con una firma incorrecta: unas 10 seguidas en una hora. Como mucho una vez al día por trigger. | Sí |
+| `run.finished` | **Run succeeded** | Un run de una automatización terminó bien. | No: actívalo tú |
+
+Un run cancelado nunca notifica, ni tampoco un run que lanzas tú (fuera de una automatización). `run.finished` viene desactivado porque una automatización con mucho uso publicaría en cada run: actívalo donde lo quieras.
+
+**Para todas tus automatizaciones o para una.** Cada evento de un canal es para **todas tus automatizaciones** (también las que crees más adelante) o para **una automatización**. Al crear un canal puedes limitar sus eventos por defecto a una automatización, y luego mezclar ambos: por ejemplo, `run.failed` para todas y `run.finished` solo para `nightly report`. Un canal admite hasta 50 de estas suscripciones. Al borrar una automatización se borran las suscripciones que la nombraban.
+
+El mismo evento se envía una sola vez por canal, aunque el canal esté suscrito a él para todas las automatizaciones y para esa en concreto.
+
+## Gestiona los canales en el portal
+
+Tus canales están en los ajustes de [cloud.nan.builders](https://cloud.nan.builders/): abre **Settings** y luego **Notifications**, justo debajo de **Secrets**. Los ajustes de cada automatización también tienen una tarjeta **Notifications** que lista los canales que la cubren, con **Manage notifications** para venir aquí.
+
+### Añade un canal
+
+1. Pulsa **Add channel**. En **Where**, elige **Slack**, **Microsoft Teams**, **Discord** o **HTTPS endpoint**.
+2. Escribe un **Name** y pega la URL en el campo de URL de ese tipo (**Slack URL**, por ejemplo). Dónde conseguirla: [Slack](#consigue-la-url-de-un-webhook-de-slack), [Microsoft Teams](#consigue-la-url-de-un-webhook-de-microsoft-teams), [Discord](#consigue-la-url-de-un-webhook-de-discord) o [tu propio endpoint](#tu-propio-endpoint-https).
+3. Revisa los **Events**: **Approval needed**, **Run failed**, **Automation turned off** y **Webhook signatures failing** vienen activados; **Run succeeded** viene desactivado, actívalo si lo quieres. En **Automations**, deja **All automations, including new ones** o elige una.
+4. Guarda. En un **HTTPS endpoint** el portal te muestra el **secreto de firma** una sola vez: cópialo ya al almacén de secretos de tu endpoint, no se vuelve a mostrar.
+
+Después pulsa **Test**: NaN envía un mensaje de prueba al momento y te dice si llegó.
+
+### Prueba, cambia, rota, borra
+
+- **Test** envía un mensaje de prueba al canal. Solo funciona en un canal encendido, y puedes enviar hasta 5 seguidos y luego uno por minuto, más o menos. En Teams, `delivered` significa que el workflow aceptó el mensaje: luego el workflow lo publica, y si falla, el error está en el historial de ejecuciones del workflow.
+- **Events** cambia qué eventos recibe el canal, y para qué automatizaciones.
+- **Edit** cambia el nombre del canal o reemplaza su URL (**New URL (optional)**). El tipo no se puede cambiar: añade un canal nuevo.
+- **Rotate secret** (solo HTTPS) crea un secreto de firma nuevo y lo muestra una sola vez. El antiguo sigue firmando también durante 24 horas, para que puedas actualizar tu endpoint sin perder ninguna petición.
+- **Turn off** y **Turn on** paran y reanudan un canal sin borrarlo.
+- **Delete** te pide confirmación, y el canal y sus suscripciones desaparecen para siempre.
+- **Deliveries** muestra los envíos de los últimos 30 días: evento, estado, estado HTTP y código de error. Nunca el mensaje.
+
+Cada canal muestra su estado: **On**, **Deliveries failing** (los últimos envíos fallaron, sigue encendido), **Off** (lo apagaste tú), **Turned off: failing** o **Turned off: URL refused** (lo apagó NaN, mira [Cuando un canal falla](#cuando-un-canal-falla)).
+
+## Resúmenes y límites
+
+NaN mantiene cada canal legible y nunca inunda a un proveedor:
+
+- **Resúmenes (digests).** Cuando hay más de 3 notificaciones pendientes para un canal a la vez, o más de las que aún puede recibir en el minuto actual, llegan como **un solo mensaje de resumen**: cuántas hay de cada evento, y hasta 10 de ellas con sus enlaces.
+- **Por canal:** como mucho 30 mensajes por minuto y 1.000 al día.
+- **Por cuenta:** como mucho 3.000 mensajes al día entre todos tus canales.
+
+Por encima del límite por minuto, los mensajes esperan y se envían el minuto siguiente (como resumen si son varios). Por encima de un límite diario, las demás notificaciones de ese día se descartan y el registro de envíos muestra `rate_limited`. Los mensajes de prueba cuentan como mensajes.
+
+Una notificación que no se entrega en 24 horas se descarta: una alerta tardía es peor que ninguna.
+
+## Cuando un canal falla
+
+Cada mensaje se reintenta cuando el fallo puede ser pasajero: un timeout, un error de conexión o de TLS, un fallo de DNS, `408`, `429` o un `5xx`. Se intenta hasta 5 veces, tras 1 minuto, 5 minutos, 30 minutos y 2 horas. Cualquier otro `4xx`, y cualquier redirección, falla al momento: la URL está mal o se revocó.
+
+**Apagado tras 20 fallos.** Tras **20 intentos fallidos seguidos**, el canal se apaga con el motivo `failing`, y sus mensajes pendientes se descartan. El portal muestra **Turned off: failing**, y `nan notifications ls` también lo muestra. Para arreglarlo:
+
+1. Mira el error en el registro de **Deliveries** (`http_4xx`, `timeout`, `dns`, etc.).
+2. Si el webhook se borró o se revocó en el proveedor, crea uno nuevo y **reemplaza la URL**: eso vuelve a activar el canal.
+3. Si el problema estaba en tu lado y ya está resuelto, pulsa **Turn on** (o `nan notifications edit NAME --enable`). Luego pulsa **Test**.
+
+Volver a encenderlo o reemplazar la URL pone a cero el contador de fallos.
+
+**Apagado como `invalid_url`.** Si el host de la URL empieza a resolver a una dirección que NaN rechaza (una privada o reservada, mira [Qué URLs se aceptan](#qué-urls-se-aceptan)), el canal se apaga al momento con el motivo `invalid_url` (**Turned off: URL refused** en el portal). Reemplaza la URL para volver a encenderlo.
+
+Un canal que apagaste tú (motivo `member`, **Off** en el portal) sigue apagado hasta que lo enciendas, aunque reemplaces su URL.
+
+## Verifica la firma
+
+Cada petición a un canal **HTTPS** lleva estas cabeceras, con el mismo esquema de firma que los [webhooks que tú envías a NaN](/es/docs/webhooks#envía-tus-propios-eventos):
+
+| Cabecera | Valor |
+|---|---|
+| `X-Nan-Event` | El evento: `approval.pending`, `run.failed`, `run.finished`, `automation.disabled`, `trigger.failing`, `digest` o `test`. |
+| `X-Nan-Delivery` | Un id único por notificación, el mismo en cada reintento. Úsalo para ignorar repeticiones. |
+| `X-Nan-Timestamp` | Cuándo se firmó, en segundos Unix. |
+| `X-Nan-Signature` | `v1=` seguido del HMAC-SHA256 en hexadecimal de `<timestamp>.<body>` con el secreto de firma (la clave es la cadena entera `nan_nsec_…`). Durante las 24 horas tras una rotación hay dos, separadas por una coma, la nueva primero. |
+
+Acepta una petición cuando **cualquier** valor `v1=` coincide y el timestamp no se desvía más de 5 minutos. Calcula el HMAC sobre el cuerpo exactamente como llega, byte a byte, antes de parsearlo. Responde rápido con cualquier `2xx`; el cuerpo de la respuesta se ignora.
+
+Para comprobar tu código: con el secreto `nan_nsec_test`, el timestamp `1700000000` y el cuerpo `{"a":1}`, la firma es `v1=5c39c853e058b14c0d0e29bbdeb6d0dc325318231d07d1df377a284c89ad4e01`. Cuando tu endpoint ya verifique firmas, pulsa **Test**: el mensaje de prueba va firmado como cualquier otro.
+
+En bash, para comprobar una petición que guardaste (cuerpo en `body.json`):
+
+```bash
+SECRET="nan_nsec_..."              # el secreto de firma del canal
+TS="1760436000"                    # la cabecera X-Nan-Timestamp
+SIGS="v1=...,v1=..."               # la cabecera X-Nan-Signature
+EXPECTED=$(printf '%s.' "$TS" | cat - body.json | openssl dgst -sha256 -hmac "$SECRET" | sed 's/^.* //')
+
+NOW=$(date +%s)
+if [ $((NOW - TS)) -gt 300 ] || [ $((TS - NOW)) -gt 300 ]; then echo "too old"; exit 1; fi
+case ",$SIGS," in *",v1=$EXPECTED,"*) echo "valid" ;; *) echo "invalid"; exit 1 ;; esac
+```
+
+En Python:
+
+```python
+import hashlib, hmac, time
+
+SECRET = b"nan_nsec_..."
+
+def verify(body: bytes, timestamp: str, signature_header: str) -> bool:
+    try:
+        ts = int(timestamp)
+    except (TypeError, ValueError):
+        return False
+    if abs(time.time() - ts) > 300:
+        return False
+    expected = hmac.new(SECRET, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+    return any(
+        part.startswith("v1=") and hmac.compare_digest(part[3:], expected)
+        for part in signature_header.split(",")
+    )
+
+# En tu handler, con el cuerpo en bruto:
+# verify(request_body, headers["X-Nan-Timestamp"], headers["X-Nan-Signature"])
+```
+
+En Node.js:
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createServer } from 'node:http';
+
+const secret = process.env.NAN_SIGNING_SECRET; // nan_nsec_...
+
+function verify(body, timestamp, header) {
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) return false;
+  const expected = Buffer.from(createHmac('sha256', secret).update(`${timestamp}.`).update(body).digest('hex'));
+  return (header ?? '').split(',').some((part) => {
+    const got = Buffer.from(part.trim().replace(/^v1=/, ''));
+    return part.trim().startsWith('v1=') && got.length === expected.length && timingSafeEqual(got, expected);
+  });
+}
+
+createServer((req, res) => {
+  const chunks = [];
+  req.on('data', (c) => chunks.push(c));
+  req.on('end', () => {
+    const body = Buffer.concat(chunks);
+    if (!verify(body, req.headers['x-nan-timestamp'], req.headers['x-nan-signature'])) {
+      res.writeHead(401).end();
+      return;
+    }
+    const event = JSON.parse(body);
+    console.log(event.event, event.text, event.url);
+    res.writeHead(204).end();
+  });
+}).listen(8080);
+```
+
+La entrega es al menos una vez: la misma notificación puede llegar dos veces (por ejemplo, tras un error de red cuando ya se había recibido). Ignora un `X-Nan-Delivery` que ya hayas procesado.
+
+## Contenido del mensaje
+
+Un canal **HTTPS** recibe peticiones `POST` con `Content-Type: application/json` y `User-Agent: NaN-Notifications/1`. El cuerpo lleva `version: 1`, y los campos que no aplican a un evento son `null`:
+
+```json
+{
+  "version": 1,
+  "id": "…",
+  "event": "run.failed",
+  "created_at": "2026-10-14T10:00:00Z",
+  "automation": { "id": "…", "name": "PR review" },
+  "run": {
+    "id": "…",
+    "state": "failed",
+    "error_code": "agent_failed",
+    "phase": "propose",
+    "summary": "Reviewed PR #42: two issues found in pkg/foo."
+  },
+  "trigger": null,
+  "reason": null,
+  "url": "https://cloud.nan.builders/workspaces/…/runs/…",
+  "text": "Run failed: PR review (agent_failed)"
+}
+```
+
+| Campo | Qué contiene |
+|---|---|
+| `id` | El id de la notificación, el mismo que `X-Nan-Delivery`. |
+| `event` | Uno de los [eventos](#eventos). |
+| `automation` | `{ "id", "name" }` de la automatización. |
+| `run` | En los eventos de run: `id`, `state` (`awaiting_approval`, `succeeded`, `failed` o `timed_out`), `error_code`, `phase` y `summary`. Si no, `null`. |
+| `run.summary` | El resumen del run tal como lo muestra el portal, con los secretos ya enmascarados y sin caracteres de control, como mucho 280 caracteres. Solo en `run.finished` y `run.failed`. |
+| `trigger` | `{ "id", "kind" }` en `trigger.failing`. |
+| `reason` | `automation.disabled`: `member`, `workspace_deleted` o `secret_deleted`. `trigger.failing`: `bad_signature`. |
+| `url` | Dónde mirar en el portal: el run en los eventos de run, la automatización en los demás. |
+| `text` | Un título de una línea, en inglés, por ejemplo `Approval needed: PR review`, `Run timed out: PR review` o `Automation disabled: PR review (its workspace was deleted)`. |
+
+Un **resumen** (`digest`) agrupa varias notificaciones:
+
+```json
+{
+  "version": 1,
+  "id": "…",
+  "event": "digest",
+  "created_at": "2026-10-14T10:00:00Z",
+  "count": 3,
+  "events": { "approval.pending": 1, "run.failed": 2 },
+  "items": [
+    {
+      "event": "run.failed",
+      "automation": { "id": "…", "name": "PR review" },
+      "run": { "id": "…", "state": "timed_out", "error_code": "timed_out", "phase": "propose", "summary": "…" },
+      "url": "https://cloud.nan.builders/workspaces/…/runs/…"
+    }
+  ],
+  "url": "https://cloud.nan.builders/automations",
+  "text": "3 notifications: 1 approval needed, 2 runs failed"
+}
+```
+
+`count` es cuántas notificaciones agrupa, `events` cuántas hay de cada evento, e `items` hasta 10 de ellas (el ejemplo muestra una).
+
+Un mensaje de **prueba**:
+
+```json
+{
+  "version": 1,
+  "id": "…",
+  "event": "test",
+  "created_at": "2026-10-14T10:00:00Z",
+  "url": "https://cloud.nan.builders/settings#notifications",
+  "text": "Test notification from NaN"
+}
+```
+
+La versión 1 puede ganar campos nuevos; ignora los que no conozcas.
+
+## Seguridad
+
+### Las URLs son credenciales
+
+Cualquiera que tenga la URL de un webhook de Slack, Teams o Discord puede publicar en ese canal, así que NaN trata cada URL de canal como un [secreto](/es/docs/secrets):
+
+- Es de **solo escritura**: se cifra con una clave que solo pertenece a tu cuenta, y el portal, la CLI y la API nunca la devuelven. Ves una pista en su lugar, el host y los 4 últimos caracteres de la ruta: `hooks.slack.com/…/abcd`.
+- Nunca aparece en un error, un log ni la lista de envíos.
+- Desde la CLI se lee de un archivo o de una tubería, nunca de la línea de comandos.
+
+Si se filtra la URL de un webhook, borra el webhook en el proveedor, crea uno nuevo y reemplaza la URL en NaN.
+
+### Lo que un mensaje nunca lleva
+
+Los mensajes llevan nombres, estados, códigos de error, ids y enlaces. **Nunca** llevan:
+
+- el valor de ningún secreto, ni la URL de un canal;
+- el cuerpo ni las cabeceras de la petición de webhook que lanzó un run;
+- la salida del agente, más allá del resumen corto del run (como mucho 280 caracteres, con los secretos enmascarados).
+
+El texto que escribes tú (el nombre de una automatización, un resumen) se escapa para cada proveedor: no puede mencionar a nadie, avisar a un rol ni formar un enlace.
+
+### Qué URLs se aceptan
+
+Los servidores de NaN llaman a estas URLs, así que siguen reglas estrictas, que se comprueban al guardar la URL y otra vez en cada envío:
+
+- Solo `https`, en el puerto 443. Sin usuario ni contraseña en la URL, sin fragmento, sin dirección IP: un nombre DNS con al menos dos etiquetas.
+- Ni los hosts de NaN (`nan.builders`, `helmcode.com` y sus subdominios) ni nombres locales (`localhost`, `.local`, `.internal`, `.lan`, `.home.arpa`, `.svc`).
+- Todas las direcciones a las que resuelve el nombre deben ser públicas: se rechazan las privadas, de loopback, link-local, compartidas y reservadas, y también las de NaN.
+- Las URLs de Slack deben estar en `hooks.slack.com` con una ruta que empiece por `/services/`. Las de Teams, en un subdominio de `webhook.office.com`, `logic.azure.com` o `powerplatform.com`. Las de Discord, en `discord.com` (o `discordapp.com`, `canary.discord.com`, `ptb.discord.com`) con una ruta que empiece por `/api/webhooks/`.
+- No se siguen redirecciones: un `3xx` es un fallo.
+
+Una URL rechazada recibe un único error genérico que dice qué regla incumple, nunca lo que enviaste, y un nombre que no resuelve recibe la misma respuesta que uno que resuelve a una dirección rechazada.
+
+## Gestiona los canales desde la CLI
+
+Con la [CLI de NaN](/es/docs/nan-cli) **0.1.34** o posterior, donde tu cuenta tiene notificaciones y la API de escritura:
+
+```bash
+nan notifications ls                                        # tipo, nombre, pista de la URL, estado
+nan notifications add "team alerts" --kind slack --url-file ./slack-url.txt
+pbpaste | nan notifications add "ops endpoint" --kind https --url-stdin --event run.failed --event run.finished
+nan notifications add "nightly" --kind discord --url-file ./discord-url.txt --automation "nightly report"
+nan notifications show "team alerts"
+nan notifications test "team alerts"
+nan notifications subscriptions "team alerts"                # las lista
+nan notifications subscriptions "team alerts" --add "run.finished=nightly report"
+nan notifications subscriptions "team alerts" --set run.failed --set approval.pending
+nan notifications edit "team alerts" --url-file ./new-url.txt
+nan notifications edit "team alerts" --enable
+nan notifications rotate "ops endpoint"                     # muestra el nuevo secreto de firma una vez
+nan notifications deliveries "team alerts" --limit 50
+nan notifications rm "team alerts"
+```
+
+- **La URL nunca va en la línea de comandos**, donde se quedaría en el historial de tu shell. `--url-file PATH` la lee de un archivo, `--url-stdin` de una tubería. No hay flag `--url`.
+- `add` usa los eventos por defecto salvo que pases `--event` (repetible, o separados por comas) o `--no-events`; `--automation` (un nombre o un id) los limita a una automatización.
+- En un canal HTTPS, `add` y `rotate` muestran el secreto de firma **una sola vez**, con un aviso para que lo guardes ya. Con `--json` va dentro del JSON, como `signing_secret`.
+- `subscriptions` sin flags las lista. `EVENT` solo significa todas tus automatizaciones, `EVENT=AUTOMATION` una de ellas. `--set` reemplaza el conjunto entero, `--add` y `--remove` lo cambian, `--clear` las quita todas.
+- `edit` cambia el nombre (`--name`), enciende o apaga el canal (`--enable`, `--disable`) o reemplaza la URL. Reemplazar la URL o `--enable` vuelve a activar un canal que apagó NaN y pone a cero su contador de fallos.
+- `test` sale con código 0 cuando el mensaje se entregó y con 1 cuando no, con el motivo.
+- `deliveries` muestra los últimos 20 envíos por defecto (`--limit` de 1 a 100).
+- `rm` pregunta antes de borrar; `--yes` se salta la pregunta en scripts.
+- Los comandos aceptan el nombre o el id de un canal, y `--json` imprime JSON.
+- Donde tu cuenta no tiene notificaciones o la API de escritura, los comandos lo dicen, te mandan al portal y salen con código 64. Una credencial o un scope rechazados salen con 65, y un límite de peticiones o un error del servidor con 69.
+
+Con un token de plataforma, los comandos necesitan `notifications:read` para listar o ver canales (y para encontrar uno por nombre) y `notifications:write` para cambiarlos; `--automation` con un nombre también necesita `automations:read`.
+
+La lista completa de flags está en `nan notifications --help`.
+
+## Gestiona los canales desde la API
+
+Las mismas operaciones están en la API, bajo `https://api.nan.builders/v1/notification-channels`:
+
+| Método y ruta | Scope | Qué hace |
+|---|---|---|
+| `GET /v1/notification-channels` | `notifications:read` | Lista tus canales. |
+| `GET /v1/notification-channels/{id}` | `notifications:read` | Un canal. |
+| `GET /v1/notification-channels/{id}/deliveries?limit=` | `notifications:read` | Sus últimos envíos, los más nuevos primero (30 días, `limit` de 1 a 100, 50 por defecto). |
+| `POST /v1/notification-channels` | `notifications:write` | Crea un canal: `{"name", "kind", "url", "events"?, "automation_id"?}`. `201`, con `signing_secret` una sola vez en `https`. |
+| `PATCH /v1/notification-channels/{id}` | `notifications:write` | Cambia `name`, `enabled` o `url`. |
+| `DELETE /v1/notification-channels/{id}` | `notifications:write` | Lo borra. `204`. |
+| `PUT /v1/notification-channels/{id}/subscriptions` | `notifications:write` | Reemplaza sus suscripciones: `{"subscriptions": [{"event", "automation_id"}]}`, `automation_id` `null` para todas las automatizaciones. Hasta 50; `[]` las quita todas. |
+| `POST /v1/notification-channels/{id}/test` | `notifications:write` | Envía un mensaje de prueba y responde si se entregó. |
+| `POST /v1/notification-channels/{id}/rotate-signing-secret` | `notifications:write` | Nuevo secreto de firma (se muestra una vez); el antiguo sigue firmando 24 horas. |
+
+**Qué credenciales sirven:** tu sesión de la CLI de `nan auth login`, o un token de plataforma con el scope de la ruta. Los dos scopes son independientes: `notifications:write` no incluye `notifications:read`. Un token con un scope `notifications:` solo se puede crear en el portal, **Settings → Tokens** (los scopes están en su propio grupo **Notifications**), con sesión iniciada desde tu navegador, y solo aparecen allí donde tu cuenta tiene notificaciones y la API de escritura. Una API key (`sk-...`) y la clave de dentro de un workspace se rechazan. Donde tu cuenta no tiene notificaciones o la API de escritura, todas las rutas responden `404`.
+
+Crea un canal desde un archivo, para que la URL nunca aparezca en el historial de tu shell:
+
+```bash
+jq -n --rawfile u slack-url.txt '{name: "team alerts", kind: "slack", url: ($u | rtrimstr("\n"))}' |
+  curl https://api.nan.builders/v1/notification-channels \
+    -H "Authorization: Bearer $NAN_TOKEN" \
+    -H "Content-Type: application/json" \
+    --data-binary @-
+```
+
+La respuesta es el canal, nunca su URL:
+
+```json
+{
+  "id": "…",
+  "object": "notification_channel",
+  "name": "team alerts",
+  "kind": "slack",
+  "url_hint": "hooks.slack.com/…/abcd",
+  "enabled": true,
+  "disabled_reason": null,
+  "consecutive_failures": 0,
+  "last_delivery_at": null,
+  "last_delivery_status": null,
+  "subscriptions": [
+    { "event": "approval.pending", "automation_id": null },
+    { "event": "run.failed", "automation_id": null },
+    { "event": "automation.disabled", "automation_id": null },
+    { "event": "trigger.failing", "automation_id": null }
+  ],
+  "signing": null,
+  "updated_by": "platform_token",
+  "created_at": "…",
+  "updated_at": "…"
+}
+```
+
+- `disabled_reason` es `null`, `member` (lo desactivaste tú), `failing` o `invalid_url`. `signing` es `{"previous_expires_at"}` en los canales `https`: cuándo deja de firmar el secreto antiguo tras una rotación.
+- `updated_by` dice de dónde vino el último cambio: `browser_session`, `cli_session` o `platform_token`.
+- **Los errores** llegan como `{"error": {"message", "type", "param", "code"}}`. `param` nombra el campo que está mal y nunca repite lo que enviaste.
+- **Límites de peticiones.** Los cambios en canales (crear, editar, borrar, suscripciones, rotar) comparten un cupo por cuenta: una ráfaga de 30 y luego 120 por hora, sumando el portal, la CLI y la API. Las pruebas tienen el suyo: hasta 5 seguidas y luego 1 por minuto. Por encima, `429 rate_limited`.
+
+Todas las rutas, cuerpos y errores están en [Referencia de la API → Notifications](/es/docs/api#tag/notifications).
+
+## Límites
+
+| Límite | Valor |
+|---|---|
+| Canales | 10 por miembro |
+| Suscripciones | 50 por canal |
+| Nombre | De 1 a 64 caracteres |
+| URL | Hasta 2048 bytes |
+| Mensajes | 30 por minuto y 1.000 al día por canal; 3.000 al día por miembro |
+| Resumen | Hasta 10 elementos listados |
+| Reintentos | 5 intentos en unas 2,5 horas |
+| Desactivación automática | Tras 20 intentos fallidos seguidos |
+| Notificación pendiente | Se descarta a las 24 horas |
+| Registro de envíos | 30 días |
+| Cambios en canales | Una ráfaga de 30 y luego 120 por hora |
+| Pruebas | Hasta 5 seguidas y luego 1 por minuto |
+| Cuerpo de una petición a la API | 8 KiB |
+
+## Si algo sale mal
+
+| Lo que ves | Por qué, y qué hacer |
+|---|---|
+| `400 invalid_request` con un `param` | Ese campo incumple una regla: `name`, `kind`, `events` o `subscriptions` (un evento desconocido, o más de 50), o `limit` (de 1 a 100). |
+| `400 invalid_url` | La URL incumple una de las [reglas](#qué-urls-se-aceptan): no es `https` en el 443, es una dirección IP, el host no corresponde a su tipo, o el host no resuelve o resuelve a una dirección rechazada. Vuelve a copiar la URL del proveedor. |
+| `403 credential_not_allowed` | Una API key (`sk-...`) o una sesión de una CLI antigua. Usa tu sesión de `nan auth login` o un token de plataforma con el scope. |
+| `403 token_scope_denied` | Al token le falta `notifications:read` o `notifications:write`. Crea uno con el scope en **Settings → Tokens**. |
+| `403 browser_session_required` | En el portal: tu cuenta aún no tiene la API de escritura, y los cambios necesitan una sesión iniciada desde el navegador. Vuelve a entrar con el enlace del email desde tu navegador. |
+| `403 workspace_key_not_allowed` | La clave de dentro de un workspace. Nunca lee ni cambia canales. |
+| `404` en todas las rutas de `/v1/notification-channels` | Tu cuenta aún no tiene notificaciones o la API de escritura. Usa el portal. |
+| `404 not_found` | No hay ningún canal con ese id en tu cuenta. |
+| `404 automation_not_found` | El `automation_id` no es de una de tus automatizaciones. |
+| `409 name_taken` | Ya tienes un canal con ese nombre. |
+| `409 too_many_channels` | Tienes 10. Borra uno para añadir otro. |
+| `409 channel_disabled` | Intentaste probar un canal apagado. Enciéndelo antes. |
+| `409 signing_not_supported` | Solo los canales HTTPS tienen secreto de firma. |
+| `429 rate_limited` | Demasiados cambios o pruebas. Espera y vuelve a intentarlo. |
+| `503 notifications_unavailable` | Las notificaciones no están disponibles un momento. Vuelve a intentarlo en unos minutos. |
+| La prueba responde `failed` con `http_4xx` | El proveedor rechazó el mensaje: se borró el webhook o la URL está incompleta. Crea uno nuevo y reemplaza la URL. |
+| La prueba responde `delivered` pero no aparece nada en Teams | El workflow aceptó el mensaje pero no lo publicó. Ábrelo en la app **Workflows** de Teams, comprueba que está encendido y mira su historial de ejecuciones. Si su propietario dejó la organización, créalo de nuevo y reemplaza la URL. |
+| La prueba responde `blocked` | El host de la URL resuelve a una dirección que NaN rechaza. Usa un endpoint público. |
+| La prueba responde `rate_limited` | El canal ha gastado sus mensajes por ahora. Prueba más tarde. |
+| El canal muestra **Turned off: failing** | 20 envíos seguidos fallaron. Mira [Cuando un canal falla](#cuando-un-canal-falla). |
+| No ves **Notifications** en **Settings** | Tu cuenta aún no tiene notificaciones: se están abriendo poco a poco. |
+| No llega nada de un run | El run no lo lanzó una automatización, se canceló, o su evento no está suscrito para esa automatización (`run.finished` viene desactivado). Revisa los eventos del canal y sus **Deliveries**. |
+| Tu endpoint rechaza todas las firmas | Calcula el HMAC sobre el cuerpo en bruto antes de parsearlo, usa como clave el secreto entero `nan_nsec_…` y revisa el reloj de tu servidor. Tras una rotación, guarda el secreto nuevo. |

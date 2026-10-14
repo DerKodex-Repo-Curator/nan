@@ -96,7 +96,7 @@ describe('openapi.json: BYOK inference', () => {
   });
 
   it('secrets are only under /v1/secrets (the write API), never a value', () => {
-    expect(Object.keys(s.paths).filter((p) => p.includes('secret'))).toEqual(['/secrets', '/secrets/{id}', '/secrets/{id}/value']);
+    expect(Object.keys(s.paths).filter((p) => p.startsWith('/secret'))).toEqual(['/secrets', '/secrets/{id}', '/secrets/{id}/value']);
     expect(Object.keys(s.components.schemas.Secret.properties)).not.toContain('value');
   });
 

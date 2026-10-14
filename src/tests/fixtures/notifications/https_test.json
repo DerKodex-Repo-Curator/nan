@@ -1,0 +1,8 @@
+{
+  "created_at": "2026-10-14T10:00:00Z",
+  "event": "test",
+  "id": "44444444-4444-4444-8444-444444444444",
+  "text": "Test notification from NaN",
+  "url": "https://cloud.nan.builders/settings#notifications",
+  "version": 1
+}
