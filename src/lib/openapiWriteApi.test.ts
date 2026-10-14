@@ -58,7 +58,7 @@ describe('openapi.json: the write API operations', () => {
     const at = names.indexOf('Runs');
     expect(names.slice(at, at + 5)).toEqual(['Runs', 'Automations', 'Secrets', 'Approvals', 'Workspaces']);
     const tags = Object.fromEntries(s.tags.map((t: any) => [t.name, t.description]));
-    expect(tags.Secrets).toContain('https://nan.builders/docs/automations#secrets');
+    expect(tags.Secrets).toContain('https://nan.builders/docs/secrets');
     expect(tags.Secrets).toMatch(/never returns a value/i);
     expect(tags.Secrets).toContain('`secrets:read`');
     expect(tags.Secrets).toContain('`secrets:write`');

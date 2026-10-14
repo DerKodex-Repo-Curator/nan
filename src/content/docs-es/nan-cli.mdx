@@ -196,7 +196,7 @@ nan automations disable "PR review"
 nan automations triggers add "PR review" -f webhook.yaml  # imprime la URL y el secreto una vez
 ```
 
-El valor de un secreto se lee de un archivo o de una tubería, nunca de la línea de comandos, y nada lo vuelve a imprimir. Mientras tu cuenta no tenga la API de escritura, estos comandos te lo dicen y te mandan al portal. Aprobar propuestas siempre se hace en el portal, con sesión iniciada en tu navegador.
+El valor de un secreto se lee de un archivo o de una tubería, nunca de la línea de comandos, y nada lo vuelve a imprimir. Todas las opciones de `nan secrets`, cómo rotar un secreto y los errores que puedes ver están en [Secretos](/es/docs/secrets#gestiona-los-secretos-desde-la-cli). Mientras tu cuenta no tenga la API de escritura, estos comandos te lo dicen y te mandan al portal. Aprobar propuestas siempre se hace en el portal, con sesión iniciada en tu navegador.
 
 Estos comandos usan primero tu sesión de `nan auth login` (gana a `NAN_TOKEN`; `--token-file` gana a las dos), o un token de plataforma con los scopes que necesitan: `secrets:read` y `secrets:write` para secretos, `automations:write` (y `automations:read` para usar nombres) para automatizaciones; consulta [Tokens para automatizaciones](/es/docs/automations#tokens-para-automatizaciones). Inicia sesión en tu propia máquina, nunca dentro de un workspace: los agentes de ahí podrían leer la sesión y cambiar tus secretos. Todos los comandos, los archivos YAML y los avisos están en [Gestiónalas desde la CLI o la API](/es/docs/automations#gestiónalas-desde-la-cli-o-la-api).
 

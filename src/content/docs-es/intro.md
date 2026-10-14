@@ -35,5 +35,6 @@ Los límites van por API key — un tope de peticiones por minuto y un máximo d
 - [Automatizaciones](/es/docs/automations): guarda una tarea de agente y lánzala desde un webhook, una programación o tus scripts, con las aprobaciones que elijas.
 - [Webhooks y programaciones](/es/docs/webhooks): conecta GitHub, Stripe o tus propios sistemas, o ejecútala con una programación.
 - [PR gatekeeper](/es/docs/pr-gatekeeper): una guía paso a paso, con capturas, de una automatización que comprueba cada pull request y deja un comentario con el veredicto.
+- [Secretos](/es/docs/secrets): guarda los tokens y claves que usan tus automatizaciones, y tus propias claves de proveedor, cifrados y de solo escritura, desde el portal, la CLI o la API.
 - [Ejemplos](/es/docs/examples): fragmentos en Python, Node.js y curl.
 - Soporte: reporta incidencias en `#support` de Discord.

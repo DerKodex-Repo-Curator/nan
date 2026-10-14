@@ -178,7 +178,9 @@ describe.each(Object.entries(pages))('agent runs guide (%s)', (locale, page) => 
 
   test('says runs need inference, count as usage and mask secrets', () => {
     expect(flat).toMatch(/\*\*(A plan with inference, or your own provider key|Un plan con inferencia, o tu propia clave de proveedor)\.\*\*/);
-    expect(body).toContain('`***`');
+    // nan-run mask.Marker (cloud-api internal/nanrun/mask/mask.go): `[masked]`, never `***`.
+    expect(body).toContain('`[masked]`');
+    expect(body).not.toContain('`***`');
   });
 
   test('documents the CLI: version, flags, Ctrl-C and every exit code', () => {

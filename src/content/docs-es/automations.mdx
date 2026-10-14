@@ -86,25 +86,13 @@ Cada automatización tiene cuatro pestañas: **Settings**, **Triggers**, **Runs*
 
 ## Secretos
 
-Los secretos son los tokens y claves que usan tus automatizaciones: un token de GitHub, una API key de algún servicio tuyo. Los guardas en tus ajustes y los asignas a las automatizaciones que los necesitan.
+Los secretos son los tokens y claves que usan tus automatizaciones: un token de GitHub, una API key de algún servicio tuyo. Los guardas en tus ajustes y los asignas a las automatizaciones que los necesitan. Todo sobre ellos (los dos tipos, el portal, la CLI y la API, el enmascarado, la rotación y los errores que puedes ver) está en [Secretos](/es/docs/secrets).
 
 ### Añade un secreto
 
-Abre tus ajustes en el portal, **Secrets**, debajo de **Tokens**, y pulsa **Add secret**. En **Kind**, **Secret** es para los tokens y claves que reciben tus automatizaciones; **Provider key** es para tu propia clave con un proveedor de IA, que se usa como inferencia de runs y automatizaciones: consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok).
+Abre tus ajustes en el portal, **Secrets**, debajo de **Tokens**, y pulsa **Add secret**. Dale un **Name**, el nombre de la variable que ven tus automatizaciones (por ejemplo `GITHUB_TOKEN`), y pega el **Value**, hasta 16 KiB. En **Kind**, **Secret** es para los tokens que reciben tus automatizaciones, y **Provider key** para tu propia clave con un proveedor de IA: consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok).
 
-- **Name**: el nombre de la variable que ven tus automatizaciones, en mayúsculas, dígitos y `_`, empezando por una letra. Por ejemplo `GITHUB_TOKEN`. Hasta 64 caracteres.
-- **Value**: se guarda tal cual lo pegas, hasta 16 KiB. Los saltos de línea dentro del valor están bien (una clave PEM, por ejemplo), pero no al principio ni al final.
-- **Description**, opcional.
-
-Los secretos son de **solo escritura**: una vez guardados, nadie puede volver a leer el valor, ni siquiera tú. La lista muestra el nombre, los 4 últimos caracteres cuando el valor es lo bastante largo, la descripción y qué automatizaciones usan cada uno. Puedes:
-
-- **Replace value**: el valor nuevo lo usan todos los runs que arranquen a partir de ese momento, incluidos los que ya están en cola. El anterior no se puede recuperar.
-- Cambiar su **Description**.
-- **Delete**. El borrado se rechaza mientras una automatización lo use, como uno de sus secretos o como su provider key: quítalo antes de esas automatizaciones.
-
-Puedes guardar hasta 100 secretos. Mejor tokens de vida corta, limitados a lo que necesita la automatización.
-
-Cada secreto muestra desde dónde se cambió por última vez (**Last changed from**: **Browser**, **CLI** o **API token**), así que un cambio que no hiciste tú salta a la vista. Desde la CLI: `nan secrets set`, `nan secrets edit` y `nan secrets rm`, en [Gestiónalas desde la CLI o la API](#gestiónalas-desde-la-cli-o-la-api).
+Los secretos son de **solo escritura**: una vez guardados, nadie puede volver a leer el valor, ni siquiera tú. Puedes usar **Replace value**, cambiar la descripción o borrar uno que no use ninguna automatización. Puedes guardar hasta 100 secretos, y cada uno muestra desde dónde se cambió por última vez (**Last changed from**). Consulta [Gestiona los secretos en el portal](/es/docs/secrets#gestiona-los-secretos-en-el-portal).
 
 ### Asigna secretos a una automatización
 
@@ -123,7 +111,7 @@ El mismo nombre de variable puede aparecer una vez por opción. La configuració
 
 Una automatización admite hasta 20 secretos, y todos los secretos que recibe un run pueden sumar como mucho 48 KiB. Los secretos solo llegan a los runs de las automatizaciones a las que los asignas: un run que lanzas con `nan run` o desde la pestaña **Runs** de un workspace no recibe ninguno.
 
-En los logs, resultados y propuestas de los runs, todos los valores de los secretos aparecen enmascarados. Un run solo arranca si todos los secretos que necesita están disponibles; si no, falla con `secrets_unavailable` y nada se ejecuta sin ellos.
+En los logs, resultados y propuestas de los runs, todos los valores de los secretos aparecen enmascarados: consulta [Enmascarado en logs y eventos](/es/docs/secrets#enmascarado-en-logs-y-eventos). Un run solo arranca si todos los secretos que necesita están disponibles; si no, falla con `secrets_unavailable` y nada se ejecuta sin ellos.
 
 <Callout title="Qué puede hacer el agente con un secreto" variant="warning">
 Un agente que recibe un secreto puede leerlo, y podría mandarlo a algún sitio si algo le convence de hacerlo. El enmascarado protege nuestros logs, no la red del agente. Dale al agente solo tokens de lectura, deja los tokens de escritura como **Actions only** y limita cada token al repositorio para el que es.
@@ -402,13 +390,7 @@ nan secrets edit GITHUB_WRITE_TOKEN --description "expires in December"
 nan secrets rm GITHUB_READ_TOKEN
 ```
 
-- **El valor nunca va en la línea de comandos**, donde se quedaría en el historial de tu shell y otros programas podrían verlo: `--value-file PATH` lo lee de un archivo y `--value-stdin` de una tubería. `--value-stdin` se niega a leer de la terminal, así que nunca se teclea un valor a la vista.
-- Se quita un salto de línea al final (los archivos suelen acabar en uno). Aparte de eso, el valor no puede empezar ni terminar con un salto de línea.
-- `set` crea el secreto o **reemplaza el valor** del que tenga ese nombre. El tipo, el proveedor y el nombre quedan fijos al crearlo.
-- `edit` cambia la descripción, o la URL base de una clave de proveedor compatible con OpenAI.
-- `rm` pregunta antes de borrar (si respondes que no, sale con código 1); `--yes` se salta la pregunta en scripts. Se rechaza mientras una automatización use el secreto, y la CLI te dice cuáles.
-- Con un token, nombrar un secreto que ya existe necesita `secrets:read` para buscar el nombre; un token solo con `secrets:write` puede crear un secreto nuevo.
-- `--json` imprime los metadatos en JSON.
+El valor se lee de un archivo (`--value-file PATH`) o de una tubería (`--value-stdin`), nunca de la línea de comandos, y nada lo vuelve a imprimir. `set` crea un secreto o reemplaza su valor, `edit` cambia su descripción o su URL base, y `rm` lo borra cuando ninguna automatización lo usa. Todas las opciones, las credenciales que acepta cada comando y la API están en [Gestiona los secretos desde la CLI](/es/docs/secrets#gestiona-los-secretos-desde-la-cli).
 
 ### Automatizaciones desde la CLI
 
@@ -478,7 +460,7 @@ jq -n --rawfile v token.txt '{name: "GITHUB_WRITE_TOKEN", value: ($v | rtrimstr(
 - Crear un trigger devuelve la URL del webhook y el secreto de firma una sola vez, con `Cache-Control: no-store`; rotarlo, igual. Crear un trigger no es idempotente: si se pierde la respuesta, lista los triggers y rota o borra el que no llegaste a ver.
 - Demasiados cambios reciben `429 rate_limited`: consulta [Límites](#límites).
 
-Todas las rutas, cuerpos y errores están en [Referencia de la API → Secrets](/es/docs/api#tag/secrets) y [Referencia de la API → Automations](/es/docs/api#tag/automations).
+Las rutas de secretos se explican en [Gestiona los secretos desde la API](/es/docs/secrets#gestiona-los-secretos-desde-la-api). Todas las rutas, cuerpos y errores están en [Referencia de la API → Secrets](/es/docs/api#tag/secrets) y [Referencia de la API → Automations](/es/docs/api#tag/automations).
 
 ## Tokens para automatizaciones
 

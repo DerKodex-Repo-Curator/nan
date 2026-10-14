@@ -86,25 +86,13 @@ Each automation has four tabs: **Settings**, **Triggers**, **Runs** (its runs, n
 
 ## Secrets
 
-Secrets are the tokens and keys your automations use: a GitHub token, an API key for a service of yours. You keep them in your settings and assign them to the automations that need them.
+Secrets are the tokens and keys your automations use: a GitHub token, an API key for a service of yours. You keep them in your settings and assign them to the automations that need them. Everything about them (the two kinds, the portal, the CLI and the API, masking, rotation and the errors you can see) is in [Secrets](/docs/secrets).
 
 ### Add a secret
 
-Open your settings on the portal, **Secrets**, below **Tokens**, and press **Add secret**. **Kind** is **Secret** for the tokens and keys your automations receive; **Provider key** is for your own key with an AI provider, used as the inference of runs and automations: see [Use your own provider key](#use-your-own-provider-key-byok).
+Open your settings on the portal, **Secrets**, below **Tokens**, and press **Add secret**. Give it a **Name**, the variable name your automations see (for example `GITHUB_TOKEN`), and paste the **Value**, up to 16 KiB. **Kind** is **Secret** for the tokens your automations receive, and **Provider key** for your own key with an AI provider: see [Use your own provider key](#use-your-own-provider-key-byok).
 
-- **Name**: the variable name your automations see, in capitals, digits and `_`, starting with a letter. For example `GITHUB_TOKEN`. Up to 64 characters.
-- **Value**: saved exactly as you paste it, up to 16 KiB. Line breaks inside the value are fine (a PEM key, for example), but not at its start or end.
-- **Description**, optional.
-
-Secrets are **write-only**: once saved, nobody can read a value back, not even you. The list shows the name, the last 4 characters when the value is long enough, the description and which automations use each one. You can:
-
-- **Replace value**: the new value is used by every run that starts from then on, including runs already queued. The old one cannot be recovered.
-- Change its **Description**.
-- **Delete** it. Deleting is refused while an automation uses it, as one of its secrets or as its provider key: remove it from those automations first.
-
-You can keep up to 100 secrets. Prefer short-lived tokens limited to what the automation needs.
-
-Each secret shows where it was last changed from (**Last changed from**: **Browser**, **CLI** or **API token**), so a change you did not make stands out. From the CLI: `nan secrets set`, `nan secrets edit` and `nan secrets rm`, in [Manage them from the CLI or the API](#manage-them-from-the-cli-or-the-api).
+Secrets are **write-only**: once saved, nobody can read a value back, not even you. You can **Replace value**, change the description, or delete one that no automation uses. You can keep up to 100 secrets, and each shows where it was last changed from (**Last changed from**). See [Manage secrets in the portal](/docs/secrets#manage-secrets-in-the-portal).
 
 ### Assign secrets to an automation
 
@@ -123,7 +111,7 @@ The same variable name can appear once per option. The usual GitHub setup gives 
 
 An automation takes up to 20 secrets, and all the secrets one run receives must add up to 48 KiB at most. Secrets go only to the runs of the automations you assign them to: a run you start with `nan run` or from a workspace's **Runs** tab never receives any.
 
-In run logs, results and proposals, every secret value is masked. A run only starts if every secret it needs is available; otherwise it fails with `secrets_unavailable` and nothing runs without them.
+In run logs, results and proposals, every secret value is masked: see [Masking in logs and events](/docs/secrets#masking-in-logs-and-events). A run only starts if every secret it needs is available; otherwise it fails with `secrets_unavailable` and nothing runs without them.
 
 <Callout title="What the agent can do with a secret" variant="warning">
 An agent that receives a secret can read it, and could send it somewhere if something convinces it to. Masking protects our logs, not the agent's network. Give the agent only read tokens, keep write tokens as **Actions only**, and limit every token to the repository it is for.
@@ -402,13 +390,7 @@ nan secrets edit GITHUB_WRITE_TOKEN --description "expires in December"
 nan secrets rm GITHUB_READ_TOKEN
 ```
 
-- **The value never goes on the command line**, where it would stay in your shell history and be visible to other programs: `--value-file PATH` reads it from a file, `--value-stdin` from a pipe. `--value-stdin` refuses to read from the terminal, so a value is never typed in clear.
-- One line break at the end is removed (files usually end with one). The value cannot start or end with a line break otherwise.
-- `set` creates the secret, or **replaces the value** of the one with that name. The kind, the provider and the name are fixed when it is created.
-- `edit` changes the description, or the base URL of an OpenAI-compatible provider key.
-- `rm` asks before deleting (answering no exits with code 1); `--yes` skips the question in scripts. It is refused while an automation uses the secret, and the CLI lists which.
-- With a token, naming an existing secret needs `secrets:read` to look the name up; a token with only `secrets:write` can still create a new secret.
-- `--json` prints the metadata as JSON.
+The value is read from a file (`--value-file PATH`) or a pipe (`--value-stdin`), never from the command line, and nothing prints it back. `set` creates a secret or replaces its value, `edit` changes its description or base URL, and `rm` deletes it once no automation uses it. Every flag, the credentials each command accepts and the API are in [Manage secrets from the CLI](/docs/secrets#manage-secrets-from-the-cli).
 
 ### Automations from the CLI
 
@@ -478,7 +460,7 @@ jq -n --rawfile v token.txt '{name: "GITHUB_WRITE_TOKEN", value: ($v | rtrimstr(
 - Creating a trigger returns the webhook URL and signing secret once, with `Cache-Control: no-store`; so does rotating. Creating a trigger is not idempotent: after a lost answer, list the triggers and rotate or delete the one you did not see.
 - Too many changes get `429 rate_limited`: see [Limits](#limits).
 
-Every route, body and error is in [API reference → Secrets](/docs/api#tag/secrets) and [API reference → Automations](/docs/api#tag/automations).
+The secret routes are explained in [Manage secrets from the API](/docs/secrets#manage-secrets-from-the-api). Every route, body and error is in [API reference → Secrets](/docs/api#tag/secrets) and [API reference → Automations](/docs/api#tag/automations).
 
 ## Tokens for automations
 

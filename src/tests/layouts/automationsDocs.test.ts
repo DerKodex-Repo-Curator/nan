@@ -96,9 +96,10 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
     expect(a.group).toBe(page.group);
     expect(h.group).toBe(page.group);
     expect(a.order).toBe(runs.order + 1);
-    // The PR gatekeeper guide is nested under Automations (frontmatter
-    // `parent`), so it takes the slot right after it and Webhooks follows.
-    expect(h.order).toBe(a.order + 2);
+    // The PR gatekeeper guide and the Secrets page are nested under
+    // Automations (frontmatter `parent`), so they take the two slots right
+    // after it and Webhooks follows.
+    expect(h.order).toBe(a.order + 3);
     for (const later of ['examples.md', 'apps.md']) {
       const o = (parseFrontmatter(read(page.dir + later)).frontmatter as { order: number }).order;
       expect(o, later).toBeGreaterThan(h.order);
@@ -170,6 +171,8 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
     }
     expect(autoBody).toContain('**Add secret**');
     expect(autoBody).toContain('**Replace value**');
+    // The details live on the Secrets page; automations keeps the short version and links it.
+    expect(autoBody).toContain(`(${page.prefix}/docs/secrets)`);
   });
 
   test('the limits of cloud-api (automations/api.go)', () => {

@@ -106,7 +106,7 @@ The automation needs to do two things on GitHub: clone the repository, if it is 
 
 A public repository does not need the read token.
 
-Save both on the portal, with these names: your settings, **Secrets**, **Add secret**. A secret is write-only: once saved, nobody can read it back, not even you. See [Add a secret](/docs/automations#add-a-secret).
+Save both on the portal, with these names: your settings, **Secrets**, **Add secret**. A secret is write-only: once saved, nobody can read it back, not even you. See [Secrets](/docs/secrets) for how they are stored, masked and rotated.
 
 <Callout title="Why two tokens" variant="warning">
 The agent runs the code of the pull request, tests included, and it can read every secret it receives. A test could try to send that token somewhere. Keep the token that can write out of the agent's hands: give it the read-only one, and let NaN post the comment with the other. Our own setup in the screenshots uses a single token for both rows; two tokens are the safer choice.

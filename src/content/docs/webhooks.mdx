@@ -1,7 +1,7 @@
 ---
 title: Webhooks and schedules
 description: Start your automations from GitHub, Stripe or your own systems with signed webhooks, or on a schedule.
-order: 22
+order: 23
 group: Guides
 ---
 
@@ -43,6 +43,8 @@ Press **Add webhook**. The portal shows, **only once**:
 
 - **Webhook URL**: `https://api.nan.builders/hooks/nan_whk_...`. The URL itself is a credential: anyone who has it can send to it, so treat it like a password.
 - **Signing secret** (GitHub and NaN): what the sender signs each event with. For Stripe only the URL is shown: the secret is the one you pasted.
+
+The signing secret belongs to the trigger, not to your [Secrets](/docs/secrets): it does not appear in your secrets list or count towards their limits, and no run receives it. If your automation needs to call a service of yours, save that token as a secret and assign it to the automation.
 
 Copy them, then press **I've saved them**. Afterwards the portal only shows the start of the URL. If you lose them, [rotate](#rotate-the-url-or-the-secret) to get new ones.
 
