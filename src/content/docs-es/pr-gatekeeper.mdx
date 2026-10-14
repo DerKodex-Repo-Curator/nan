@@ -106,7 +106,7 @@ La automatización tiene que hacer dos cosas en GitHub: clonar el repositorio, s
 
 Un repositorio público no necesita el token de lectura.
 
-Guarda los dos en el portal, con esos nombres: tus ajustes, **Secrets**, **Add secret**. Un secreto es de solo escritura: una vez guardado, nadie puede volver a leerlo, ni siquiera tú. Consulta [Añade un secreto](/es/docs/automations#añade-un-secreto).
+Guarda los dos en el portal, con esos nombres: tus ajustes, **Secrets**, **Add secret**. Un secreto es de solo escritura: una vez guardado, nadie puede volver a leerlo, ni siquiera tú. Consulta [Secretos](/es/docs/secrets) para ver cómo se guardan, se enmascaran y se rotan.
 
 <Callout title="Por qué dos tokens" variant="warning">
 El agente ejecuta el código de la pull request, tests incluidos, y puede leer todos los secretos que recibe. Un test podría intentar mandar ese token a otra parte. Mantén el token que puede escribir fuera del alcance del agente: dale el de solo lectura y deja que NaN publique el comentario con el otro. Nuestra configuración de las capturas usa un único token para las dos filas; dos tokens es la opción más segura.

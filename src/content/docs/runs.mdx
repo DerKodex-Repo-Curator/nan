@@ -149,9 +149,9 @@ Each run works in its own process inside the workspace, with its own share of CP
 
 Runs on NaN inference use the inference key of the workspace, the same one its agents use when you work with them by hand. Their requests count against your plan's usage like any other. Runs on [your own provider key](#use-your-own-provider-key-byok) use your key instead, and never get the workspace's.
 
-Secrets in your workspace's environment file, such as that inference key or a Telegram bot token, are shown as `***` in run logs and results, so a log does not leak them.
+Secrets in your workspace's environment file, such as that inference key or a Telegram bot token, are shown as `[masked]` in run logs and results, so a log does not leak them. See [Masking in logs and events](/docs/secrets#masking-in-logs-and-events).
 
-The secrets you keep in your settings are not given to these runs: they go only to the runs of the [automations](/docs/automations#secrets) you assign them to.
+The secrets you keep in your settings are not given to these runs: they go only to the runs of the [automations](/docs/automations#secrets) you assign them to. See [Secrets](/docs/secrets).
 
 ## Use your own provider key (BYOK)
 
@@ -179,24 +179,15 @@ Open your settings on the portal, **Secrets**, and press **Add secret**. Fill in
 - **Name**: how runs and automations refer to it, for example `ANTHROPIC_KEY`. Capitals, digits and `_`, starting with a letter.
 - **Kind**: **Provider key**.
 - **Provider**: **Anthropic**, **OpenAI**, **Google Gemini** or **OpenAI-compatible**. It cannot be changed later: to switch providers, add another key.
-- **Base URL**, only for **OpenAI-compatible**: the root of the endpoint, usually ending in `/v1`, for example `https://api.together.xyz/v1`. See the rules below.
+- **Base URL**, only for **OpenAI-compatible**: the root of the endpoint, usually ending in `/v1`, for example `https://api.together.xyz/v1`. See the [base URL rules](/docs/secrets#base-url-rules).
 - **Value**: the key, one line without spaces, 8 to 4096 characters.
 - **Description (optional)**.
 
 Like every secret, a provider key is **write-only**: nobody can read it back, not even you. The list shows it as **Provider key · Anthropic** (or its provider) usually with its last 4 characters, and, for an OpenAI-compatible key, its base URL, which you can change with **Base URL**. **Replace value** changes the key for every run that starts from then on. `nan secrets ls` shows it with **KIND** `provider_key`, its **PROVIDER** and its **BASE URL**.
 
-Where your account has the write API, you can also save it from the CLI, reading the key from a file or a pipe: `nan secrets set ANTHROPIC_KEY --value-file key.txt --kind provider_key --provider anthropic`. See [Secrets from the CLI](/docs/automations#secrets-from-the-cli).
+Where your account has the write API, you can also save it from the CLI, reading the key from a file or a pipe: `nan secrets set ANTHROPIC_KEY --value-file key.txt --kind provider_key --provider anthropic`. See [Manage secrets from the CLI](/docs/secrets#manage-secrets-from-the-cli).
 
-**Base URL rules.** NaN checks the base URL when you save it, and never connects to it: only the agent in your workspace does.
-
-- `https` only, up to 512 characters. A port is fine (`https://llm.example.com:8443/v1`).
-- A public host name (with at least one dot) or a public IP address. `localhost`, private and link-local addresses, and names ending in `.local`, `.internal`, `.lan`, `.home.arpa` or `.svc` are refused.
-- Not NaN's own hosts (`nan.builders`, `helmcode.com` and their subdomains): for NaN models, choose **NaN** as the inference.
-- No `user:password@`, no query string (`?...`) and no fragment (`#...`).
-
-<Callout title="Never put a token in the base URL" variant="warning">
-The key goes in **Value**, where it is stored encrypted and masked. The base URL is not a secret: the portal, `nan secrets ls` and the API show it as it is. A URL with a token inside is refused when it has `user:password@` or a query string, but any other way of hiding a token in it would be shown to whoever reads your settings.
-</Callout>
+**Base URL rules.** NaN checks the base URL when you save it, and never connects to it: only the agent in your workspace does. It must be a public `https` address, not one of NaN's own hosts, with no `user:password@`, query string or fragment: the full list is in [Base URL rules](/docs/secrets#base-url-rules). **Never put a token in the base URL**: it is not a secret, and the portal, `nan secrets ls` and the API show it in clear.
 
 ### Choose it for a run
 
@@ -240,7 +231,7 @@ Your provider bills every token of these runs, under your account with them. NaN
 
 ### Security
 
-- Your key is stored like any [secret](/docs/automations#secrets): encrypted, write-only and masked in logs, results and proposals.
+- Your key is stored like any [secret](/docs/secrets): encrypted, write-only and [masked](/docs/secrets#masking-in-logs-and-events) in logs, results and proposals.
 - It reaches only the agent of the run, inside your own workspace, as an environment variable: never on the command line, in a file or in NaN's logs. The run does not get your workspace's NaN inference key.
 - **NaN never calls your base URL or your provider.** The agent in your workspace does, over your workspace's network.
 - The run reads your agent's settings to keep your skills and preferences, but it uses its own copy of the configuration, with only your key's provider in it: your own configuration files are not changed.

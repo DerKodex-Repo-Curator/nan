@@ -68,7 +68,7 @@
     },
     {
       "name": "Secrets",
-      "description": "The tokens and keys your automations receive, and your own provider keys. The API never returns a value: it lists metadata, creates secrets, replaces values, changes descriptions and base URLs, and deletes. Reading needs a CLI session (`nan auth login`) or a platform token with `secrets:read`; writing, a CLI session or a token with `secrets:write`. API keys (`sk-...`) never read or write secrets. Where the write API is not yet available for your account, these routes answer `404`. Guide: [Secrets](https://nan.builders/docs/automations#secrets)."
+      "description": "The tokens and keys your automations receive, and your own provider keys. The API never returns a value: it lists metadata, creates secrets, replaces values, changes descriptions and base URLs, and deletes. Reading needs a CLI session (`nan auth login`) or a platform token with `secrets:read`; writing, a CLI session or a token with `secrets:write`. API keys (`sk-...`) never read or write secrets. Where the write API is not yet available for your account, these routes answer `404`. Guide: [Secrets](https://nan.builders/docs/secrets)."
     },
     {
       "name": "Approvals",
@@ -10395,7 +10395,7 @@
       "Secret": {
         "type": "object",
         "additionalProperties": false,
-        "description": "A secret's metadata. No field ever carries the value: once saved, nobody can read it back. Guide: [Secrets](https://nan.builders/docs/automations#secrets).",
+        "description": "A secret's metadata. No field ever carries the value: once saved, nobody can read it back. Guide: [Secrets](https://nan.builders/docs/secrets).",
         "properties": {
           "id": {
             "type": "string",

@@ -1,7 +1,7 @@
 ---
 title: Webhooks y programaciones
 description: Lanza tus automatizaciones desde GitHub, Stripe o tus propios sistemas con webhooks firmados, o con una programación.
-order: 22
+order: 23
 group: Guías
 ---
 
@@ -43,6 +43,8 @@ Pulsa **Add webhook**. El portal te muestra, **una sola vez**:
 
 - **Webhook URL**: `https://api.nan.builders/hooks/nan_whk_...`. La propia URL es una credencial: cualquiera que la tenga puede enviarle eventos, así que trátala como una contraseña.
 - **Signing secret** (GitHub y NaN): con lo que el emisor firma cada evento. Para Stripe solo se muestra la URL: el secreto es el que pegaste.
+
+El signing secret pertenece al trigger, no a tus [Secretos](/es/docs/secrets): no aparece en tu lista de secretos ni cuenta para sus límites, y ningún run lo recibe. Si tu automatización necesita llamar a un servicio tuyo, guarda ese token como secreto y asígnaselo a la automatización.
 
 Cópialos y pulsa **I've saved them**. Después, el portal solo muestra el principio de la URL. Si los pierdes, [rótalos](#rota-la-url-o-el-secreto) para conseguir unos nuevos.
 

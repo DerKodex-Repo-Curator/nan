@@ -149,9 +149,9 @@ Cada run trabaja en su propio proceso dentro del workspace, con su parte de CPU 
 
 Los runs con la inferencia de NaN usan la clave de inferencia del workspace, la misma que usan sus agentes cuando trabajas con ellos a mano. Sus peticiones cuentan para el uso de tu plan como cualquier otra. Los runs con [tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok) usan tu clave en su lugar, y nunca reciben la del workspace.
 
-Los secretos del archivo de entorno de tu workspace, como esa clave de inferencia o un token de bot de Telegram, aparecen como `***` en los logs y resultados de los runs, así que un log no los filtra.
+Los secretos del archivo de entorno de tu workspace, como esa clave de inferencia o un token de bot de Telegram, aparecen como `[masked]` en los logs y resultados de los runs, así que un log no los filtra. Consulta [Enmascarado en logs y eventos](/es/docs/secrets#enmascarado-en-logs-y-eventos).
 
-Los secretos que guardas en tus ajustes no se les dan a estos runs: solo llegan a los runs de las [automatizaciones](/es/docs/automations#secretos) a las que los asignas.
+Los secretos que guardas en tus ajustes no se les dan a estos runs: solo llegan a los runs de las [automatizaciones](/es/docs/automations#secretos) a las que los asignas. Consulta [Secretos](/es/docs/secrets).
 
 ## Usa tu propia clave de proveedor (BYOK)
 
@@ -179,24 +179,15 @@ Abre tus ajustes en el portal, **Secrets**, y pulsa **Add secret**. Rellena (el 
 - **Name**: cómo la nombran los runs y las automatizaciones, por ejemplo `ANTHROPIC_KEY`. Mayúsculas, dígitos y `_`, empezando por una letra.
 - **Kind**: **Provider key**.
 - **Provider**: **Anthropic**, **OpenAI**, **Google Gemini** u **OpenAI-compatible**. No se puede cambiar después: para cambiar de proveedor, añade otra clave.
-- **Base URL**, solo para **OpenAI-compatible**: la raíz del endpoint, que suele acabar en `/v1`, por ejemplo `https://api.together.xyz/v1`. Mira las reglas más abajo.
+- **Base URL**, solo para **OpenAI-compatible**: la raíz del endpoint, que suele acabar en `/v1`, por ejemplo `https://api.together.xyz/v1`. Mira las [reglas de la URL base](/es/docs/secrets#reglas-de-la-url-base).
 - **Value**: la clave, una sola línea sin espacios, de 8 a 4096 caracteres.
 - **Description (optional)**.
 
 Como todo secreto, una provider key es de **solo escritura**: nadie puede volver a leerla, ni siquiera tú. La lista la muestra como **Provider key · Anthropic** (o su proveedor) normalmente con sus 4 últimos caracteres y, en una clave OpenAI-compatible, su URL base, que puedes cambiar con **Base URL**. **Replace value** cambia la clave para todos los runs que arranquen a partir de ese momento. `nan secrets ls` la muestra con **KIND** `provider_key`, su **PROVIDER** y su **BASE URL**.
 
-Si tu cuenta tiene la API de escritura, también puedes guardarla desde la CLI, leyendo la clave de un archivo o de una tubería: `nan secrets set ANTHROPIC_KEY --value-file key.txt --kind provider_key --provider anthropic`. Consulta [Secretos desde la CLI](/es/docs/automations#secretos-desde-la-cli).
+Si tu cuenta tiene la API de escritura, también puedes guardarla desde la CLI, leyendo la clave de un archivo o de una tubería: `nan secrets set ANTHROPIC_KEY --value-file key.txt --kind provider_key --provider anthropic`. Consulta [Gestiona los secretos desde la CLI](/es/docs/secrets#gestiona-los-secretos-desde-la-cli).
 
-**Reglas de la URL base.** NaN comprueba la URL base al guardarla y nunca se conecta a ella: solo lo hace el agente de tu workspace.
-
-- Solo `https`, hasta 512 caracteres. Un puerto vale (`https://llm.example.com:8443/v1`).
-- Un nombre de host público (con al menos un punto) o una dirección IP pública. Se rechazan `localhost`, las direcciones privadas y de enlace local, y los nombres que acaban en `.local`, `.internal`, `.lan`, `.home.arpa` o `.svc`.
-- No valen los hosts de NaN (`nan.builders`, `helmcode.com` y sus subdominios): para los modelos de NaN, elige **NaN** como inferencia.
-- Sin `usuario:contraseña@`, sin parámetros (`?...`) y sin fragmento (`#...`).
-
-<Callout title="No pongas nunca un token en la URL base" variant="warning">
-La clave va en **Value**, donde se guarda cifrada y enmascarada. La URL base no es un secreto: el portal, `nan secrets ls` y la API la muestran tal cual. Una URL con un token dentro se rechaza si lleva `usuario:contraseña@` o parámetros, pero cualquier otra forma de esconder un token en ella quedaría a la vista de quien lea tus ajustes.
-</Callout>
+**Reglas de la URL base.** NaN comprueba la URL base al guardarla y nunca se conecta a ella: solo lo hace el agente de tu workspace. Tiene que ser una dirección `https` pública, que no sea uno de los hosts de NaN, sin `usuario:contraseña@`, parámetros ni fragmento: la lista completa está en [Reglas de la URL base](/es/docs/secrets#reglas-de-la-url-base). **No pongas nunca un token en la URL base**: no es un secreto, y el portal, `nan secrets ls` y la API la muestran en claro.
 
 ### Elígela para un run
 
@@ -240,7 +231,7 @@ Tu proveedor factura todos los tokens de estos runs, en tu cuenta con él. NaN n
 
 ### Seguridad
 
-- Tu clave se guarda como cualquier [secreto](/es/docs/automations#secretos): cifrada, de solo escritura y enmascarada en logs, resultados y propuestas.
+- Tu clave se guarda como cualquier [secreto](/es/docs/secrets): cifrada, de solo escritura y [enmascarada](/es/docs/secrets#enmascarado-en-logs-y-eventos) en logs, resultados y propuestas.
 - Solo llega al agente del run, dentro de tu propio workspace, como variable de entorno: nunca en la línea de comandos, en un archivo ni en los logs de NaN. El run no recibe la clave de inferencia de NaN de tu workspace.
 - **NaN nunca llama a tu URL base ni a tu proveedor.** Lo hace el agente de tu workspace, por la red de tu workspace.
 - El run lee los ajustes de tu agente para conservar tus skills y preferencias, pero usa su propia copia de la configuración, con solo el proveedor de tu clave: tus archivos de configuración no cambian.
