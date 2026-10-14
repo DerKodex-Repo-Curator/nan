@@ -53,10 +53,10 @@ const credentialNotAllowed = (scope: string) =>
   `This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the "${scope}" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.`;
 
 describe('openapi.json: the write API operations', () => {
-  it('the Secrets tag sits between Automations and Approvals and explains who may use it', () => {
+  it('the Secrets tag sits between Automations and Notifications, then Approvals, and explains who may use it', () => {
     const names = s.tags.map((t: any) => t.name);
     const at = names.indexOf('Runs');
-    expect(names.slice(at, at + 5)).toEqual(['Runs', 'Automations', 'Secrets', 'Approvals', 'Workspaces']);
+    expect(names.slice(at, at + 6)).toEqual(['Runs', 'Automations', 'Secrets', 'Notifications', 'Approvals', 'Workspaces']);
     const tags = Object.fromEntries(s.tags.map((t: any) => [t.name, t.description]));
     expect(tags.Secrets).toContain('https://nan.builders/docs/secrets');
     expect(tags.Secrets).toMatch(/never returns a value/i);
@@ -303,7 +303,7 @@ describe('openapi.json: credentials and scopes', () => {
   });
 
   it('the overview says API keys never reach secrets or automation changes', () => {
-    expect(desc).toContain('never on Secrets or on changes to automations');
+    expect(desc).toContain('never on Secrets, Notifications or changes to automations');
     expect(desc).not.toContain('An API key works on both inference and these endpoints.');
   });
 
