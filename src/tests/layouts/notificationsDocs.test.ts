@@ -17,7 +17,7 @@ import openapi from '../../data/openapi.json';
  *
  * The facts pinned here come from:
  * - devops AGENT-AUTOMATIONS-PHASE3-NOTIFICATIONS.md §2, §4, §5, §6, §7, §8.
- * - cloud-api origin/main 48ea25e (0.8.262): handlers/notification_channels.go
+ * - cloud-api 0.8.263 (approval call to action, PR feat/notif-approval-cta): handlers/notification_channels.go
  *   (routes, notifWriteBurst/RatePerSec, views), notifications/service.go
  *   (codes, limits), notifications/payload.go (titles), signing.go
  *   (nan_nsec_, v1= HMAC of "<ts>.<body>", 24 h grace) and the golden files in
@@ -109,6 +109,9 @@ const PORTAL_LABELS = [
   'Turned off: failing', 'Turned off: URL refused', 'Manage notifications',
 ];
 
+/** cloud-api notifications/payload.go actionLabel: the call to action of each event. */
+const CTA_LABELS = ['Review and approve', 'View run', 'Open automation', 'View triggers'];
+
 /** nan-cli 0.1.34 `nan notifications` subcommands and the flags the page names. */
 const CLI_COMMANDS = ['ls', 'show', 'add', 'edit', 'rm', 'test', 'rotate', 'deliveries', 'subscriptions'];
 const CLI_FLAGS = ['--kind', '--url-file', '--url-stdin', '--event', '--no-events', '--automation', '--name', '--enable', '--disable', '--limit', '--set', '--add', '--remove', '--clear', '--yes', '--json'];
@@ -171,10 +174,32 @@ describe.each(Object.entries(pages))('Notifications page (%s)', (_locale, page) 
     expect(body).toContain('**Post to a channel when a webhook request is received**');
     expect(body).toContain('**Manage Webhooks**');
     expect(body).toContain('**Copy Webhook URL**');
-    expect(body).toContain('**Open in NaN**');
     const teams = golden('teams_run_failed').attachments[0].content;
-    expect(teams.actions[0].title).toBe('Open in NaN');
+    expect(teams.actions[0].title).toBe('View run');
     expect(golden('discord_run_failed').allowed_mentions).toEqual({ parse: [] });
+  });
+
+  // Owner decision 2026-10-14: approval.pending carries a prominent
+  // "Review and approve" call to action (approvals stay in the browser), and
+  // the other events a "View run" / "Open automation" / "View triggers" link.
+  test('the approval call to action and the link of every event, as the providers render them', () => {
+    for (const label of CTA_LABELS) expect(body, label).toContain(`**${label}**`);
+    const slack = golden('slack_approval_pending').blocks.find((b: { type: string }) => b.type === 'actions').elements[0];
+    expect(slack.text.text).toBe('Review and approve');
+    expect(slack.style).toBe('primary');
+    const teams = golden('teams_approval_pending').attachments[0].content.actions[0];
+    expect(teams.title).toBe('Review and approve');
+    expect(teams.type).toBe('Action.OpenUrl');
+    const discord = golden('discord_approval_pending').embeds[0];
+    expect(discord.url).toMatch(/\?approval=1$/);
+    expect(discord.fields.map((f: { name: string }) => f.name)).toEqual(expect.arrayContaining(['Automation', 'Workspace', 'Expires', 'Needs approval', 'Next step']));
+    expect(slack.url).toBe(golden('https_approval_pending').approve_url);
+    expect(body).toContain('`?approval=1`');
+    // Digests and test messages keep the generic label.
+    expect(body).toContain('**Open in NaN**');
+    expect(flat).toMatch(/never approve from Slack, Teams or Discord|Nunca se aprueba desde Slack, Teams o Discord/);
+    expect(flat).toMatch(/up to 5 actions|hasta 5 acciones/);
+    expect(flat).toMatch(/no longer pending|ya no está pendiente/);
   });
 
   test('events: the five, four on by default, run.finished opt-in, only automation runs, never cancelled', () => {
@@ -266,6 +291,19 @@ print(verify(b, "${now}", "v1=${good}"), verify(b, "${now}", "v1=00,v1=${good}")
     expect(keys(digest.items[0])).toEqual(keys(golden('https_digest').items[0]));
     expect(digest.text).toBe(golden('https_digest').text);
     expect(digest.url).toBe(golden('https_digest').url);
+
+    const approval = byEvent('approval.pending');
+    const g = golden('https_approval_pending');
+    expect(keys(approval)).toEqual(keys(g));
+    expect(keys(approval.approval)).toEqual(keys(g.approval));
+    expect(keys(approval.approval.actions[0])).toEqual(keys(g.approval.actions[0]));
+    expect(keys(approval.workspace)).toEqual(keys(g.workspace));
+    expect(approval.text).toBe(g.text);
+    expect(approval.approval.actions.map((a: { text: string }) => a.text)).toEqual(g.approval.actions.map((a: { text: string }) => a.text));
+    expect(approval.actions_url).toMatch(/\/runs\/…\?approval=1$/);
+    for (const f of ['actions_url', 'approve_url', 'workspace', 'approval', 'approval.state', 'approval.expires_at', 'approval.approval_kinds', 'approval.actions', 'approval.actions_total']) {
+      expect(body, f).toContain(`| \`${f}\` |`);
+    }
 
     const t = byEvent('test');
     expect(keys(t)).toEqual(keys(golden('https_test')));

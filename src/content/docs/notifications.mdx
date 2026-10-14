@@ -33,9 +33,9 @@ You can have up to 10 channels. Each one sends a message in the format its provi
 
 | Kind | What you get |
 |---|---|
-| **Slack** | A message with the title as a link to the portal, a line with the event, the run state and the error code, and the run's summary when it has one. |
-| **Microsoft Teams** | An adaptive card with the title, the event, state and error code, the summary and an **Open in NaN** button. |
-| **Discord** | An embed with the title as a link, the event, state and error code, and the summary. It never mentions anyone. |
+| **Slack** | A message with the title as a link to the portal, the run's summary when it has one, a button to the portal (**View run**, **Open automation** or **View triggers**) and a line with the event, the run state and the error code. An approval adds its details and a green **Review and approve** button: see [Approval messages](#approval-messages). |
+| **Microsoft Teams** | An adaptive card with the title, the event, state and error code, the summary and a button to the portal: **Review and approve** on an approval, **View run**, **Open automation** or **View triggers** on the others (digests and test messages keep **Open in NaN**). An approval adds its details: see [Approval messages](#approval-messages). |
+| **Discord** | An embed with the title as a link, the event, state and error code, the summary and a bold link to the portal (Discord webhooks cannot show buttons). An approval adds its details: see [Approval messages](#approval-messages). It never mentions anyone. |
 | **HTTPS** | A signed JSON `POST` to your endpoint, with the [documented schema](#payload). |
 
 ### Get a Slack webhook URL
@@ -79,6 +79,19 @@ A cancelled run never notifies, and neither does a run you start yourself (outsi
 **For all your automations, or for one.** Every event of a channel is either for **all your automations** (including the ones you create later) or for **one automation**. When you create a channel you can scope its default events to one automation, and later mix both: for example, `run.failed` for every automation and `run.finished` only for `nightly report`. A channel takes up to 50 of these subscriptions. Deleting an automation removes the subscriptions that named it.
 
 The same event is sent once per channel, even when the channel is subscribed to it for all automations and for that one.
+
+### Approval messages
+
+An `approval.pending` message tells you what is waiting, so you can decide whether to open it now:
+
+- the automation and its workspace;
+- when the approval expires, as a UTC time and how long is left, for example `2026-10-15 10:00 UTC (in 24 h)`;
+- the action kinds the automation sends for approval;
+- up to 5 actions waiting for approval, each as its kind and target: `github_pr_comment on acme/api#342`, `git_push to branch fix/login`, `github_add_labels on acme/api#12: 2 labels`. When there are more, the list ends with `and 3 more`.
+
+Its **Review and approve** button (a bold link in Discord) opens the run in the portal with the proposed actions in view and focused: the link ends in `?approval=1`, and it still works when you have to sign in first. There you review the full actions, with comment bodies and the diff, and press **Approve and apply** or **Reject**. You never approve from Slack, Teams or Discord: the message only takes you to the portal.
+
+If the approval was decided or expired before the message went out, the message says it is no longer pending and the button becomes **View run**. The run page shows the same: what happened, without Approve or Reject.
 
 ## Manage channels in the portal
 
@@ -239,9 +252,13 @@ An **HTTPS** channel receives `POST` requests with `Content-Type: application/js
     "phase": "propose",
     "summary": "Reviewed PR #42: two issues found in pkg/foo."
   },
+  "workspace": { "id": "…", "name": "backend-ws" },
   "trigger": null,
   "reason": null,
+  "approval": null,
   "url": "https://cloud.nan.builders/workspaces/…/runs/…",
+  "actions_url": "https://cloud.nan.builders/workspaces/…/runs/…",
+  "approve_url": null,
   "text": "Run failed: PR review (agent_failed)"
 }
 ```
@@ -255,8 +272,48 @@ An **HTTPS** channel receives `POST` requests with `Content-Type: application/js
 | `run.summary` | The run's summary as the portal shows it, with secrets already masked and control characters removed, at most 280 characters. Only on `run.finished` and `run.failed`. |
 | `trigger` | `{ "id", "kind" }` on `trigger.failing`. |
 | `reason` | `automation.disabled`: `member`, `workspace_deleted` or `secret_deleted`. `trigger.failing`: `bad_signature`. |
+| `workspace` | On run events (`approval.pending`, `run.failed`, `run.finished`): `{ "id", "name" }` of the run's workspace (`name` is `null` when the workspace no longer exists). `null` otherwise. |
 | `url` | Where to look in the portal: the run for run events, the automation for the others. |
+| `actions_url` | Where the button of the Slack, Teams and Discord messages goes: the run with its proposed actions focused (`?approval=1`) on `approval.pending`, the run on `run.failed` and `run.finished`, the automation on `automation.disabled`, and its triggers on `trigger.failing`. |
+| `approve_url` | On `approval.pending`, while the approval is still waiting: the same link as `actions_url`. `null` otherwise. You approve in the portal, never with a request to this link. |
+| `approval` | On `approval.pending`: `state`, `expires_at`, `approval_kinds`, `actions` and `actions_total`. `null` otherwise. |
+| `approval.state` | `pending` while it waits for you. When the message goes out after the approval was decided or expired: `approved`, `rejected`, `cancelled` or `expired`, and `approve_url` is `null`. |
+| `approval.expires_at` | When the approval expires (UTC), or `null` if it has no expiry. |
+| `approval.approval_kinds` | The action kinds the automation sends for approval. |
+| `approval.actions` | Up to 5 actions waiting for approval: `kind`, `target` (`owner/repo#number`, the branch of a `git_push`, the repository of a `github_create_pr`) and a one-line `text`. Never a comment body, a title, a commit message, a label or the diff. |
+| `approval.actions_total` | How many actions wait for approval in total. It can be larger than the length of `actions`, which stops at 5. |
 | `text` | A one-line title, for example `Approval needed: PR review`, `Run timed out: PR review` or `Automation disabled: PR review (its workspace was deleted)`. |
+
+An `approval.pending` body adds the workspace, the approval and both links:
+
+```json
+{
+  "version": 1,
+  "id": "…",
+  "event": "approval.pending",
+  "created_at": "2026-10-14T10:00:00Z",
+  "automation": { "id": "…", "name": "PR review" },
+  "workspace": { "id": "…", "name": "backend-ws" },
+  "run": { "id": "…", "state": "awaiting_approval", "error_code": null, "phase": "propose", "summary": null },
+  "trigger": null,
+  "reason": null,
+  "approval": {
+    "state": "pending",
+    "expires_at": "2026-10-15T10:00:00Z",
+    "approval_kinds": ["git_push", "github_pr_comment", "github_add_labels"],
+    "actions": [
+      { "kind": "github_pr_comment", "target": "helmcode/nan-cloud-api#342", "text": "github_pr_comment on helmcode/nan-cloud-api#342" },
+      { "kind": "git_push", "target": "nan/fix-tests", "text": "git_push to branch nan/fix-tests" },
+      { "kind": "github_add_labels", "target": "helmcode/nan-cloud-api#12", "text": "github_add_labels on helmcode/nan-cloud-api#12: 2 labels" }
+    ],
+    "actions_total": 3
+  },
+  "url": "https://cloud.nan.builders/workspaces/…/runs/…",
+  "actions_url": "https://cloud.nan.builders/workspaces/…/runs/…?approval=1",
+  "approve_url": "https://cloud.nan.builders/workspaces/…/runs/…?approval=1",
+  "text": "Approval needed: PR review"
+}
+```
 
 A **digest** groups several notifications:
 
@@ -316,9 +373,10 @@ Messages carry names, states, error codes, ids and links. They **never** carry:
 
 - the value of any secret, or a channel URL;
 - the body or headers of the webhook request that started a run;
-- the agent's output, beyond the run's short summary (at most 280 characters, with secrets masked).
+- the agent's output, beyond the run's short summary (at most 280 characters, with secrets masked);
+- the bodies, titles and commit messages of proposed actions, their labels or the diff: an approval lists only kinds and targets.
 
-Member text (an automation's name, a summary) is escaped for each provider: it cannot mention anyone, ping a role or form a link.
+Member text (an automation's or workspace's name, a summary, a branch) is escaped for each provider: it cannot mention anyone, ping a role or form a link.
 
 ### Which URLs are accepted
 
