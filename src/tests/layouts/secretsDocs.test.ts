@@ -246,7 +246,11 @@ describe.each(Object.entries(pages))('Secrets page (%s)', (_locale, page) => {
     expect(body).not.toContain('`***`');
     // mask.MinSecretLen / MinPrefixLen = 8; encodings; prefix fragments.
     expect(flat).toMatch(/(shorter than 8 characters|de menos de 8 caracteres)/);
-    expect(flat).toMatch(/base64/);
+    expect(flat).toMatch(/(base64, URL-encoded and JSON-escaped|base64, codificado para URL y escapado para JSON)/);
+    // protocol.MaskProposal: exact fields (branch, labels) are never rewritten, the proposal is refused.
+    const masked = body.split('\n').find((l) => l.includes('`[masked]`') === false && /^- (In the run|En los eventos)/.test(l))!;
+    expect(masked).toBeDefined();
+    expect(masked).not.toMatch(/labels|branch|etiquetas|rama/);
     expect(flat).toMatch(/(fragment of 8 characters or more|fragmento de 8 caracteres o más)/);
     expect(flat).toContain('`proposal_invalid`');
     // What an agent-exposed secret means, and who is responsible.
@@ -268,13 +272,26 @@ describe.each(Object.entries(pages))('Secrets page (%s)', (_locale, page) => {
 
   test('limits: the constants of cloud-api', () => {
     const limits = body.slice(body.search(/^## (Limits|Límites)$/m), body.search(/^## (If something goes wrong|Si algo sale mal)$/m));
-    for (const v of ['100', '64', '16 KiB', '4096', '256', '512', '20', '48 KiB', '30', '120', '32 KiB']) expect(limits, v).toContain(v);
+    const row = (en: string, es: string, value: RegExp) =>
+      expect(limits, en).toMatch(new RegExp(`^\\| (${en}|${es}) \\| ${value.source}`, 'm'));
+    row('Secrets', 'Secretos', /100 /);
+    row('Name', 'Nombre', /(Up to|Hasta) 64 /);
+    row('Value of a \\*\\*Secret\\*\\*', 'Valor de un \\*\\*Secret\\*\\*', /(Up to|Hasta) 16 KiB/);
+    row('Value of a \\*\\*Provider key\\*\\*', 'Valor de una \\*\\*Provider key\\*\\*', /(8 to|De 8 a) 4096 /);
+    row('Description', 'Descripción', /(Up to|Hasta) 256 /);
+    row('Base URL', 'URL base', /(Up to|Hasta) 512 /);
+    row('Secrets per automation', 'Secretos por automatización', /20 \|/);
+    row('Everything one run receives', 'Todo lo que recibe un run', /48 KiB/);
+    row('Changes to secrets', 'Cambios en secretos', /(A burst of|Una ráfaga de) 30[^|]*120 (per hour|por hora)/);
+    row('API request body', 'Cuerpo de una petición a la API', /32 KiB/);
   });
 
   test('troubleshooting lists every error a member can see', () => {
     const table = body.slice(body.search(/^## (If something goes wrong|Si algo sale mal)$/m));
     for (const code of ERROR_CODES) expect(table, code).toContain(`\`${code}\``);
-    for (const code of ['`secrets_unavailable`', '`secret_missing`', '`config_error`', '64']) expect(table, code).toContain(code);
+    for (const code of ['`secrets_unavailable`', '`secret_missing`', '`config_error`']) expect(table, code).toContain(code);
+    // Exit code 64 is the CLI's generic usage code (nan-cli exitUsage): the row says how to tell the write API case apart.
+    expect(table).toMatch(/^\| (The CLI exits with code 64 and tells you to use the portal|La CLI sale con código 64 y te dice que uses el portal) \|/m);
   });
 
   test('no em-dashes, no internals, nothing private, never the portal route', () => {
@@ -307,6 +324,18 @@ describe.each(Object.entries(pages))('the other guides point at the Secrets page
 
   test.each(['automations.mdx', 'runs.mdx', 'nan-cli.mdx', 'webhooks.mdx', 'pr-gatekeeper.mdx', 'intro.md'])('%s links it', (file) => {
     expect(read(page.dir + file)).toContain(`](${link}`);
+  });
+
+  test('every link into the Secrets page, from any guide, lands on a heading that exists', () => {
+    const ids = headingIds(strip(read(page.dir + 'secrets.mdx')));
+    let n = 0;
+    for (const f of readdirSync(resolve(src, page.dir))) {
+      for (const m of read(page.dir + f).matchAll(new RegExp(`\\]\\(${link.replace(/\//g, '\\/')}#([^)\\s]+)\\)`, 'g'))) {
+        n++;
+        expect(ids.has(decodeURIComponent(m[1])), `${f}: #${m[1]}`).toBe(true);
+      }
+    }
+    expect(n).toBeGreaterThan(5);
   });
 
   test('runs: BYOK keeps a short version of the base URL rules and links the full list', () => {
