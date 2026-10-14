@@ -50,16 +50,16 @@ describe('openapi.json: Automations and Approvals tags', () => {
   it('sit right after Runs, before Workspaces, and link their guides', () => {
     const names = s.tags.map((t: any) => t.name);
     const at = names.indexOf('Runs');
-    expect(names.slice(at, at + 4)).toEqual(['Runs', 'Automations', 'Approvals', 'Workspaces']);
+    expect(names.slice(at, at + 5)).toEqual(['Runs', 'Automations', 'Secrets', 'Approvals', 'Workspaces']);
     const tags = Object.fromEntries(s.tags.map((t: any) => [t.name, t.description]));
     expect(tags.Automations).toContain('https://nan.builders/docs/automations');
     expect(tags.Automations).toContain('https://nan.builders/docs/webhooks');
     expect(tags.Approvals).toContain('https://nan.builders/docs/automations#approve-or-reject-a-proposal');
   });
 
-  it('say the writes are portal-only (browser_session_required)', () => {
+  it('say who may write (write API) and that approving stays in the portal', () => {
     const tags = Object.fromEntries(s.tags.map((t: any) => [t.name, t.description]));
-    expect(tags.Automations).toMatch(/Creating, editing and deleting automations and their triggers is done in the portal/);
+    expect(tags.Automations).toMatch(/Creating, changing and deleting automations and their triggers needs a CLI session \(`nan auth login`\) or a platform token with `automations:write`/);
     expect(tags.Automations).toContain('`403 browser_session_required`');
     expect(tags.Approvals).toContain('`POST /v1/runs/{id}/approve`');
     expect(tags.Approvals).toContain('`403 browser_session_required`');
@@ -88,14 +88,9 @@ describe('openapi.json: Automations and Approvals tags', () => {
     expect(ex.workspace_key_not_allowed.value.error.code).toBe('workspace_key_not_allowed');
   });
 
-  it('documents no write that only a browser session can make, and no secrets route', () => {
-    // POST/PATCH/DELETE /v1/automations*, trigger writes and approve are portal-only.
-    expect(s.paths['/automations'].post).toBeUndefined();
-    expect(s.paths['/automations/{id}'].patch).toBeUndefined();
-    expect(s.paths['/automations/{id}'].delete).toBeUndefined();
-    expect(s.paths['/automations/{id}/triggers'].post).toBeUndefined();
+  it('documents no approve route and no portal route (the writes are in openapiWriteApi.test.ts)', () => {
+    // Approving stays browser-only; the write API (Phase 3) documents the rest.
     expect(s.paths['/runs/{id}/approve']).toBeUndefined();
-    expect(Object.keys(s.paths).filter((p) => /trigger.*\/|rotate/.test(p))).toEqual([]);
     expect(JSON.stringify(s.paths)).not.toContain('/api/account');
     expect(JSON.stringify(s)).not.toMatch(/api\/account\/secrets/);
   });
@@ -112,6 +107,8 @@ describe('openapi.json: the Automations contract (cloud-api)', () => {
       'created_at', 'updated_at',
       // Migration 110 (PR gatekeeper), same order as automationJSON.
       'checkout', 'sticky_pr_comment', 'checkout_untrusted_heads',
+      // Phase 3 write API (migration 114).
+      'updated_by',
     ]);
     expect(sc.Automation.properties.template.enum).toEqual(['custom', 'pr_review', 'issue_triage', 'ci_failure', 'generic_webhook']);
     expect(sc.Automation.properties.approval_kinds.items.enum).toEqual(ACTION_KINDS);
@@ -146,7 +143,7 @@ describe('openapi.json: the Automations contract (cloud-api)', () => {
     expect(Object.keys(sc.Trigger.properties)).toEqual([
       'id', 'object', 'automation_id', 'kind', 'enabled', 'token_prefix', 'signature_scheme', 'event_filter',
       'actor_filter', 'prev_secret_until', 'cron', 'timezone', 'next_fire_at', 'last_fired_at', 'last_outcome',
-      'created_at', 'updated_at',
+      'created_at', 'updated_at', 'updated_by',
     ]);
     expect(sc.Trigger.properties.signature_scheme.enum).toEqual(['github', 'stripe', 'nan', null]);
     // automations/api.go ScheduleOutcomes, in CHECK order.
@@ -166,7 +163,7 @@ describe('openapi.json: the Automations contract (cloud-api)', () => {
   it('the trigger list never returns the webhook URL or the signing secret', () => {
     const props = Object.keys(sc.Trigger.properties);
     for (const secret of ['webhook_url', 'signing_secret', 'token', 'token_hash']) expect(props).not.toContain(secret);
-    expect(op('/automations/{id}/triggers', 'get').description).toMatch(/shown once, in the portal/);
+    expect(op('/automations/{id}/triggers', 'get').description).toMatch(/shown once, when they are created or rotated/);
   });
 
   it('deliveries: limit 1 to 100, default 50, 30 days, and what is never stored', () => {
@@ -266,7 +263,7 @@ describe('openapi.json: credentials for the platform API', () => {
     // cloud-api middleware/auth.go browserSessionRequiredMessage, OpenAI envelope under /v1.
     expect(byCode.browser_session_required).toEqual({
       message:
-        'This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs, change automations or secrets, or create tokens with automations scopes.',
+        'This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs or create tokens with automations or secrets scopes.',
       type: 'permission_error',
       param: null,
       code: 'browser_session_required',
@@ -276,14 +273,14 @@ describe('openapi.json: credentials for the platform API', () => {
 
   it('the errors table lists the new codes', () => {
     expect(desc).toMatch(/\| `401` \|[^\n]*`token_not_valid_for_inference` \|/);
-    expect(desc).toMatch(/\| `403` \|[^\n]*`token_scope_denied` · `browser_session_required` \|/);
+    expect(desc).toMatch(/\| `403` \|[^\n]*`token_scope_denied` · `credential_not_allowed` · `browser_session_required` \|/);
   });
 
   it('the platform token scheme names its scopes and the inference refusal', () => {
     const d = s.components.securitySchemes.platformToken.description;
     expect(d).toContain('`401 token_not_valid_for_inference`');
     expect(d).toContain('`403 token_scope_denied`');
-    expect(d).toMatch(/can never approve a run or change automations or secrets/);
+    expect(d).toMatch(/can never approve a run, and it changes automations or secrets only with `automations:write` or `secrets:write`/);
   });
 });
 
@@ -292,7 +289,7 @@ describe('cloud-api golden responses validate against the published schemas', ()
     expect(readdirSync(fixtures).sort()).toEqual([
       'approvals_list.json', 'automation_deliveries.json', 'automation_get.json', 'automation_templates.json',
       'automation_triggers.json', 'automations_list.json', 'run_get_adhoc.json', 'run_get_propose.json',
-      'run_list_propose.json', 'trigger_create.json',
+      'run_list_propose.json', 'trigger_create.json', 'trigger_rotate.json',
       // cloud-api PR #343: a fresh-checkout, sticky, supersede automation and a superseded run.
       'automation_get_gatekeeper.json', 'run_get_gatekeeper.json',
     ].sort());
