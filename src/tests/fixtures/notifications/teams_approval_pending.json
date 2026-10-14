@@ -54,13 +54,18 @@
               {
                 "title": "Expires",
                 "value": "2026-10-15 10:00 UTC (in 24 h)"
-              },
-              {
-                "title": "Needs approval",
-                "value": "git_push, github_pr_comment, github_add_labels"
               }
             ],
             "type": "FactSet"
+          },
+          {
+            "inlines": [
+              {
+                "text": "Needs approval: git_push, github_pr_comment, github_add_labels",
+                "type": "TextRun"
+              }
+            ],
+            "type": "RichTextBlock"
           },
           {
             "inlines": [

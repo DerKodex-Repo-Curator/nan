@@ -34,8 +34,8 @@ Puedes tener hasta 10 canales. Cada uno envía el mensaje en el formato que espe
 | Tipo | Lo que recibes |
 |---|---|
 | **Slack** | Un mensaje con el título como enlace al portal, el resumen del run cuando lo tiene, un botón al portal (**View run**, **Open automation** o **View triggers**) y una línea con el evento, el estado del run y el código de error. Una aprobación añade sus detalles y un botón verde **Review and approve**: mira [Mensajes de aprobación](#mensajes-de-aprobación). |
-| **Microsoft Teams** | Una adaptive card con el título, el evento, el estado y el código de error, el resumen y un botón al portal: **Review and approve** en una aprobación, **View run**, **Open automation** o **View triggers** en los demás. |
-| **Discord** | Un embed con el título como enlace, el evento, el estado y el código de error, el resumen y un enlace en negrita al portal (los webhooks de Discord no pueden mostrar botones). Nunca menciona a nadie. |
+| **Microsoft Teams** | Una adaptive card con el título, el evento, el estado y el código de error, el resumen y un botón al portal: **Review and approve** en una aprobación, **View run**, **Open automation** o **View triggers** en los demás (los resúmenes y los mensajes de prueba mantienen **Open in NaN**). Una aprobación añade sus detalles: mira [Mensajes de aprobación](#mensajes-de-aprobación). |
+| **Discord** | Un embed con el título como enlace, el evento, el estado y el código de error, el resumen y un enlace en negrita al portal (los webhooks de Discord no pueden mostrar botones). Una aprobación añade sus detalles: mira [Mensajes de aprobación](#mensajes-de-aprobación). Nunca menciona a nadie. |
 | **HTTPS** | Un `POST` JSON firmado a tu endpoint, con el [esquema documentado](#contenido-del-mensaje). |
 
 ### Consigue la URL de un webhook de Slack
@@ -89,7 +89,7 @@ Un mensaje `approval.pending` te dice qué está esperando, para que decidas si 
 - los tipos de acción que la automatización manda a aprobación;
 - hasta 5 acciones que esperan aprobación, cada una con su tipo y su destino: `github_pr_comment on acme/api#342`, `git_push to branch fix/login`, `github_add_labels on acme/api#12: 2 labels`. Si hay más, la lista termina con `and 3 more`.
 
-Su botón **Review and approve** (un enlace en negrita en Discord) abre el run en el portal con las acciones propuestas a la vista y con el foco: el enlace termina en `?approval=1` y sigue funcionando si antes tienes que iniciar sesión. Allí revisas las acciones completas, con el texto de los comentarios y el diff, y pulsas **Approve and apply** o **Reject**. Nunca se aprueba desde Slack, Teams o Discord: el mensaje solo te lleva al portal.
+Su botón **Review and approve** (un enlace en negrita en Discord) abre el run en el portal con el foco en las acciones propuestas: el enlace termina en `?approval=1` y sigue funcionando si antes tienes que iniciar sesión. Allí revisas las acciones completas, con el texto de los comentarios y el diff, y pulsas **Approve and apply** o **Reject**. Nunca se aprueba desde Slack, Teams o Discord: el mensaje solo te lleva al portal.
 
 Si la aprobación ya se decidió o caducó antes de enviar el mensaje, el mensaje dice que ya no está pendiente y el botón pasa a ser **View run**. La página del run muestra lo mismo: lo que pasó, sin Approve ni Reject.
 
@@ -272,15 +272,16 @@ Un canal **HTTPS** recibe peticiones `POST` con `Content-Type: application/json`
 | `run.summary` | El resumen del run tal como lo muestra el portal, con los secretos ya enmascarados y sin caracteres de control, como mucho 280 caracteres. Solo en `run.finished` y `run.failed`. |
 | `trigger` | `{ "id", "kind" }` en `trigger.failing`. |
 | `reason` | `automation.disabled`: `member`, `workspace_deleted` o `secret_deleted`. `trigger.failing`: `bad_signature`. |
-| `workspace` | En los eventos de run: `{ "id", "name" }` del workspace del run (`name` es `null` si el workspace ya no existe). Si no, `null`. |
+| `workspace` | En los eventos de run (`approval.pending`, `run.failed`, `run.finished`): `{ "id", "name" }` del workspace del run (`name` es `null` si el workspace ya no existe). Si no, `null`. |
 | `url` | Dónde mirar en el portal: el run en los eventos de run, la automatización en los demás. |
-| `actions_url` | Adónde lleva el botón de los mensajes de Slack, Teams y Discord: el run con sus acciones propuestas con el foco (`?approval=1`) en `approval.pending`, el run en `run.failed` y `run.finished`, la automatización en `automation.disabled` y sus triggers en `trigger.failing`. |
+| `actions_url` | Adónde lleva el botón de los mensajes de Slack, Teams y Discord: el run con el foco en sus acciones propuestas (`?approval=1`) en `approval.pending`, el run en `run.failed` y `run.finished`, la automatización en `automation.disabled` y sus triggers en `trigger.failing`. |
 | `approve_url` | En `approval.pending`, mientras la aprobación sigue esperando: el mismo enlace que `actions_url`. Si no, `null`. Se aprueba en el portal, nunca con una petición a este enlace. |
 | `approval` | En `approval.pending`: `state`, `expires_at`, `approval_kinds`, `actions` y `actions_total`. Si no, `null`. |
-| `approval.expires_at` | Cuándo caduca la aprobación (UTC). |
+| `approval.state` | `pending` mientras espera tu decisión. Si el mensaje sale cuando la aprobación ya se decidió o caducó: `approved`, `rejected`, `cancelled` o `expired`, y `approve_url` es `null`. |
+| `approval.expires_at` | Cuándo caduca la aprobación (UTC), o `null` si no caduca. |
 | `approval.approval_kinds` | Los tipos de acción que la automatización manda a aprobación. |
 | `approval.actions` | Hasta 5 acciones que esperan aprobación: `kind`, `target` (`owner/repo#number`, la rama de un `git_push`, el repositorio de un `github_create_pr`) y un `text` de una línea. Nunca el texto de un comentario, un título, un mensaje de commit, una etiqueta ni el diff. |
-| `approval.actions_total` | Cuántas acciones esperan aprobación en total. |
+| `approval.actions_total` | Cuántas acciones esperan aprobación en total. Puede ser mayor que la longitud de `actions`, que se queda en 5. |
 | `text` | Un título de una línea, en inglés, por ejemplo `Approval needed: PR review`, `Run timed out: PR review` o `Automation disabled: PR review (its workspace was deleted)`. |
 
 El cuerpo de `approval.pending` añade el workspace, la aprobación y los dos enlaces:

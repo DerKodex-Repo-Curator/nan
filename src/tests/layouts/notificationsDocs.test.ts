@@ -195,6 +195,8 @@ describe.each(Object.entries(pages))('Notifications page (%s)', (_locale, page) 
     expect(discord.fields.map((f: { name: string }) => f.name)).toEqual(expect.arrayContaining(['Automation', 'Workspace', 'Expires', 'Needs approval', 'Next step']));
     expect(slack.url).toBe(golden('https_approval_pending').approve_url);
     expect(body).toContain('`?approval=1`');
+    // Digests and test messages keep the generic label.
+    expect(body).toContain('**Open in NaN**');
     expect(flat).toMatch(/never approve from Slack, Teams or Discord|Nunca se aprueba desde Slack, Teams o Discord/);
     expect(flat).toMatch(/up to 5 actions|hasta 5 acciones/);
     expect(flat).toMatch(/no longer pending|ya no está pendiente/);
@@ -299,7 +301,7 @@ print(verify(b, "${now}", "v1=${good}"), verify(b, "${now}", "v1=00,v1=${good}")
     expect(approval.text).toBe(g.text);
     expect(approval.approval.actions.map((a: { text: string }) => a.text)).toEqual(g.approval.actions.map((a: { text: string }) => a.text));
     expect(approval.actions_url).toMatch(/\/runs\/…\?approval=1$/);
-    for (const f of ['actions_url', 'approve_url', 'workspace', 'approval', 'approval.expires_at', 'approval.approval_kinds', 'approval.actions', 'approval.actions_total']) {
+    for (const f of ['actions_url', 'approve_url', 'workspace', 'approval', 'approval.state', 'approval.expires_at', 'approval.approval_kinds', 'approval.actions', 'approval.actions_total']) {
       expect(body, f).toContain(`| \`${f}\` |`);
     }
 

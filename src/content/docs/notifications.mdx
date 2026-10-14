@@ -34,8 +34,8 @@ You can have up to 10 channels. Each one sends a message in the format its provi
 | Kind | What you get |
 |---|---|
 | **Slack** | A message with the title as a link to the portal, the run's summary when it has one, a button to the portal (**View run**, **Open automation** or **View triggers**) and a line with the event, the run state and the error code. An approval adds its details and a green **Review and approve** button: see [Approval messages](#approval-messages). |
-| **Microsoft Teams** | An adaptive card with the title, the event, state and error code, the summary and a button to the portal: **Review and approve** on an approval, **View run**, **Open automation** or **View triggers** on the others. |
-| **Discord** | An embed with the title as a link, the event, state and error code, the summary and a bold link to the portal (Discord webhooks cannot show buttons). It never mentions anyone. |
+| **Microsoft Teams** | An adaptive card with the title, the event, state and error code, the summary and a button to the portal: **Review and approve** on an approval, **View run**, **Open automation** or **View triggers** on the others (digests and test messages keep **Open in NaN**). An approval adds its details: see [Approval messages](#approval-messages). |
+| **Discord** | An embed with the title as a link, the event, state and error code, the summary and a bold link to the portal (Discord webhooks cannot show buttons). An approval adds its details: see [Approval messages](#approval-messages). It never mentions anyone. |
 | **HTTPS** | A signed JSON `POST` to your endpoint, with the [documented schema](#payload). |
 
 ### Get a Slack webhook URL
@@ -272,15 +272,16 @@ An **HTTPS** channel receives `POST` requests with `Content-Type: application/js
 | `run.summary` | The run's summary as the portal shows it, with secrets already masked and control characters removed, at most 280 characters. Only on `run.finished` and `run.failed`. |
 | `trigger` | `{ "id", "kind" }` on `trigger.failing`. |
 | `reason` | `automation.disabled`: `member`, `workspace_deleted` or `secret_deleted`. `trigger.failing`: `bad_signature`. |
-| `workspace` | On run events: `{ "id", "name" }` of the run's workspace (`name` is `null` when the workspace no longer exists). `null` otherwise. |
+| `workspace` | On run events (`approval.pending`, `run.failed`, `run.finished`): `{ "id", "name" }` of the run's workspace (`name` is `null` when the workspace no longer exists). `null` otherwise. |
 | `url` | Where to look in the portal: the run for run events, the automation for the others. |
 | `actions_url` | Where the button of the Slack, Teams and Discord messages goes: the run with its proposed actions focused (`?approval=1`) on `approval.pending`, the run on `run.failed` and `run.finished`, the automation on `automation.disabled`, and its triggers on `trigger.failing`. |
 | `approve_url` | On `approval.pending`, while the approval is still waiting: the same link as `actions_url`. `null` otherwise. You approve in the portal, never with a request to this link. |
 | `approval` | On `approval.pending`: `state`, `expires_at`, `approval_kinds`, `actions` and `actions_total`. `null` otherwise. |
-| `approval.expires_at` | When the approval expires (UTC). |
+| `approval.state` | `pending` while it waits for you. When the message goes out after the approval was decided or expired: `approved`, `rejected`, `cancelled` or `expired`, and `approve_url` is `null`. |
+| `approval.expires_at` | When the approval expires (UTC), or `null` if it has no expiry. |
 | `approval.approval_kinds` | The action kinds the automation sends for approval. |
 | `approval.actions` | Up to 5 actions waiting for approval: `kind`, `target` (`owner/repo#number`, the branch of a `git_push`, the repository of a `github_create_pr`) and a one-line `text`. Never a comment body, a title, a commit message, a label or the diff. |
-| `approval.actions_total` | How many actions wait for approval in total. |
+| `approval.actions_total` | How many actions wait for approval in total. It can be larger than the length of `actions`, which stops at 5. |
 | `text` | A one-line title, for example `Approval needed: PR review`, `Run timed out: PR review` or `Automation disabled: PR review (its workspace was deleted)`. |
 
 An `approval.pending` body adds the workspace, the approval and both links:
