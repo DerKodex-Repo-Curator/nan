@@ -22,6 +22,11 @@
           "inline": true,
           "name": "Error",
           "value": "agent_failed"
+        },
+        {
+          "inline": false,
+          "name": "Next step",
+          "value": "**[View run](https://cloud.nan.builders/workspaces/33333333-3333-4333-8333-333333333333/runs/22222222-2222-4222-8222-222222222222)**"
         }
       ],
       "timestamp": "2026-10-14T10:00:00Z",

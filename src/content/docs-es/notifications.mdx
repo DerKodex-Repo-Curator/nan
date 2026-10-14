@@ -33,9 +33,9 @@ Puedes tener hasta 10 canales. Cada uno envía el mensaje en el formato que espe
 
 | Tipo | Lo que recibes |
 |---|---|
-| **Slack** | Un mensaje con el título como enlace al portal, una línea con el evento, el estado del run y el código de error, y el resumen del run cuando lo tiene. |
-| **Microsoft Teams** | Una adaptive card con el título, el evento, el estado y el código de error, el resumen y un botón **Open in NaN**. |
-| **Discord** | Un embed con el título como enlace, el evento, el estado y el código de error, y el resumen. Nunca menciona a nadie. |
+| **Slack** | Un mensaje con el título como enlace al portal, el resumen del run cuando lo tiene, un botón al portal (**View run**, **Open automation** o **View triggers**) y una línea con el evento, el estado del run y el código de error. Una aprobación añade sus detalles y un botón verde **Review and approve**: mira [Mensajes de aprobación](#mensajes-de-aprobación). |
+| **Microsoft Teams** | Una adaptive card con el título, el evento, el estado y el código de error, el resumen y un botón al portal: **Review and approve** en una aprobación, **View run**, **Open automation** o **View triggers** en los demás. |
+| **Discord** | Un embed con el título como enlace, el evento, el estado y el código de error, el resumen y un enlace en negrita al portal (los webhooks de Discord no pueden mostrar botones). Nunca menciona a nadie. |
 | **HTTPS** | Un `POST` JSON firmado a tu endpoint, con el [esquema documentado](#contenido-del-mensaje). |
 
 ### Consigue la URL de un webhook de Slack
@@ -79,6 +79,19 @@ Un run cancelado nunca notifica, ni tampoco un run que lanzas tú (fuera de una 
 **Para todas tus automatizaciones o para una.** Cada evento de un canal es para **todas tus automatizaciones** (también las que crees más adelante) o para **una automatización**. Al crear un canal puedes limitar sus eventos por defecto a una automatización, y luego mezclar ambos: por ejemplo, `run.failed` para todas y `run.finished` solo para `nightly report`. Un canal admite hasta 50 de estas suscripciones. Al borrar una automatización se borran las suscripciones que la nombraban.
 
 El mismo evento se envía una sola vez por canal, aunque el canal esté suscrito a él para todas las automatizaciones y para esa en concreto.
+
+### Mensajes de aprobación
+
+Un mensaje `approval.pending` te dice qué está esperando, para que decidas si abrirlo ya:
+
+- la automatización y su workspace;
+- cuándo caduca la aprobación, como hora UTC y cuánto falta, por ejemplo `2026-10-15 10:00 UTC (in 24 h)`;
+- los tipos de acción que la automatización manda a aprobación;
+- hasta 5 acciones que esperan aprobación, cada una con su tipo y su destino: `github_pr_comment on acme/api#342`, `git_push to branch fix/login`, `github_add_labels on acme/api#12: 2 labels`. Si hay más, la lista termina con `and 3 more`.
+
+Su botón **Review and approve** (un enlace en negrita en Discord) abre el run en el portal con las acciones propuestas a la vista y con el foco: el enlace termina en `?approval=1` y sigue funcionando si antes tienes que iniciar sesión. Allí revisas las acciones completas, con el texto de los comentarios y el diff, y pulsas **Approve and apply** o **Reject**. Nunca se aprueba desde Slack, Teams o Discord: el mensaje solo te lleva al portal.
+
+Si la aprobación ya se decidió o caducó antes de enviar el mensaje, el mensaje dice que ya no está pendiente y el botón pasa a ser **View run**. La página del run muestra lo mismo: lo que pasó, sin Approve ni Reject.
 
 ## Gestiona los canales en el portal
 
@@ -239,9 +252,13 @@ Un canal **HTTPS** recibe peticiones `POST` con `Content-Type: application/json`
     "phase": "propose",
     "summary": "Reviewed PR #42: two issues found in pkg/foo."
   },
+  "workspace": { "id": "…", "name": "backend-ws" },
   "trigger": null,
   "reason": null,
+  "approval": null,
   "url": "https://cloud.nan.builders/workspaces/…/runs/…",
+  "actions_url": "https://cloud.nan.builders/workspaces/…/runs/…",
+  "approve_url": null,
   "text": "Run failed: PR review (agent_failed)"
 }
 ```
@@ -255,8 +272,47 @@ Un canal **HTTPS** recibe peticiones `POST` con `Content-Type: application/json`
 | `run.summary` | El resumen del run tal como lo muestra el portal, con los secretos ya enmascarados y sin caracteres de control, como mucho 280 caracteres. Solo en `run.finished` y `run.failed`. |
 | `trigger` | `{ "id", "kind" }` en `trigger.failing`. |
 | `reason` | `automation.disabled`: `member`, `workspace_deleted` o `secret_deleted`. `trigger.failing`: `bad_signature`. |
+| `workspace` | En los eventos de run: `{ "id", "name" }` del workspace del run (`name` es `null` si el workspace ya no existe). Si no, `null`. |
 | `url` | Dónde mirar en el portal: el run en los eventos de run, la automatización en los demás. |
+| `actions_url` | Adónde lleva el botón de los mensajes de Slack, Teams y Discord: el run con sus acciones propuestas con el foco (`?approval=1`) en `approval.pending`, el run en `run.failed` y `run.finished`, la automatización en `automation.disabled` y sus triggers en `trigger.failing`. |
+| `approve_url` | En `approval.pending`, mientras la aprobación sigue esperando: el mismo enlace que `actions_url`. Si no, `null`. Se aprueba en el portal, nunca con una petición a este enlace. |
+| `approval` | En `approval.pending`: `state`, `expires_at`, `approval_kinds`, `actions` y `actions_total`. Si no, `null`. |
+| `approval.expires_at` | Cuándo caduca la aprobación (UTC). |
+| `approval.approval_kinds` | Los tipos de acción que la automatización manda a aprobación. |
+| `approval.actions` | Hasta 5 acciones que esperan aprobación: `kind`, `target` (`owner/repo#number`, la rama de un `git_push`, el repositorio de un `github_create_pr`) y un `text` de una línea. Nunca el texto de un comentario, un título, un mensaje de commit, una etiqueta ni el diff. |
+| `approval.actions_total` | Cuántas acciones esperan aprobación en total. |
 | `text` | Un título de una línea, en inglés, por ejemplo `Approval needed: PR review`, `Run timed out: PR review` o `Automation disabled: PR review (its workspace was deleted)`. |
+
+El cuerpo de `approval.pending` añade el workspace, la aprobación y los dos enlaces:
+
+```json
+{
+  "version": 1,
+  "id": "…",
+  "event": "approval.pending",
+  "created_at": "2026-10-14T10:00:00Z",
+  "automation": { "id": "…", "name": "PR review" },
+  "workspace": { "id": "…", "name": "backend-ws" },
+  "run": { "id": "…", "state": "awaiting_approval", "error_code": null, "phase": "propose", "summary": null },
+  "trigger": null,
+  "reason": null,
+  "approval": {
+    "state": "pending",
+    "expires_at": "2026-10-15T10:00:00Z",
+    "approval_kinds": ["git_push", "github_pr_comment", "github_add_labels"],
+    "actions": [
+      { "kind": "github_pr_comment", "target": "helmcode/nan-cloud-api#342", "text": "github_pr_comment on helmcode/nan-cloud-api#342" },
+      { "kind": "git_push", "target": "nan/fix-tests", "text": "git_push to branch nan/fix-tests" },
+      { "kind": "github_add_labels", "target": "helmcode/nan-cloud-api#12", "text": "github_add_labels on helmcode/nan-cloud-api#12: 2 labels" }
+    ],
+    "actions_total": 3
+  },
+  "url": "https://cloud.nan.builders/workspaces/…/runs/…",
+  "actions_url": "https://cloud.nan.builders/workspaces/…/runs/…?approval=1",
+  "approve_url": "https://cloud.nan.builders/workspaces/…/runs/…?approval=1",
+  "text": "Approval needed: PR review"
+}
+```
 
 Un **resumen** (`digest`) agrupa varias notificaciones:
 
@@ -316,9 +372,10 @@ Los mensajes llevan nombres, estados, códigos de error, ids y enlaces. **Nunca*
 
 - el valor de ningún secreto, ni la URL de un canal;
 - el cuerpo ni las cabeceras de la petición de webhook que lanzó un run;
-- la salida del agente, más allá del resumen corto del run (como mucho 280 caracteres, con los secretos enmascarados).
+- la salida del agente, más allá del resumen corto del run (como mucho 280 caracteres, con los secretos enmascarados);
+- el texto, el título ni el mensaje de commit de las acciones propuestas, sus etiquetas ni el diff: una aprobación solo lista tipos y destinos.
 
-El texto que escribes tú (el nombre de una automatización, un resumen) se escapa para cada proveedor: no puede mencionar a nadie, avisar a un rol ni formar un enlace.
+El texto que escribes tú (el nombre de una automatización o de un workspace, un resumen, una rama) se escapa para cada proveedor: no puede mencionar a nadie, avisar a un rol ni formar un enlace.
 
 ### Qué URLs se aceptan
 

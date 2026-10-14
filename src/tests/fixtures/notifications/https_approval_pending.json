@@ -1,4 +1,33 @@
 {
+  "actions_url": "https://cloud.nan.builders/workspaces/33333333-3333-4333-8333-333333333333/runs/22222222-2222-4222-8222-222222222222?approval=1",
+  "approval": {
+    "state": "pending",
+    "expires_at": "2026-10-15T10:00:00Z",
+    "approval_kinds": [
+      "git_push",
+      "github_pr_comment",
+      "github_add_labels"
+    ],
+    "actions": [
+      {
+        "kind": "github_pr_comment",
+        "target": "helmcode/nan-cloud-api#342",
+        "text": "github_pr_comment on helmcode/nan-cloud-api#342"
+      },
+      {
+        "kind": "git_push",
+        "target": "nan/fix-tests",
+        "text": "git_push to branch nan/fix-tests"
+      },
+      {
+        "kind": "github_add_labels",
+        "target": "helmcode/nan-cloud-api#12",
+        "text": "github_add_labels on helmcode/nan-cloud-api#12: 2 labels"
+      }
+    ],
+    "actions_total": 3
+  },
+  "approve_url": "https://cloud.nan.builders/workspaces/33333333-3333-4333-8333-333333333333/runs/22222222-2222-4222-8222-222222222222?approval=1",
   "automation": {
     "id": "11111111-1111-4111-8111-111111111111",
     "name": "PR review"
@@ -17,5 +46,9 @@
   "text": "Approval needed: PR review",
   "trigger": null,
   "url": "https://cloud.nan.builders/workspaces/33333333-3333-4333-8333-333333333333/runs/22222222-2222-4222-8222-222222222222",
-  "version": 1
+  "version": 1,
+  "workspace": {
+    "id": "33333333-3333-4333-8333-333333333333",
+    "name": "backend-ws"
+  }
 }

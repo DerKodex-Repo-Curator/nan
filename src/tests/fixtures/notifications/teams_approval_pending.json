@@ -1,0 +1,110 @@
+{
+  "attachments": [
+    {
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "actions": [
+          {
+            "style": "positive",
+            "title": "Review and approve",
+            "type": "Action.OpenUrl",
+            "url": "https://cloud.nan.builders/workspaces/33333333-3333-4333-8333-333333333333/runs/22222222-2222-4222-8222-222222222222?approval=1"
+          }
+        ],
+        "body": [
+          {
+            "inlines": [
+              {
+                "size": "Medium",
+                "text": "Approval needed: PR review",
+                "type": "TextRun",
+                "weight": "Bolder"
+              }
+            ],
+            "type": "RichTextBlock"
+          },
+          {
+            "inlines": [
+              {
+                "text": "Automation: PR review",
+                "type": "TextRun"
+              }
+            ],
+            "type": "RichTextBlock"
+          },
+          {
+            "inlines": [
+              {
+                "text": "Workspace: backend-ws",
+                "type": "TextRun"
+              }
+            ],
+            "type": "RichTextBlock"
+          },
+          {
+            "facts": [
+              {
+                "title": "Event",
+                "value": "approval.pending"
+              },
+              {
+                "title": "State",
+                "value": "awaiting_approval"
+              },
+              {
+                "title": "Expires",
+                "value": "2026-10-15 10:00 UTC (in 24 h)"
+              },
+              {
+                "title": "Needs approval",
+                "value": "git_push, github_pr_comment, github_add_labels"
+              }
+            ],
+            "type": "FactSet"
+          },
+          {
+            "inlines": [
+              {
+                "text": "Proposed actions waiting for approval (3):",
+                "type": "TextRun"
+              }
+            ],
+            "type": "RichTextBlock"
+          },
+          {
+            "inlines": [
+              {
+                "text": "• github_pr_comment on helmcode/nan-cloud-api#342",
+                "type": "TextRun"
+              }
+            ],
+            "type": "RichTextBlock"
+          },
+          {
+            "inlines": [
+              {
+                "text": "• git_push to branch nan/fix-tests",
+                "type": "TextRun"
+              }
+            ],
+            "type": "RichTextBlock"
+          },
+          {
+            "inlines": [
+              {
+                "text": "• github_add_labels on helmcode/nan-cloud-api#12: 2 labels",
+                "type": "TextRun"
+              }
+            ],
+            "type": "RichTextBlock"
+          }
+        ],
+        "type": "AdaptiveCard",
+        "version": "1.4"
+      },
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null
+    }
+  ],
+  "type": "message"
+}
