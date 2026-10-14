@@ -453,7 +453,7 @@ event_filter:
   exclude_drafts: true
 ```
 
-`add` and `rotate` print the webhook URL and the signing secret **once**: store them now, for example straight into GitHub's webhook settings or your password manager. They are never shown again; if you lose them, rotate. `--json` prints them as JSON, for a script to pass on. The details of each field are in [Webhooks and schedules](/docs/webhooks).
+`add` and `rotate` print the webhook URL and the signing secret **once**: store them now, for example straight into GitHub's webhook settings or your password manager. They are never shown again; if you lose them, rotate. `--json` prints them as JSON, for a script to pass on. `rotate` gives a new URL and a new signing secret; `--url` or `--secret` replaces only one, and `--no-grace` stops the old secret at once instead of after 24 hours (for a leaked one). The details of each field are in [Webhooks and schedules](/docs/webhooks).
 
 ### Through the API
 
@@ -489,7 +489,7 @@ A platform token carries **scopes**: what it may do. You pick them when you crea
 | `secrets:read` | Read your secrets' metadata: names, hints, descriptions, which automations use them. Never values. |
 | `secrets:write` | Create secrets, replace their values, change their descriptions and delete them. **It can replace any of your secrets.** |
 
-New tokens get `runs` and `workspaces:read` by default. A token with an `automations:` or `secrets:` scope can only be created in the portal, signed in through your browser, not from the CLI. The last three scopes appear there only where your account has the write API, with a warning. Scopes are independent: `secrets:write` does not include `secrets:read`, and `automations:write` does not include `automations:read`, so a token that manages secrets from the CLI usually carries both. A token without the scope an endpoint needs gets `403 token_scope_denied`.
+New tokens get `runs` and `workspaces:read` by default. A token with an `automations:` or `secrets:` scope can only be created in the portal, signed in through your browser, not from the CLI. The last three scopes appear there only where your account has the write API, with a warning. Scopes are independent: `secrets:write` does not include `secrets:read`, and `automations:write` does not include `automations:read`, so a token that manages secrets from the CLI usually carries both, and one that changes automations by name also needs `automations:read` to look the name up. A token without the scope an endpoint needs gets `403 token_scope_denied`.
 
 <Callout title="What a write token can do" variant="warning">
 An agent or a script holding a token with `secrets:write` or `automations:write` can change your secrets or automations. With `automations:write` it can create an automation that receives any of your secrets and runs without waiting for your approval, which is as good as reading them all. Give these scopes only to tokens that need them, keep them out of workspaces, set an expiry and revoke them when you are done.

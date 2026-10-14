@@ -453,7 +453,7 @@ event_filter:
   exclude_drafts: true
 ```
 
-`add` y `rotate` imprimen la URL del webhook y el secreto de firma **una sola vez**: guárdalos en ese momento, por ejemplo directamente en los ajustes del webhook en GitHub o en tu gestor de contraseñas. No se vuelven a mostrar; si los pierdes, rótalos. `--json` los imprime en JSON, para que un script los pase a otro sitio. El detalle de cada campo está en [Webhooks y programaciones](/es/docs/webhooks).
+`add` y `rotate` imprimen la URL del webhook y el secreto de firma **una sola vez**: guárdalos en ese momento, por ejemplo directamente en los ajustes del webhook en GitHub o en tu gestor de contraseñas. No se vuelven a mostrar; si los pierdes, rótalos. `--json` los imprime en JSON, para que un script los pase a otro sitio. `rotate` da una URL nueva y un secreto de firma nuevo; `--url` o `--secret` reemplaza solo uno, y `--no-grace` hace que el secreto anterior deje de valer al momento en vez de a las 24 horas (si se filtró). El detalle de cada campo está en [Webhooks y programaciones](/es/docs/webhooks).
 
 ### A través de la API
 
@@ -489,7 +489,7 @@ Un token de plataforma lleva **scopes**: lo que puede hacer. Los eliges al crear
 | `secrets:read` | Leer los metadatos de tus secretos: nombres, pistas, descripciones y qué automatizaciones los usan. Nunca los valores. |
 | `secrets:write` | Crear secretos, reemplazar sus valores, cambiar sus descripciones y borrarlos. **Puede reemplazar cualquiera de tus secretos.** |
 
-Los tokens nuevos llevan `runs` y `workspaces:read` por defecto. Un token con un scope `automations:` o `secrets:` solo se puede crear en el portal, con sesión iniciada en el navegador, no desde la CLI. Los tres últimos scopes aparecen ahí solo si tu cuenta tiene la API de escritura, con un aviso. Los scopes son independientes: `secrets:write` no incluye `secrets:read`, ni `automations:write` incluye `automations:read`, así que un token que gestiona secretos desde la CLI suele llevar los dos. Un token sin el scope que necesita un endpoint recibe `403 token_scope_denied`.
+Los tokens nuevos llevan `runs` y `workspaces:read` por defecto. Un token con un scope `automations:` o `secrets:` solo se puede crear en el portal, con sesión iniciada en el navegador, no desde la CLI. Los tres últimos scopes aparecen ahí solo si tu cuenta tiene la API de escritura, con un aviso. Los scopes son independientes: `secrets:write` no incluye `secrets:read`, ni `automations:write` incluye `automations:read`, así que un token que gestiona secretos desde la CLI suele llevar los dos, y uno que cambia automatizaciones por su nombre también necesita `automations:read` para buscar el nombre. Un token sin el scope que necesita un endpoint recibe `403 token_scope_denied`.
 
 <Callout title="Lo que puede hacer un token de escritura" variant="warning">
 Un agente o un script con un token con `secrets:write` o `automations:write` puede cambiar tus secretos o tus automatizaciones. Con `automations:write` puede crear una automatización que reciba cualquiera de tus secretos y se ejecute sin esperar tu aprobación, lo que equivale a leerlos todos. Da estos scopes solo a los tokens que los necesiten, mantenlos fuera de los workspaces, ponles caducidad y revócalos cuando acabes.
