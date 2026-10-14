@@ -458,7 +458,7 @@ event_filter:
 
 `add` and `rotate` print the webhook URL and the signing secret **once**: store them now, for example straight into GitHub's webhook settings or your password manager. They are never shown again; if you lose them, rotate. `--json` prints them as JSON, for a script to pass on. `rotate` gives a new URL and a new signing secret; `--url` or `--secret` replaces only one, and `--no-grace` stops the old secret at once instead of after 24 hours (for a leaked one).
 
-For a Stripe webhook the signing secret is Stripe's, not NaN's: put it in the file you `add` as `signing_secret: whsec_...` (pipe the file with `-f -` so it is not left on disk), and `add` prints only the URL. The CLI rotates only the URL of a Stripe webhook (`--url`); to change its secret, roll it in Stripe and paste the new one in the portal, or send it through the API in `signing_secret`. The details of each field are in [Webhooks and schedules](/docs/webhooks).
+For a Stripe webhook the signing secret is Stripe's, not NaN's: put it in the file you `add` as `signing_secret: whsec_...` (pipe the file with `-f -` so it is not left on disk), and `add` prints only the URL. To rotate a Stripe webhook's secret, roll it in Stripe first and give the new one to `rotate` with `--signing-secret-file PATH` or `--signing-secret-stdin` (read like a secret value, never printed); without it, `rotate` on a Stripe webhook refuses unless you pass only `--url`. The details of each field are in [Webhooks and schedules](/docs/webhooks).
 
 ### Through the API
 

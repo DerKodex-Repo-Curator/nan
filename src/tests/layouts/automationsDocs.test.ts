@@ -227,9 +227,10 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
   });
 
   test('webhooks: the URL and signing secret are shown once, from the CLI and the API too', () => {
-    // nan-cli 0.1.33 cannot send a Stripe signing secret on rotate: only --url works there.
-    expect(hooksBody).toMatch(/Stripe[^\n]*`--url`/);
-    expect(autoBody).toMatch(/Stripe[^\n]*`--url`/);
+    // nan-cli 0.1.33: a Stripe secret is rotated with the new whsec_ from a file or a pipe.
+    for (const body of [hooksBody, autoBody]) {
+      expect(body).toMatch(/Stripe[^\n]*`--signing-secret-file PATH` (o|or) `--signing-secret-stdin`/);
+    }
     expect(hooksBody).toContain('"signing_secret": "whsec_');
     expect(hooksBody).toContain('nan automations triggers add');
     expect(hooksBody).toContain('nan automations triggers rotate');
