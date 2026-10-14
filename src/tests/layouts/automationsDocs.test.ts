@@ -203,11 +203,9 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
     }
     expect(autoBody).toContain('**0.1.33**');
     // A value never goes on the command line: every `nan secrets set` reads it from a file or a pipe.
-    for (const dir of [page.dir]) {
-      for (const f of ['automations.mdx', 'webhooks.mdx', 'runs.mdx', 'nan-cli.mdx']) {
-        for (const m of read(dir + f).matchAll(/nan secrets set [^\n`]*/g)) {
-          expect(m[0], `${f}: ${m[0]}`).toMatch(/--value-(file|stdin)/);
-        }
+    for (const f of ['automations.mdx', 'webhooks.mdx', 'runs.mdx', 'nan-cli.mdx']) {
+      for (const m of read(page.dir + f).matchAll(/nan secrets set [^\n`]*/g)) {
+        expect(m[0], `${f}: ${m[0]}`).toMatch(/--value-(file|stdin)/);
       }
     }
     for (const code of ['`403 credential_not_allowed`', '`workspace_key_not_allowed`', '`403 browser_session_required`', '`429 rate_limited`', '`409 name_taken`', '`Idempotency-Key`', '`Cache-Control: no-store`']) {
@@ -219,6 +217,9 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
     expect(autoBody).toContain('variant="warning"');
     // The rollout: exit code 64 and the answers until the account has it.
     expect(autoFlat).toMatch(/\(código de salida 64\)|\(exit code 64\)/);
+    // The write commands' credential order (nan-cli cmd/writeapi.go newWriteEnv), not nan run's.
+    expect(autoBody).toMatch(/`--token-file`[^\n]*`nan auth login`[^\n]*`NAN_TOKEN`/);
+    expect(autoBody).not.toMatch(/platform token, as `nan run` does/);
     expect(autoBody).toContain('`/v1/secrets`');
     // Rate limits, as in cloud-api (secretWriteBurst/automationWriteBurst).
     expect(autoFlat).toMatch(/\| (Changes to secrets|Cambios en secretos) \| 30 [^|]*120 [^|]*\|/);
@@ -226,6 +227,10 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
   });
 
   test('webhooks: the URL and signing secret are shown once, from the CLI and the API too', () => {
+    // nan-cli 0.1.33 cannot send a Stripe signing secret on rotate: only --url works there.
+    expect(hooksBody).toMatch(/Stripe[^\n]*`--url`/);
+    expect(autoBody).toMatch(/Stripe[^\n]*`--url`/);
+    expect(hooksBody).toContain('"signing_secret": "whsec_');
     expect(hooksBody).toContain('nan automations triggers add');
     expect(hooksBody).toContain('nan automations triggers rotate');
     expect(hooksBody).toContain('`Cache-Control: no-store`');

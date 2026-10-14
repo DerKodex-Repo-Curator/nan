@@ -353,7 +353,7 @@ nan secrets ls                    # names and metadata, never values
 
 `nan run`, `nan runs logs -f` and `nan automations run` exit with code **10** when the run stops waiting for approval, and print the commands to read and reject the proposal and the link to approve it.
 
-To create and change automations, triggers and secrets from the terminal, see [Manage them from the CLI or the API](#manage-them-from-the-cli-or-the-api). There is no command to approve: the CLI tells you where to do it in the portal. The commands take your `nan auth login` session or a platform token, as `nan run` does ([Authentication](/docs/runs#authentication)). `nan secrets` takes your session, or, where your account has the write API, a token with `secrets:read` (and `secrets:write` to change them).
+To create and change automations, triggers and secrets from the terminal, see [Manage them from the CLI or the API](#manage-them-from-the-cli-or-the-api). There is no command to approve: the CLI tells you where to do it in the portal. `nan automations ls`, `show`, `run` and `deliveries` authenticate like `nan run` ([Authentication](/docs/runs#authentication)). The `nan secrets` commands and the ones that change automations pick their credential in their own order, described in [Manage them from the CLI or the API](#manage-them-from-the-cli-or-the-api).
 
 ### From the API
 
@@ -378,8 +378,10 @@ What can make these changes:
 - **A platform token** with the `automations:write` or `secrets:write` scope, for scripts and CI. See [Tokens for automations](#tokens-for-automations).
 - Never an API key (`sk-...`), the key inside a workspace or a session from an older CLI: they get `403 credential_not_allowed` (`workspace_key_not_allowed` for the workspace key).
 
+The CLI uses the first credential it finds, in this order: `--token-file`, your `nan auth login` session, `NAN_TOKEN`, then a token saved with `nan auth login --api-token`. So while you are signed in, `NAN_TOKEN` is not used: pass the token with `--token-file`, or sign out with `nan auth logout`, to act as the token. An API key is refused before anything is sent.
+
 <Callout title="A credential that writes is as powerful as your secrets" variant="warning">
-Whoever holds a credential that can write can replace any of your secrets (for example swap the GitHub token an automation pushes with), or create an automation that receives all your secrets, with their instructions and nothing waiting for your approval: that is as good as reading every secret you have. So:
+Whoever holds a credential that can write can replace any of your secrets (for example swap the GitHub token an automation pushes with), or create an automation that receives all your secrets, with instructions of their choosing and nothing waiting for your approval: that is as good as reading every secret you have. So:
 
 - Run `nan auth login` on your own machine, **never inside a workspace**: the agents that run there can read the session it saves.
 - For an agent, a script or CI, use a token with only the scopes its job needs, a short expiry, and revoke it when you are done.
@@ -404,7 +406,8 @@ nan secrets rm GITHUB_READ_TOKEN
 - One line break at the end is removed (files usually end with one). The value cannot start or end with a line break otherwise.
 - `set` creates the secret, or **replaces the value** of the one with that name. The kind, the provider and the name are fixed when it is created.
 - `edit` changes the description, or the base URL of an OpenAI-compatible provider key.
-- `rm` asks before deleting; `--yes` skips the question in scripts. It is refused while an automation uses the secret, and the CLI lists which.
+- `rm` asks before deleting (answering no exits with code 1); `--yes` skips the question in scripts. It is refused while an automation uses the secret, and the CLI lists which.
+- With a token, naming an existing secret needs `secrets:read` to look the name up; a token with only `secrets:write` can still create a new secret.
 - `--json` prints the metadata as JSON.
 
 ### Automations from the CLI
@@ -431,7 +434,7 @@ secrets:
 approval_kinds: [git_push, github_create_pr]
 ```
 
-Fields you leave out take their defaults; with a template, its instructions and approval settings. `approval_kinds` left out means every kind of action waits for your approval; `[]` means none does. `edit` changes only the fields in the file, and `secrets` there replaces every assignment. The full list of fields is in [API reference → Create an automation](/docs/api#tag/automations/POST/automations).
+Fields you leave out take their defaults; with a template, its instructions and concurrency. `approval_kinds` left out means every kind of action waits for your approval; `[]` means none does. `edit` changes only the fields in the file, and `secrets` there replaces every assignment. The full list of fields is in [API reference → Create an automation](/docs/api#tag/automations/POST/automations).
 
 ### Triggers from the CLI
 
@@ -453,7 +456,9 @@ event_filter:
   exclude_drafts: true
 ```
 
-`add` and `rotate` print the webhook URL and the signing secret **once**: store them now, for example straight into GitHub's webhook settings or your password manager. They are never shown again; if you lose them, rotate. `--json` prints them as JSON, for a script to pass on. `rotate` gives a new URL and a new signing secret; `--url` or `--secret` replaces only one, and `--no-grace` stops the old secret at once instead of after 24 hours (for a leaked one). The details of each field are in [Webhooks and schedules](/docs/webhooks).
+`add` and `rotate` print the webhook URL and the signing secret **once**: store them now, for example straight into GitHub's webhook settings or your password manager. They are never shown again; if you lose them, rotate. `--json` prints them as JSON, for a script to pass on. `rotate` gives a new URL and a new signing secret; `--url` or `--secret` replaces only one, and `--no-grace` stops the old secret at once instead of after 24 hours (for a leaked one).
+
+For a Stripe webhook the signing secret is Stripe's, not NaN's: put it in the file you `add` as `signing_secret: whsec_...` (pipe the file with `-f -` so it is not left on disk), and `add` prints only the URL. The CLI rotates only the URL of a Stripe webhook (`--url`); to change its secret, roll it in Stripe and paste the new one in the portal, or send it through the API in `signing_secret`. The details of each field are in [Webhooks and schedules](/docs/webhooks).
 
 ### Through the API
 

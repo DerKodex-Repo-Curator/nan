@@ -46,7 +46,7 @@ Pulsa **Add webhook**. El portal te muestra, **una sola vez**:
 
 Cópialos y pulsa **I've saved them**. Después, el portal solo muestra el principio de la URL. Si los pierdes, [rótalos](#rota-la-url-o-el-secreto) para conseguir unos nuevos.
 
-Desde la CLI, `nan automations triggers add <automatización> -f webhook.yaml` imprime esos dos mismos valores **una sola vez**, con un aviso para que los guardes en ese momento; `--json` los imprime en JSON para un script. A través de la API, `POST /v1/automations/{id}/triggers` los devuelve una sola vez en `webhook_url` y `signing_secret`, con `Cache-Control: no-store`. Nada vuelve a devolverlos: ni el portal, ni `nan automations triggers ls`, ni la API.
+Desde la CLI, `nan automations triggers add <automatización> -f webhook.yaml` imprime esos mismos valores **una sola vez** (en Stripe, solo la URL), con un aviso para que los guardes en ese momento; `--json` los imprime en JSON para un script. A través de la API, `POST /v1/automations/{id}/triggers` los devuelve una sola vez en `webhook_url` y `signing_secret`, con `Cache-Control: no-store`. Nada vuelve a devolverlos: ni el portal, ni `nan automations triggers ls`, ni la API.
 
 ### Configúralo en el emisor
 
@@ -253,7 +253,7 @@ Desde la terminal: `nan automations deliveries <automation>`. Desde la API: [`GE
 - **New webhook URL**: la URL actual deja de funcionar al momento.
 - **New signing secret** (marcado por defecto): por defecto, el secreto anterior sigue funcionando 24 horas, para que puedas actualizar el emisor sin perder eventos. Desmarca **Keep the old secret valid for 24 hours** si el anterior se ha filtrado: deja de funcionar al momento. Para Stripe, rota antes el secreto en Stripe y pega el nuevo `whsec_...`.
 
-Los valores nuevos se muestran una sola vez, como cuando añadiste el webhook. Desde la CLI, `nan automations triggers rotate <automatización> <trigger-id>` hace lo mismo (`--url` o `--secret` para solo uno, `--no-grace` para que el secreto anterior deje de valer al momento) e imprime los valores nuevos una sola vez; a través de la API, `POST /v1/automations/{id}/triggers/{trigger_id}/rotate` con `{"rotate": ["url", "secret"], "grace": true}`.
+Los valores nuevos se muestran una sola vez, como cuando añadiste el webhook. Desde la CLI, `nan automations triggers rotate <automatización> <trigger-id>` hace lo mismo (`--url` o `--secret` para solo uno, `--no-grace` para que el secreto anterior deje de valer al momento) e imprime los valores nuevos una sola vez. En Stripe, la CLI solo rota la URL (`--url`): cambia el secreto en el portal o a través de la API. A través de la API, `POST /v1/automations/{id}/triggers/{trigger_id}/rotate` con `{"rotate": ["url", "secret"], "grace": true}`; en Stripe, `{"rotate": ["secret"], "signing_secret": "whsec_..."}` con el secreto nuevo de Stripe.
 
 ## Bucles
 

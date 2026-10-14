@@ -353,7 +353,7 @@ nan secrets ls                    # nombres y metadatos, nunca valores
 
 `nan run`, `nan runs logs -f` y `nan automations run` salen con código **10** cuando el run se para esperando aprobación, e imprimen los comandos para leer y rechazar la propuesta y el enlace para aprobarla.
 
-Para crear y cambiar automatizaciones, triggers y secretos desde la terminal, consulta [Gestiónalas desde la CLI o la API](#gestiónalas-desde-la-cli-o-la-api). No hay ningún comando para aprobar: la CLI te dice dónde hacerlo en el portal. Los comandos aceptan tu sesión de `nan auth login` o un token de plataforma, igual que `nan run` ([Autenticación](/es/docs/runs#autenticación)). `nan secrets` acepta tu sesión o, si tu cuenta tiene la API de escritura, un token con `secrets:read` (y `secrets:write` para cambiarlos).
+Para crear y cambiar automatizaciones, triggers y secretos desde la terminal, consulta [Gestiónalas desde la CLI o la API](#gestiónalas-desde-la-cli-o-la-api). No hay ningún comando para aprobar: la CLI te dice dónde hacerlo en el portal. `nan automations ls`, `show`, `run` y `deliveries` se autentican igual que `nan run` ([Autenticación](/es/docs/runs#autenticación)). Los comandos `nan secrets` y los que cambian automatizaciones eligen la credencial en su propio orden, descrito en [Gestiónalas desde la CLI o la API](#gestiónalas-desde-la-cli-o-la-api).
 
 ### Desde la API
 
@@ -378,8 +378,10 @@ Qué puede hacer estos cambios:
 - **Un token de plataforma** con el scope `automations:write` o `secrets:write`, para scripts y CI. Consulta [Tokens para automatizaciones](#tokens-para-automatizaciones).
 - Nunca una API key (`sk-...`), la clave de dentro de un workspace ni una sesión de una CLI antigua: reciben `403 credential_not_allowed` (`workspace_key_not_allowed` en el caso de la clave del workspace).
 
+La CLI usa la primera credencial que encuentra, en este orden: `--token-file`, tu sesión de `nan auth login`, `NAN_TOKEN` y, por último, un token guardado con `nan auth login --api-token`. Así que, mientras tengas la sesión iniciada, `NAN_TOKEN` no se usa: pasa el token con `--token-file`, o cierra sesión con `nan auth logout`, para actuar como el token. Una API key se rechaza antes de enviar nada.
+
 <Callout title="Una credencial que escribe vale tanto como tus secretos" variant="warning">
-Quien tenga una credencial que pueda escribir puede reemplazar cualquiera de tus secretos (por ejemplo, cambiar el token de GitHub con el que hace push una automatización) o crear una automatización que reciba todos tus secretos, con sus instrucciones y sin nada esperando tu aprobación: eso equivale a leer todos tus secretos. Así que:
+Quien tenga una credencial que pueda escribir puede reemplazar cualquiera de tus secretos (por ejemplo, cambiar el token de GitHub con el que hace push una automatización) o crear una automatización que reciba todos tus secretos, con las instrucciones que quiera y sin nada esperando tu aprobación: eso equivale a leer todos tus secretos. Así que:
 
 - Ejecuta `nan auth login` en tu propia máquina, **nunca dentro de un workspace**: los agentes que se ejecutan ahí pueden leer la sesión que guarda.
 - Para un agente, un script o CI, usa un token solo con los scopes que necesita su trabajo y con caducidad corta, y revócalo cuando acabes.
@@ -403,8 +405,9 @@ nan secrets rm GITHUB_READ_TOKEN
 - **El valor nunca va en la línea de comandos**, donde se quedaría en el historial de tu shell y otros programas podrían verlo: `--value-file PATH` lo lee de un archivo y `--value-stdin` de una tubería. `--value-stdin` se niega a leer de la terminal, así que nunca se teclea un valor a la vista.
 - Se quita un salto de línea al final (los archivos suelen acabar en uno). Aparte de eso, el valor no puede empezar ni terminar con un salto de línea.
 - `set` crea el secreto o **reemplaza el valor** del que tenga ese nombre. El tipo, el proveedor y el nombre quedan fijos al crearlo.
-- `edit` cambia la descripción, o la base URL de una provider key compatible con OpenAI.
-- `rm` pregunta antes de borrar; `--yes` se salta la pregunta en scripts. Se rechaza mientras una automatización use el secreto, y la CLI te dice cuáles.
+- `edit` cambia la descripción, o la base URL de una clave de proveedor compatible con OpenAI.
+- `rm` pregunta antes de borrar (si respondes que no, sale con código 1); `--yes` se salta la pregunta en scripts. Se rechaza mientras una automatización use el secreto, y la CLI te dice cuáles.
+- Con un token, nombrar un secreto que ya existe necesita `secrets:read` para buscar el nombre; un token solo con `secrets:write` puede crear un secreto nuevo.
 - `--json` imprime los metadatos en JSON.
 
 ### Automatizaciones desde la CLI
@@ -431,7 +434,7 @@ secrets:
 approval_kinds: [git_push, github_create_pr]
 ```
 
-Los campos que no pongas toman su valor por defecto; con una plantilla, sus instrucciones y su configuración de aprobación. Sin `approval_kinds`, todos los tipos de acción esperan tu aprobación; con `[]`, ninguno. `edit` cambia solo los campos del archivo, y `secrets` ahí reemplaza todas las asignaciones. La lista completa de campos está en [Referencia de la API → Create an automation](/es/docs/api#tag/automations/POST/automations).
+Los campos que no pongas toman su valor por defecto; con una plantilla, sus instrucciones y su concurrencia. Sin `approval_kinds`, todos los tipos de acción esperan tu aprobación; con `[]`, ninguno. `edit` cambia solo los campos del archivo, y `secrets` ahí reemplaza todas las asignaciones. La lista completa de campos está en [Referencia de la API → Create an automation](/es/docs/api#tag/automations/POST/automations).
 
 ### Triggers desde la CLI
 
@@ -453,7 +456,9 @@ event_filter:
   exclude_drafts: true
 ```
 
-`add` y `rotate` imprimen la URL del webhook y el secreto de firma **una sola vez**: guárdalos en ese momento, por ejemplo directamente en los ajustes del webhook en GitHub o en tu gestor de contraseñas. No se vuelven a mostrar; si los pierdes, rótalos. `--json` los imprime en JSON, para que un script los pase a otro sitio. `rotate` da una URL nueva y un secreto de firma nuevo; `--url` o `--secret` reemplaza solo uno, y `--no-grace` hace que el secreto anterior deje de valer al momento en vez de a las 24 horas (si se filtró). El detalle de cada campo está en [Webhooks y programaciones](/es/docs/webhooks).
+`add` y `rotate` imprimen la URL del webhook y el secreto de firma **una sola vez**: guárdalos en ese momento, por ejemplo directamente en los ajustes del webhook en GitHub o en tu gestor de contraseñas. No se vuelven a mostrar; si los pierdes, rótalos. `--json` los imprime en JSON, para que un script los pase a otro sitio. `rotate` da una URL nueva y un secreto de firma nuevo; `--url` o `--secret` reemplaza solo uno, y `--no-grace` hace que el secreto anterior deje de valer al momento en vez de a las 24 horas (si se filtró).
+
+En un webhook de Stripe el secreto de firma es de Stripe, no de NaN: ponlo en el archivo que pasas a `add` como `signing_secret: whsec_...` (pásalo por una tubería con `-f -` para que no se quede en disco), y `add` imprime solo la URL. La CLI solo rota la URL de un webhook de Stripe (`--url`); para cambiar su secreto, rótalo en Stripe y pega el nuevo en el portal, o envíalo a través de la API en `signing_secret`. El detalle de cada campo está en [Webhooks y programaciones](/es/docs/webhooks).
 
 ### A través de la API
 

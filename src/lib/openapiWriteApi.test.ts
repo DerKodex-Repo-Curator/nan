@@ -243,6 +243,32 @@ describe('openapi.json: the automation writes', () => {
     expect(op('/automations/{id}/triggers', 'get').description).not.toMatch(/in the portal, when/);
   });
 
+  it('examples look like the real answers (service.go SigningSecretPrefix, getTrigger, ListMemberSecrets)', () => {
+    const created = op('/automations/{id}/triggers', 'post').responses['201'].content['application/json'].example;
+    expect(created.signing_secret).toMatch(/^nan_whsec_/);
+    expect(created.webhook_url).toMatch(/^https:\/\/api\.nan\.builders\/hooks\/nan_whk_/);
+    const rotated = op('/automations/{id}/triggers/{trigger_id}/rotate', 'post').responses['200'].content['application/json'].example;
+    expect(rotated.signing_secret).toMatch(/^nan_whsec_/);
+    for (const [path, method] of [
+      ['/automations/{id}/triggers/{trigger_id}', 'patch'],
+      ['/automations/{id}/triggers/{trigger_id}', 'delete'],
+      ['/automations/{id}/triggers/{trigger_id}/rotate', 'post'],
+    ]) {
+      expect(op(path, method).responses['404'].content['application/json'].example.error.message, `${method} ${path}`).toBe('automation not found');
+    }
+    expect(op('/secrets', 'get').responses['200'].description).toMatch(/newest first/);
+    const stripe = op('/automations/{id}/triggers/{trigger_id}/rotate', 'post').requestBody.content['application/json'].examples.stripe.value;
+    expect(stripe.signing_secret).toMatch(/^whsec_/);
+  });
+
+  it('automation writes document browser_session_required for accounts without the write API', () => {
+    for (const [path, method, , tag] of OPS) {
+      if (tag !== 'Automations') continue;
+      const ex = op(path, method).responses['403'].content['application/json'].examples;
+      expect(ex.browser_session_required.value.error.code, `${method} ${path}`).toBe('browser_session_required');
+    }
+  });
+
   it('create automation: 201, 409 name_taken, and the defaults', () => {
     const o = op('/automations', 'post');
     expect(Object.keys(o.responses).sort()).toEqual(['201', '400', '401', '403', '404', '409', '429']);
@@ -274,6 +300,11 @@ describe('openapi.json: credentials and scopes', () => {
     const pat = s.components.securitySchemes.platformToken.description;
     for (const scope of ['`automations:write`', '`secrets:read`', '`secrets:write`']) expect(pat).toContain(scope);
     expect(pat).toMatch(/can never approve a run/);
+  });
+
+  it('the overview says API keys never reach secrets or automation changes', () => {
+    expect(desc).toContain('never on Secrets or on changes to automations');
+    expect(desc).not.toContain('An API key works on both inference and these endpoints.');
   });
 
   it('the overview carries the real credential_not_allowed body', () => {
