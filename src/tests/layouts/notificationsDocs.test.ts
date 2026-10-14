@@ -98,6 +98,15 @@ const ROUTES: Array<[string, string, string]> = [
 /** The provider host allowlists of §8.2. */
 const PROVIDER_HOSTS = ['hooks.slack.com', 'webhook.office.com', 'logic.azure.com', 'powerplatform.com', 'discord.com', 'discordapp.com', 'canary.discord.com', 'ptb.discord.com'];
 
+/** cloud-ui labels the page walks through (Settings > Notifications, the add dialog, the automation card). */
+const PORTAL_LABELS = [
+  'Settings', 'Notifications', 'Secrets', 'Add channel', 'Where', 'Slack', 'Microsoft Teams', 'Discord', 'HTTPS endpoint',
+  'Name', 'Slack URL', 'Events', 'Approval needed', 'Run failed', 'Automation turned off', 'Webhook signatures failing',
+  'Run succeeded', 'Automations', 'All automations, including new ones', 'Test', 'Edit', 'New URL (optional)',
+  'Rotate secret', 'Turn off', 'Turn on', 'Delete', 'Deliveries', 'On', 'Deliveries failing', 'Off',
+  'Turned off: failing', 'Turned off: URL refused', 'Manage notifications',
+];
+
 /** nan-cli 0.1.34 `nan notifications` subcommands and the flags the page names. */
 const CLI_COMMANDS = ['ls', 'show', 'add', 'edit', 'rm', 'test', 'rotate', 'deliveries', 'subscriptions'];
 const CLI_FLAGS = ['--kind', '--url-file', '--url-stdin', '--event', '--no-events', '--automation', '--name', '--enable', '--disable', '--limit', '--set', '--add', '--remove', '--clear', '--yes', '--json'];
@@ -148,6 +157,10 @@ describe.each(Object.entries(pages))('Notifications page (%s)', (_locale, page) 
     }
   });
 
+  test('walks through the labels the portal shows', () => {
+    for (const label of PORTAL_LABELS) expect(body, label).toContain(`**${label}**`);
+  });
+
   test('the four kinds and where to get each provider URL', () => {
     for (const kind of ['`slack`', '`teams`', '`discord`', '`https`']) expect(body).toContain(kind);
     expect(body).toContain('https://api.slack.com/apps');
@@ -180,7 +193,7 @@ describe.each(Object.entries(pages))('Notifications page (%s)', (_locale, page) 
     expect(flat).toMatch(/3,000 messages a day|3\.000 mensajes al día/);
     expect(flat).toMatch(/1 minute, 5 minutes, 30 minutes and 2 hours|1 minuto, 5 minutos, 30 minutos y 2 horas/);
     expect(flat).toMatch(/\*\*20 (failed attempts in a row|intentos fallidos seguidos)\*\*/);
-    for (const reason of ['**failing**', '**invalid_url**', '**member**']) expect(body).toContain(reason);
+    for (const reason of ['`failing`', '`invalid_url`', '`member`']) expect(body).toContain(reason);
     expect(flat).toMatch(/24 hours|24 horas/);
   });
 
@@ -283,7 +296,7 @@ describe.each(Object.entries(pages))('Notifications page (%s)', (_locale, page) 
   test('troubleshooting lists every error a member can see', () => {
     const table = body.slice(body.search(/^## (If something goes wrong|Si algo sale mal)$/m));
     for (const c of ERROR_CODES) expect(table, c).toContain(`\`${c}\``);
-    for (const s of ['`failed`', '`blocked`', '`rate_limited`', '**failing**']) expect(table, s).toContain(s);
+    for (const s of ['`failed`', '`blocked`', '`rate_limited`', '**Turned off: failing**']) expect(table, s).toContain(s);
   });
 
   test('no em-dashes, no internals, nothing private, never the portal route', () => {

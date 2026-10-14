@@ -64,13 +64,13 @@ Cualquier URL `https` en el puerto 443 con un nombre DNS público. NaN firma cad
 
 ## Eventos
 
-| Evento | Cuándo se envía | Activo por defecto |
-|---|---|---|
-| `approval.pending` | Un run de una automatización espera tu aprobación. | Sí |
-| `run.failed` | Un run de una automatización falló o agotó su tiempo (`timed_out`), o falló aplicar las acciones que aprobaste. | Sí |
-| `automation.disabled` | Se desactivó una automatización: tú, porque se borró su workspace o porque se borró un secreto que usa. | Sí |
-| `trigger.failing` | El webhook de una automatización no deja de recibir peticiones con una firma incorrecta: unas 10 seguidas en una hora. Como mucho una vez al día por trigger. | Sí |
-| `run.finished` | Un run de una automatización terminó bien. | No: actívalo tú |
+| Evento | En el portal | Cuándo se envía | Activo por defecto |
+|---|---|---|---|
+| `approval.pending` | **Approval needed** | Un run de una automatización espera tu aprobación. | Sí |
+| `run.failed` | **Run failed** | Un run de una automatización falló o agotó su tiempo (`timed_out`), o falló aplicar las acciones que aprobaste. | Sí |
+| `automation.disabled` | **Automation turned off** | Se desactivó una automatización: tú, porque se borró su workspace o porque se borró un secreto que usa. | Sí |
+| `trigger.failing` | **Webhook signatures failing** | El webhook de una automatización no deja de recibir peticiones con una firma incorrecta: unas 10 seguidas en una hora. Como mucho una vez al día por trigger. | Sí |
+| `run.finished` | **Run succeeded** | Un run de una automatización terminó bien. | No: actívalo tú |
 
 Un run cancelado nunca notifica, ni tampoco un run que lanzas tú (fuera de una automatización). `run.finished` viene desactivado porque una automatización con mucho uso publicaría en cada run: actívalo donde lo quieras.
 
@@ -80,25 +80,28 @@ El mismo evento se envía una sola vez por canal, aunque el canal esté suscrito
 
 ## Gestiona los canales en el portal
 
-Tus canales están en los ajustes de [cloud.nan.builders](https://cloud.nan.builders/): abre **Settings** y luego **Notifications**, debajo de **Secrets**. La página de cada automatización también te dice qué canales la cubren.
+Tus canales están en los ajustes de [cloud.nan.builders](https://cloud.nan.builders/): abre **Settings** y luego **Notifications**, justo debajo de **Secrets**. Los ajustes de cada automatización también tienen una tarjeta **Notifications** que lista los canales que la cubren, con **Manage notifications** para venir aquí.
 
 ### Añade un canal
 
-1. Pulsa **Add channel** y elige el tipo: Slack, Microsoft Teams, Discord o HTTPS.
-2. Escribe un **Nombre** y pega la **URL** ([dónde conseguirla](#canales)).
-3. Revisa los **Eventos**. Los cuatro por defecto vienen activados; activa `run.finished` si lo quieres. Si quieres, limítalos a una automatización.
-4. Guarda. En un canal **HTTPS** el portal te muestra el **secreto de firma** una sola vez: cópialo ya al almacén de secretos de tu endpoint, no se vuelve a mostrar.
+1. Pulsa **Add channel**. En **Where**, elige **Slack**, **Microsoft Teams**, **Discord** o **HTTPS endpoint**.
+2. Escribe un **Name** y pega la URL en el campo de URL de ese tipo (**Slack URL**, por ejemplo). [Dónde conseguirla](#canales).
+3. Revisa los **Events**: **Approval needed**, **Run failed**, **Automation turned off** y **Webhook signatures failing** vienen activados; **Run succeeded** viene desactivado, actívalo si lo quieres. En **Automations**, deja **All automations, including new ones** o elige una.
+4. Guarda. En un **HTTPS endpoint** el portal te muestra el **secreto de firma** una sola vez: cópialo ya al almacén de secretos de tu endpoint, no se vuelve a mostrar.
 
 Después pulsa **Test**: NaN envía un mensaje de prueba al momento y te dice si llegó.
 
-### Prueba, edita, rota, borra
+### Prueba, cambia, rota, borra
 
-- **Test** envía un mensaje de prueba al canal. Solo funciona en un canal activo, y puedes enviar uno por minuto, más o menos (5 seguidos).
-- **Edit** cambia el nombre, los eventos y sus automatizaciones, o reemplaza la URL. El tipo no se puede cambiar: añade un canal nuevo.
-- **Rotate signing secret** (solo HTTPS) crea un secreto de firma nuevo y lo muestra una sola vez. El antiguo sigue firmando también durante 24 horas, para que puedas actualizar tu endpoint sin perder ninguna petición.
-- **Disable** y **Enable** paran y reanudan un canal sin borrarlo.
+- **Test** envía un mensaje de prueba al canal. Solo funciona en un canal encendido, y puedes enviar uno por minuto, más o menos (5 seguidos).
+- **Events** cambia qué eventos recibe el canal, y para qué automatizaciones.
+- **Edit** cambia el nombre del canal o reemplaza su URL (**New URL (optional)**). El tipo no se puede cambiar: añade un canal nuevo.
+- **Rotate secret** (solo HTTPS) crea un secreto de firma nuevo y lo muestra una sola vez. El antiguo sigue firmando también durante 24 horas, para que puedas actualizar tu endpoint sin perder ninguna petición.
+- **Turn off** y **Turn on** paran y reanudan un canal sin borrarlo.
 - **Delete** te pide confirmación, y el canal y sus suscripciones desaparecen para siempre.
 - **Deliveries** muestra los envíos de los últimos 30 días: evento, estado, estado HTTP y código de error. Nunca el mensaje.
+
+Cada canal muestra su estado: **On**, **Deliveries failing** (los últimos envíos fallaron, sigue encendido), **Off** (lo apagaste tú), **Turned off: failing** o **Turned off: URL refused** (lo apagó NaN, mira [Cuando un canal falla](#cuando-un-canal-falla)).
 
 ## Resúmenes y límites
 
@@ -116,17 +119,17 @@ Una notificación que no se entrega en 24 horas se descarta: una alerta tardía 
 
 Cada mensaje se reintenta cuando el fallo puede ser pasajero: un timeout, un error de conexión o de TLS, un fallo de DNS, `408`, `429` o un `5xx`. Se intenta hasta 5 veces, tras 1 minuto, 5 minutos, 30 minutos y 2 horas. Cualquier otro `4xx`, y cualquier redirección, falla al momento: la URL está mal o se revocó.
 
-**Desactivado tras 20 fallos.** Tras **20 intentos fallidos seguidos**, el canal se desactiva con el motivo **failing**, y sus mensajes pendientes se descartan. El portal y `nan notifications ls` lo muestran. Para arreglarlo:
+**Apagado tras 20 fallos.** Tras **20 intentos fallidos seguidos**, el canal se apaga con el motivo `failing`, y sus mensajes pendientes se descartan. El portal muestra **Turned off: failing**, y `nan notifications ls` también lo muestra. Para arreglarlo:
 
 1. Mira el error en el registro de **Deliveries** (`http_4xx`, `timeout`, `dns`, etc.).
 2. Si el webhook se borró o se revocó en el proveedor, crea uno nuevo y **reemplaza la URL**: eso vuelve a activar el canal.
-3. Si el problema estaba en tu lado y ya está resuelto, pulsa **Enable** en el canal. Luego pulsa **Test**.
+3. Si el problema estaba en tu lado y ya está resuelto, pulsa **Turn on** (o `nan notifications edit NAME --enable`). Luego pulsa **Test**.
 
-Volver a activarlo o reemplazar la URL pone a cero el contador de fallos.
+Volver a encenderlo o reemplazar la URL pone a cero el contador de fallos.
 
-**Desactivado como `invalid_url`.** Si el host de la URL empieza a resolver a una dirección que NaN rechaza (una privada o reservada, mira [Qué URLs se aceptan](#qué-urls-se-aceptan)), el canal se desactiva al momento con el motivo **invalid_url**. Reemplaza la URL para volver a activarlo.
+**Apagado como `invalid_url`.** Si el host de la URL empieza a resolver a una dirección que NaN rechaza (una privada o reservada, mira [Qué URLs se aceptan](#qué-urls-se-aceptan)), el canal se apaga al momento con el motivo `invalid_url` (**Turned off: URL refused** en el portal). Reemplaza la URL para volver a encenderlo.
 
-Un canal que desactivaste tú (motivo **member**) sigue apagado hasta que lo actives, aunque reemplaces su URL.
+Un canal que apagaste tú (motivo `member`, **Off** en el portal) sigue apagado hasta que lo enciendas, aunque reemplaces su URL.
 
 ## Verifica la firma
 
@@ -372,7 +375,7 @@ Las mismas operaciones están en la API, bajo `https://api.nan.builders/v1/notif
 | `POST /v1/notification-channels/{id}/test` | `notifications:write` | Envía un mensaje de prueba y responde si se entregó. |
 | `POST /v1/notification-channels/{id}/rotate-signing-secret` | `notifications:write` | Nuevo secreto de firma (se muestra una vez); el antiguo sigue firmando 24 horas. |
 
-**Qué credenciales sirven:** tu sesión de la CLI de `nan auth login`, o un token de plataforma con el scope de la ruta. Los dos scopes son independientes: `notifications:write` no incluye `notifications:read`. Un token con un scope `notifications:` solo se puede crear en el portal, **Settings → Tokens**, con sesión iniciada desde tu navegador, y esos scopes solo aparecen allí donde tu cuenta tiene notificaciones y la API de escritura. Una API key (`sk-...`) y la clave de dentro de un workspace se rechazan. Donde tu cuenta no tiene notificaciones o la API de escritura, todas las rutas responden `404`.
+**Qué credenciales sirven:** tu sesión de la CLI de `nan auth login`, o un token de plataforma con el scope de la ruta. Los dos scopes son independientes: `notifications:write` no incluye `notifications:read`. Un token con un scope `notifications:` solo se puede crear en el portal, **Settings → Tokens** (los scopes están en su propio grupo **Notifications**), con sesión iniciada desde tu navegador, y solo aparecen allí donde tu cuenta tiene notificaciones y la API de escritura. Una API key (`sk-...`) y la clave de dentro de un workspace se rechazan. Donde tu cuenta no tiene notificaciones o la API de escritura, todas las rutas responden `404`.
 
 Crea un canal desde un archivo, para que la URL nunca aparezca en el historial de tu shell:
 
@@ -450,13 +453,13 @@ Todas las rutas, cuerpos y errores están en [Referencia de la API → Notificat
 | `404 automation_not_found` | El `automation_id` no es de una de tus automatizaciones. |
 | `409 name_taken` | Ya tienes un canal con ese nombre. |
 | `409 too_many_channels` | Tienes 10. Borra uno para añadir otro. |
-| `409 channel_disabled` | Intentaste probar un canal desactivado. Actívalo antes. |
+| `409 channel_disabled` | Intentaste probar un canal apagado. Enciéndelo antes. |
 | `409 signing_not_supported` | Solo los canales HTTPS tienen secreto de firma. |
 | `429 rate_limited` | Demasiados cambios o pruebas. Espera y vuelve a intentarlo. |
 | `503 notifications_unavailable` | Las notificaciones no están disponibles un momento. Vuelve a intentarlo en unos minutos. |
 | La prueba responde `failed` con `http_4xx` | El proveedor rechazó el mensaje: se borró el webhook o la URL está incompleta. Crea uno nuevo y reemplaza la URL. |
 | La prueba responde `blocked` | El host de la URL resuelve a una dirección que NaN rechaza. Usa un endpoint público. |
 | La prueba responde `rate_limited` | El canal ha gastado sus mensajes por ahora. Prueba más tarde. |
-| El canal muestra **failing** | 20 envíos seguidos fallaron. Mira [Cuando un canal falla](#cuando-un-canal-falla). |
+| El canal muestra **Turned off: failing** | 20 envíos seguidos fallaron. Mira [Cuando un canal falla](#cuando-un-canal-falla). |
 | No llega nada de un run | El run no lo lanzó una automatización, se canceló, o su evento no está suscrito para esa automatización (`run.finished` viene desactivado). Revisa los eventos del canal y sus **Deliveries**. |
 | Tu endpoint rechaza todas las firmas | Calcula el HMAC sobre el cuerpo en bruto antes de parsearlo, usa como clave el secreto entero `nan_nsec_…` y revisa el reloj de tu servidor. Tras una rotación, guarda el secreto nuevo. |
