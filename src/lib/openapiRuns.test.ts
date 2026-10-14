@@ -64,7 +64,7 @@ describe('openapi.json: credentials', () => {
   it('inference operations take the API key only (the global default)', () => {
     expect(s.security).toEqual([{ apiKey: [] }]);
     for (const [path, item] of Object.entries(s.paths) as Array<[string, any]>) {
-      if (/^\/(runs|automations|approvals|api)(\/|$)/.test(path)) continue;
+      if (/^\/(runs|automations|approvals|secrets|api)(\/|$)/.test(path)) continue;
       for (const method of ['get', 'post']) if (item[method]) expect(item[method].security, path).toBeUndefined();
     }
   });

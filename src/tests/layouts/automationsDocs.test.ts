@@ -24,8 +24,8 @@ const read = (p: string) => readFileSync(resolve(src, p), 'utf-8');
 const strip = (raw: string) => raw.replace(/^---[\s\S]*?\n---\n/, '');
 
 const pages = {
-  en: { dir: 'content/docs/', prefix: '', group: 'Guides', titles: ['Automations', 'Webhooks and schedules'], tokensAnchor: 'tokens-for-automations' },
-  es: { dir: 'content/docs-es/', prefix: '/es', group: 'Guías', titles: ['Automatizaciones', 'Webhooks y programaciones'], tokensAnchor: 'tokens-para-automatizaciones' },
+  en: { dir: 'content/docs/', prefix: '', group: 'Guides', titles: ['Automations', 'Webhooks and schedules'], tokensAnchor: 'tokens-for-automations', manageAnchor: 'manage-them-from-the-cli-or-the-api' },
+  es: { dir: 'content/docs-es/', prefix: '/es', group: 'Guías', titles: ['Automatizaciones', 'Webhooks y programaciones'], tokensAnchor: 'tokens-para-automatizaciones', manageAnchor: 'gestiónalas-desde-la-cli-o-la-api' },
 } as const;
 
 /** Heading ids as the site renders them (github-slugger, as in runsDocs.test.ts). */
@@ -186,11 +186,70 @@ describe.each(Object.entries(pages))('automations guides (%s)', (_locale, page) 
     }
     expect(autoBody).toContain('**0.1.26**');
     expect(autoFlat).toMatch(/\*\*10\*\*/);
-    expect(autoBody).not.toMatch(/nan (runs approve|secrets set|automations create)/);
+    // Approving stays in the portal: there is no command for it.
+    expect(autoBody).not.toMatch(/nan runs approve/);
   });
 
-  test('tokens: the four scopes and what needs the browser', () => {
-    for (const scope of ['runs', 'workspaces:read', 'automations:read', 'automations:run']) expect(autoBody, scope).toContain(`| \`${scope}\` |`);
+  // The write API (devops AGENT-AUTOMATIONS-PHASE3-WRITE-API.md, cloud-api
+  // #348, nan-cli 0.1.33): secrets and automations from the CLI and the API.
+  test('the write API: commands, credentials, the warning and the rollout', () => {
+    for (const cmd of [
+      'nan secrets set', 'nan secrets show', 'nan secrets edit', 'nan secrets rm', 'nan automations create -f',
+      'nan automations edit', 'nan automations enable', 'nan automations disable', 'nan automations rm',
+      'nan automations triggers ls', 'nan automations triggers add', 'nan automations triggers edit',
+      'nan automations triggers rotate', 'nan automations triggers rm',
+    ]) {
+      expect(autoBody, cmd).toContain(cmd);
+    }
+    expect(autoBody).toContain('**0.1.33**');
+    // A value never goes on the command line: every `nan secrets set` reads it from a file or a pipe.
+    for (const f of ['automations.mdx', 'webhooks.mdx', 'runs.mdx', 'nan-cli.mdx']) {
+      for (const m of read(page.dir + f).matchAll(/nan secrets set [^\n`]*/g)) {
+        expect(m[0], `${f}: ${m[0]}`).toMatch(/--value-(file|stdin)/);
+      }
+    }
+    for (const code of ['`403 credential_not_allowed`', '`workspace_key_not_allowed`', '`403 browser_session_required`', '`429 rate_limited`', '`409 name_taken`', '`Idempotency-Key`', '`Cache-Control: no-store`']) {
+      expect(autoBody, code).toContain(code);
+    }
+    for (const v of ['`browser_session`', '`cli_session`', '`platform_token`', '**Last changed from**']) expect(autoBody, v).toContain(v);
+    // The warning: never log in inside a workspace, least scopes.
+    expect(autoBody).toMatch(/`nan auth login`[^\n]*(never inside a workspace|nunca dentro de un workspace)/);
+    expect(autoBody).toContain('variant="warning"');
+    // The rollout: exit code 64 and the answers until the account has it.
+    expect(autoFlat).toMatch(/\(código de salida 64\)|\(exit code 64\)/);
+    // The write commands' credential order (nan-cli cmd/writeapi.go newWriteEnv), not nan run's.
+    expect(autoBody).toMatch(/`--token-file`[^\n]*`nan auth login`[^\n]*`NAN_TOKEN`/);
+    expect(autoBody).not.toMatch(/platform token, as `nan run` does/);
+    expect(autoBody).toContain('`/v1/secrets`');
+    // Rate limits, as in cloud-api (secretWriteBurst/automationWriteBurst).
+    expect(autoFlat).toMatch(/\| (Changes to secrets|Cambios en secretos) \| 30 [^|]*120 [^|]*\|/);
+    expect(autoFlat).toMatch(/\| (Changes to automations and triggers|Cambios en automatizaciones y triggers) \| 30 [^|]*300 [^|]*\|/);
+  });
+
+  test('webhooks: the URL and signing secret are shown once, from the CLI and the API too', () => {
+    // nan-cli 0.1.33: a Stripe secret is rotated with the new whsec_ from a file or a pipe.
+    for (const body of [hooksBody, autoBody]) {
+      expect(body).toMatch(/Stripe[^\n]*`--signing-secret-file PATH` (o|or) `--signing-secret-stdin`/);
+    }
+    expect(hooksBody).toContain('"signing_secret": "whsec_');
+    expect(hooksBody).toContain('nan automations triggers add');
+    expect(hooksBody).toContain('nan automations triggers rotate');
+    expect(hooksBody).toContain('`Cache-Control: no-store`');
+    expect(hooksBody).toContain('`webhook_url`');
+    expect(hooksBody).toContain('`signing_secret`');
+  });
+
+  test('the CLI guide lists the write commands and the workspace warning', () => {
+    const cli = read(page.dir + 'nan-cli.mdx');
+    for (const cmd of ['nan secrets set', 'nan automations create', 'nan automations triggers add']) expect(cli, cmd).toContain(cmd);
+    expect(cli).toMatch(/v0\.1\.33/);
+    expect(cli).toContain(`${page.prefix}/docs/automations#${page.manageAnchor}`);
+  });
+
+  test('tokens: the seven scopes and what needs the browser', () => {
+    for (const scope of ['runs', 'workspaces:read', 'automations:read', 'automations:run', 'automations:write', 'secrets:read', 'secrets:write']) {
+      expect(autoBody, scope).toContain(`| \`${scope}\` |`);
+    }
     expect(autoBody).toContain('`403 token_scope_denied`');
     expect(autoBody).toContain('https://api.nan.builders/v1/automations/$AUTOMATION_ID/runs');
   });
@@ -408,7 +467,7 @@ describe.each(Object.entries(pages))('the other guides point at automations (%s)
   });
 });
 
-describe('member secrets are a portal feature, not part of the public API', () => {
+describe('the portal secrets route stays out of the docs (the public one is /v1/secrets)', () => {
   test('no page documents /api/account/secrets as an endpoint', () => {
     for (const dir of ['content/docs/', 'content/docs-es/']) {
       for (const f of ['automations.mdx', 'webhooks.mdx', 'runs.mdx', 'nan-cli.mdx']) {

@@ -37,6 +37,7 @@
       "template": "pr_review",
       "timeout_seconds": 1800,
       "updated_at": "2026-10-11T09:00:00Z",
+      "updated_by": "browser_session",
       "workspace": "11111111-2222-4333-8444-555555555555"
     }
   ],

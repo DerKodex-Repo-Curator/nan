@@ -56,7 +56,7 @@ describe('openapi.json: BYOK inference', () => {
     for (const v of bad) expect(validate(v, req).length, JSON.stringify(v)).toBeGreaterThan(0);
     const desc = s.components.schemas.CreateRunInference.description;
     expect(desc).toContain('`403 session_required`');
-    expect(desc).toContain('portal-only');
+    expect(desc).toContain('#tag/secrets');
     expect(s.components.schemas.CreateRunRequest.properties.model.description).toContain('inference.model');
   });
 
@@ -95,8 +95,9 @@ describe('openapi.json: BYOK inference', () => {
     expect(run.responses['403'].description).toMatch(/own key/);
   });
 
-  it('secrets stay out of the public API (they are written in the portal only)', () => {
-    expect(Object.keys(s.paths).filter((p) => p.includes('secret'))).toEqual([]);
+  it('secrets are only under /v1/secrets (the write API), never a value', () => {
+    expect(Object.keys(s.paths).filter((p) => p.includes('secret'))).toEqual(['/secrets', '/secrets/{id}', '/secrets/{id}/value']);
+    expect(Object.keys(s.components.schemas.Secret.properties)).not.toContain('value');
   });
 
   it('every request and response example of POST /runs matches its schema', () => {

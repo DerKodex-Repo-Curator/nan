@@ -3,7 +3,7 @@
   "info": {
     "title": "NaN API",
     "version": "1.0.0",
-    "description": "Open models on a shared EU inference cluster. Zero logs.\n\nThe NaN API is OpenAI-compatible: predictable, resource-oriented URLs, JSON request and response bodies, and standard HTTP verbs and status codes. Point any OpenAI SDK at our base URL and your existing code keeps working. Change the base URL and the API key, and that's it.\n\nOne schema across every model, so you only learn the API once. Change the `model` field to switch models; everything else stays the same.\n\n- Base URL: `https://api.nan.builders/v1`\n- OpenAPI spec: this document. Import it into Postman, Insomnia, or your own tooling.\n\nIf you use the [Helmcode](https://helmcode.com) enterprise service, the base URL is `https://api.helmcode.com/v1` instead. Every other endpoint is identical.\n\n## Authentication\n\nEvery inference request authenticates with an API key, sent as a Bearer token:\n\n```\nAuthorization: Bearer $NAN_API_KEY\n```\n\nYou must be a NaN community member. Generate your key from user settings, under \"API Keys\", on the [platform](https://cloud.nan.builders/). The key is personal and non-transferable. Keep it secret: never embed one in client-side code or commit it to source control. Requests must go over HTTPS; calls over plain HTTP fail.\n\n### Platform tokens\n\nFor scripts that only manage [Runs](#tag/runs), [Automations](#tag/automations) and [Approvals](#tag/approvals), and list your [Workspaces](#tag/workspaces), create a **platform token** (`nan_pat_...`) under \"Tokens\" in your settings, and send it the same way: `Authorization: Bearer $NAN_TOKEN`. An API key works on both inference and these endpoints. Each endpoint lists the credentials it accepts.\n\nA platform token carries **scopes**, and each endpoint names the one it needs: `runs` (runs and approvals), `workspaces:read`, `automations:read` (read automations, templates, triggers and deliveries) and `automations:run` (run an existing automation). New tokens get `runs` and `workspaces:read`. A token without the scope gets `403`:\n\n```json\n{\n  \"error\": {\n    \"message\": \"This platform token does not have the \\\"automations:run\\\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.\",\n    \"type\": \"permission_error\",\n    \"param\": null,\n    \"code\": \"token_scope_denied\"\n  }\n}\n```\n\nA platform token never works for inference: the model endpoints answer `401`:\n\n```json\n{\n  \"error\": {\n    \"message\": \"Platform tokens (nan_pat_) cannot be used for inference. Use an inference API key (sk-) instead. Platform tokens only work on the platform API (/v1/runs and GET /api/workspaces).\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"token_not_valid_for_inference\"\n  }\n}\n```\n\n### Browser sign-in\n\nSome actions need you signed in through your browser at [cloud.nan.builders](https://cloud.nan.builders/), and no API key, platform token or CLI session can do them: approving a run, creating, editing or deleting automations and their triggers, writing secrets, and creating a token with an `automations:` scope. Through the API they answer `403`:\n\n```json\n{\n  \"error\": {\n    \"message\": \"This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs, change automations or secrets, or create tokens with automations scopes.\",\n    \"type\": \"permission_error\",\n    \"param\": null,\n    \"code\": \"browser_session_required\"\n  }\n}\n```\n\n## Making requests\n\nThe API is OpenAI-compatible, so point an official OpenAI SDK at our base URL and change nothing else:\n\n```python\nfrom openai import OpenAI\n\nclient = OpenAI(\n    api_key=\"$NAN_API_KEY\",\n    base_url=\"https://api.nan.builders/v1\",\n)\n\nresp = client.chat.completions.create(\n    model=\"deepseek-v4-flash\",\n    messages=[{\"role\": \"user\", \"content\": \"Hello\"}],\n)\nprint(resp.choices[0].message.content)\n```\n\n## Streaming\n\nChat responses can stream token-by-token. Set `\"stream\": true` on `/chat/completions` and the response arrives as Server-Sent Events: each event is a `data:` line carrying a `chat.completion.chunk`, with the new text in `choices[0].delta.content`. A final `data: [DONE]` line ends the stream. `/chat/completions` streams incrementally on every chat model. `/responses` streams incrementally on `deepseek-v4-flash`, `glm5.3-flash`, `qwen3.8-flash`, `mimo-v2.6-flash` and `glm5.3`; on `qwen3.6` and `gemma4` it holds the whole answer and sends it in one burst at the end.\n\n## Rate limits\n\n{{RATE_LIMITS}}\n\nImage endpoints run on their own budget, separate from the model endpoints: 20 requests per minute and 100 requests per month. The usage endpoint is metered separately too: {{USAGE_RATE_LIMIT}} requests per minute per member. Exceed any limit and you get a `429`.\n\n## Errors\n\nNaN uses conventional HTTP status codes: `2xx` on success, `4xx` for a problem with the request (a missing parameter, an invalid key, an unavailable model) and `5xx` for a server-side error. Every error returns a JSON body in the OpenAI shape:\n\n```json\n{\n  \"error\": {\n    \"message\": \"The model 'foo' does not exist.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"model\",\n    \"code\": \"model_not_found\"\n  }\n}\n```\n\n`message` is human-readable, `param` names the offending field when applicable, and `code` is a short machine-readable string you can branch on.\n\n| Status | Meaning | `code` |\n| --- | --- | --- |\n| `400` | Invalid or malformed parameter (`param` says which); content blocked by the safety filter; a `max_tokens` above what the model can generate (a generic \"Invalid request\" message today); or a request that does not fit the model's context window. On the models hosted on the cluster (`qwen3.6`, `gemma4`) the overflow message is \"Context length exceeded for model '...'\" with the model's limit; on the other models it is usually that text, but it can arrive as the generic \"Invalid request. Check your request parameters.\" | `\"400\"` (with `type: invalid_request_error`) · `content_policy_violation` |\n| `401` | Missing or invalid API key, or a key whose tier does not reach the requested model (`glm5.3`): \"This API key does not have access to the requested model\", `type: auth_error`. Measured 2026-09-12. A platform token (`nan_pat_...`) sent to an inference endpoint answers `token_not_valid_for_inference`. | `invalid_api_key` · `token_not_valid_for_inference` |\n| `402` | The token allowance is spent on a model that carries one. Not retryable: the counter returns to zero when that model's quota period does, the calendar month for the models counted per month and your billing period for `glm5.3`. | `monthly_cap_reached` |\n| `403` | Your tier can't access this endpoint. Image generation requires inference membership. A model your tier cannot reach answers `401`, not this. On the platform endpoints: a platform token without the scope the endpoint needs, or an action that needs a [browser sign-in](#description/browser-sign-in). | `tier_restricted` · `token_scope_denied` · `browser_session_required` |\n| `404` | The requested model doesn't exist. | `model_not_found` |\n| `429` | Rate limit hit (`rpm_limit`, `max_parallel_requests`), the rolling 4h token budget of `glm5.3`, or a quota exhausted. | `rate_limit_exceeded` · `insufficient_quota` · `quota_exceeded` |\n| `500` | Something went wrong on our side (includes upstream model errors). | (none) |\n| `524` | Timeout, typical with large audio files on `/audio/transcriptions`. | (none) |\n\nRetry `429` and `5xx` responses with exponential backoff. Don't retry `400`, `401`, `403`, or `404` blindly (a context overflow is not retried automatically either: shorten the input or pick a model with a larger window): they'll fail the same way every time until you change the request. `402` cannot be fixed by repetition either: it clears when that model's quota period resets.\n\n## Model catalog\n\nEvery endpoint takes a `model` id. Capabilities vary by model:\n\n| Model | Use for | Capabilities |\n| --- | --- | --- |\n| `deepseek-v4-flash` | Chat, vision, reasoning | Streaming, tool calling, reasoning, image input, 1M-token context. 3B tokens/month per member |\n| `mimo-v2.6-flash` | Chat, vision, audio | Streaming, tool calling, reasoning, image input, audio input, 1M-token context. 1.0B tokens/month per member |\n| `qwen3.8-flash` | Chat, vision, agents | Streaming, tool calling, reasoning (on by default), vision, 1M-token context. 500M tokens/month per member |\n| `glm5.3-flash` | Chat, vision, agents | Streaming, tool calling, reasoning, vision, 1M-token context. 2B tokens/month per member |\n| `qwen3.6` | Chat, agents | Streaming, tool calling, vision, reasoning (opt-out, returns `reasoning_content`) |\n| `gemma4` | Chat, vision, agents | Streaming, tool calling, vision, reasoning (opt-in) |\n| `glm5.3` | Coding, long-horizon agents | Streaming, tool calling, reasoning trace, image, audio and video input, 1M-token context. Premium tier only |\n| `qwen3-embedding` | Embeddings | 4096-dimension vectors |\n| `rerank` | RAG reranking | Qwen3-Reranker-8B, 100+ languages |\n| `kokoro` | Text-to-speech | Multiple voices and audio formats |\n| `whisper` | Speech-to-text | Transcription with word/segment timestamps |\n| `flux-2-klein` | Image generation | Text-to-image and image-to-image |\n| `qwen-image-2.1` | Image generation (text→image) | 512-1280 px, 1-4 per request, seed 0-2147483647. 100 images/month per member (shared pool with flux-2-klein) |\n\n`glm5.3` is served only to keys on the GLM 5.3 premium tier; every other model is available to any inference member. Call [List models](#tag/Models) for the exact set available to your key.\n\n## Versioning & compatibility\n\nThe API tracks the OpenAI API surface, so OpenAI SDKs and tools work against `https://api.nan.builders/v1` unchanged. This reference documents the stable public `/v1` endpoints, plus the two read-only [Workspaces](#tag/workspaces) endpoints under `/api/workspaces`, and we add capabilities without breaking existing fields.",
+    "description": "Open models on a shared EU inference cluster. Zero logs.\n\nThe NaN API is OpenAI-compatible: predictable, resource-oriented URLs, JSON request and response bodies, and standard HTTP verbs and status codes. Point any OpenAI SDK at our base URL and your existing code keeps working. Change the base URL and the API key, and that's it.\n\nOne schema across every model, so you only learn the API once. Change the `model` field to switch models; everything else stays the same.\n\n- Base URL: `https://api.nan.builders/v1`\n- OpenAPI spec: this document. Import it into Postman, Insomnia, or your own tooling.\n\nIf you use the [Helmcode](https://helmcode.com) enterprise service, the base URL is `https://api.helmcode.com/v1` instead. Every other endpoint is identical.\n\n## Authentication\n\nEvery inference request authenticates with an API key, sent as a Bearer token:\n\n```\nAuthorization: Bearer $NAN_API_KEY\n```\n\nYou must be a NaN community member. Generate your key from user settings, under \"API Keys\", on the [platform](https://cloud.nan.builders/). The key is personal and non-transferable. Keep it secret: never embed one in client-side code or commit it to source control. Requests must go over HTTPS; calls over plain HTTP fail.\n\n### Platform tokens\n\nFor scripts that only manage [Runs](#tag/runs), [Automations](#tag/automations), [Secrets](#tag/secrets) and [Approvals](#tag/approvals), and list your [Workspaces](#tag/workspaces), create a **platform token** (`nan_pat_...`) under \"Tokens\" in your settings, and send it the same way: `Authorization: Bearer $NAN_TOKEN`. An API key works on inference and on Runs, Approvals, Workspaces and reading and running Automations; never on Secrets or on changes to automations. Each endpoint lists the credentials it accepts.\n\nA platform token carries **scopes**, and each endpoint names the one it needs: `runs` (runs and approvals), `workspaces:read`, `automations:read` (read automations, templates, triggers and deliveries), `automations:run` (run an existing automation), `automations:write` (create, change and delete automations and their triggers), `secrets:read` (read secret metadata, never values) and `secrets:write` (create, replace, change and delete secrets). Scopes are independent: `secrets:write` does not include `secrets:read`. New tokens get `runs` and `workspaces:read`. A token without the scope gets `403`:\n\n```json\n{\n  \"error\": {\n    \"message\": \"This platform token does not have the \\\"automations:run\\\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.\",\n    \"type\": \"permission_error\",\n    \"param\": null,\n    \"code\": \"token_scope_denied\"\n  }\n}\n```\n\nA platform token never works for inference: the model endpoints answer `401`:\n\n```json\n{\n  \"error\": {\n    \"message\": \"Platform tokens (nan_pat_) cannot be used for inference. Use an inference API key (sk-) instead. Platform tokens only work on the platform API (/v1/runs and GET /api/workspaces).\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"token_not_valid_for_inference\"\n  }\n}\n```\n\n### CLI session and the write scopes\n\nYour secrets and your automations (with their triggers) can be managed through the API and the [NaN CLI](https://nan.builders/docs/nan-cli) where the write API is available for your account (it is being opened gradually). Three credentials can change them: you signed in at [cloud.nan.builders](https://cloud.nan.builders/), the **CLI session** that `nan auth login` saves, and a platform token with `automations:write` or `secrets:write`. Secret metadata is read with a CLI session or `secrets:read`. API keys (`sk-...`), the key inside a workspace and sessions from older clients are refused:\n\n```json\n{\n  \"error\": {\n    \"message\": \"This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \\\"secrets:write\\\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.\",\n    \"type\": \"permission_error\",\n    \"param\": null,\n    \"code\": \"credential_not_allowed\"\n  }\n}\n```\n\nA token with `secrets:write` lets whoever holds it replace any of your secrets. A token with `automations:write` lets whoever holds it create or change an automation that receives any of your secrets, with instructions of their choice and nothing waiting for approval: that is as good as reading every secret you have. Such a token, held by an agent or a script, can change your secrets or automations. These scopes can only be added to a token in the portal, signed in through your browser. Give a token only the scopes its job needs, and run `nan auth login` on your own machine, never inside a workspace: the agents there could read the session.\n\n### Browser sign-in\n\nSome actions need you signed in through your browser at [cloud.nan.builders](https://cloud.nan.builders/), and no API key, platform token or CLI session can do them: approving a run, and creating a token with an `automations:` or `secrets:` scope. Where the write API is not yet available for your account, changing automations and their triggers is also browser-only. Through the API they answer `403`:\n\n```json\n{\n  \"error\": {\n    \"message\": \"This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs or create tokens with automations or secrets scopes.\",\n    \"type\": \"permission_error\",\n    \"param\": null,\n    \"code\": \"browser_session_required\"\n  }\n}\n```\n\n## Making requests\n\nThe API is OpenAI-compatible, so point an official OpenAI SDK at our base URL and change nothing else:\n\n```python\nfrom openai import OpenAI\n\nclient = OpenAI(\n    api_key=\"$NAN_API_KEY\",\n    base_url=\"https://api.nan.builders/v1\",\n)\n\nresp = client.chat.completions.create(\n    model=\"deepseek-v4-flash\",\n    messages=[{\"role\": \"user\", \"content\": \"Hello\"}],\n)\nprint(resp.choices[0].message.content)\n```\n\n## Streaming\n\nChat responses can stream token-by-token. Set `\"stream\": true` on `/chat/completions` and the response arrives as Server-Sent Events: each event is a `data:` line carrying a `chat.completion.chunk`, with the new text in `choices[0].delta.content`. A final `data: [DONE]` line ends the stream. `/chat/completions` streams incrementally on every chat model. `/responses` streams incrementally on `deepseek-v4-flash`, `glm5.3-flash`, `qwen3.8-flash`, `mimo-v2.6-flash` and `glm5.3`; on `qwen3.6` and `gemma4` it holds the whole answer and sends it in one burst at the end.\n\n## Rate limits\n\n{{RATE_LIMITS}}\n\nImage endpoints run on their own budget, separate from the model endpoints: 20 requests per minute and 100 requests per month. The usage endpoint is metered separately too: {{USAGE_RATE_LIMIT}} requests per minute per member. Exceed any limit and you get a `429`.\n\n## Errors\n\nNaN uses conventional HTTP status codes: `2xx` on success, `4xx` for a problem with the request (a missing parameter, an invalid key, an unavailable model) and `5xx` for a server-side error. Every error returns a JSON body in the OpenAI shape:\n\n```json\n{\n  \"error\": {\n    \"message\": \"The model 'foo' does not exist.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"model\",\n    \"code\": \"model_not_found\"\n  }\n}\n```\n\n`message` is human-readable, `param` names the offending field when applicable, and `code` is a short machine-readable string you can branch on.\n\n| Status | Meaning | `code` |\n| --- | --- | --- |\n| `400` | Invalid or malformed parameter (`param` says which); content blocked by the safety filter; a `max_tokens` above what the model can generate (a generic \"Invalid request\" message today); or a request that does not fit the model's context window. On the models hosted on the cluster (`qwen3.6`, `gemma4`) the overflow message is \"Context length exceeded for model '...'\" with the model's limit; on the other models it is usually that text, but it can arrive as the generic \"Invalid request. Check your request parameters.\" | `\"400\"` (with `type: invalid_request_error`) · `content_policy_violation` |\n| `401` | Missing or invalid API key, or a key whose tier does not reach the requested model (`glm5.3`): \"This API key does not have access to the requested model\", `type: auth_error`. Measured 2026-09-12. A platform token (`nan_pat_...`) sent to an inference endpoint answers `token_not_valid_for_inference`. | `invalid_api_key` · `token_not_valid_for_inference` |\n| `402` | The token allowance is spent on a model that carries one. Not retryable: the counter returns to zero when that model's quota period does, the calendar month for the models counted per month and your billing period for `glm5.3`. | `monthly_cap_reached` |\n| `403` | Your tier can't access this endpoint. Image generation requires inference membership. A model your tier cannot reach answers `401`, not this. On the platform endpoints: a platform token without the scope the endpoint needs, a credential that cannot change secrets or automations (see [CLI session and the write scopes](#description/cli-session-and-the-write-scopes)), or an action that needs a [browser sign-in](#description/browser-sign-in). | `tier_restricted` · `token_scope_denied` · `credential_not_allowed` · `browser_session_required` |\n| `404` | The requested model doesn't exist. | `model_not_found` |\n| `429` | Rate limit hit (`rpm_limit`, `max_parallel_requests`), the rolling 4h token budget of `glm5.3`, or a quota exhausted. | `rate_limit_exceeded` · `insufficient_quota` · `quota_exceeded` |\n| `500` | Something went wrong on our side (includes upstream model errors). | (none) |\n| `524` | Timeout, typical with large audio files on `/audio/transcriptions`. | (none) |\n\nRetry `429` and `5xx` responses with exponential backoff. Don't retry `400`, `401`, `403`, or `404` blindly (a context overflow is not retried automatically either: shorten the input or pick a model with a larger window): they'll fail the same way every time until you change the request. `402` cannot be fixed by repetition either: it clears when that model's quota period resets.\n\n## Model catalog\n\nEvery endpoint takes a `model` id. Capabilities vary by model:\n\n| Model | Use for | Capabilities |\n| --- | --- | --- |\n| `deepseek-v4-flash` | Chat, vision, reasoning | Streaming, tool calling, reasoning, image input, 1M-token context. 3B tokens/month per member |\n| `mimo-v2.6-flash` | Chat, vision, audio | Streaming, tool calling, reasoning, image input, audio input, 1M-token context. 1.0B tokens/month per member |\n| `qwen3.8-flash` | Chat, vision, agents | Streaming, tool calling, reasoning (on by default), vision, 1M-token context. 500M tokens/month per member |\n| `glm5.3-flash` | Chat, vision, agents | Streaming, tool calling, reasoning, vision, 1M-token context. 2B tokens/month per member |\n| `qwen3.6` | Chat, agents | Streaming, tool calling, vision, reasoning (opt-out, returns `reasoning_content`) |\n| `gemma4` | Chat, vision, agents | Streaming, tool calling, vision, reasoning (opt-in) |\n| `glm5.3` | Coding, long-horizon agents | Streaming, tool calling, reasoning trace, image, audio and video input, 1M-token context. Premium tier only |\n| `qwen3-embedding` | Embeddings | 4096-dimension vectors |\n| `rerank` | RAG reranking | Qwen3-Reranker-8B, 100+ languages |\n| `kokoro` | Text-to-speech | Multiple voices and audio formats |\n| `whisper` | Speech-to-text | Transcription with word/segment timestamps |\n| `flux-2-klein` | Image generation | Text-to-image and image-to-image |\n| `qwen-image-2.1` | Image generation (text→image) | 512-1280 px, 1-4 per request, seed 0-2147483647. 100 images/month per member (shared pool with flux-2-klein) |\n\n`glm5.3` is served only to keys on the GLM 5.3 premium tier; every other model is available to any inference member. Call [List models](#tag/Models) for the exact set available to your key.\n\n## Versioning & compatibility\n\nThe API tracks the OpenAI API surface, so OpenAI SDKs and tools work against `https://api.nan.builders/v1` unchanged. This reference documents the stable public `/v1` endpoints, plus the two read-only [Workspaces](#tag/workspaces) endpoints under `/api/workspaces`, and we add capabilities without breaking existing fields.",
     "contact": {
       "name": "NaN",
       "url": "https://nan.builders"
@@ -64,7 +64,11 @@
     },
     {
       "name": "Automations",
-      "description": "Read and run the automations you set up in the portal: saved agent tasks that webhooks, schedules or your own calls start. Reading needs a platform token with `automations:read`, running one `automations:run` (or your API key). Creating, editing and deleting automations and their triggers is done in the portal, signed in through your browser: those routes answer `403 browser_session_required` to API keys and platform tokens. Webhooks themselves arrive at `https://api.nan.builders/hooks/<token>`, signed by the sender. Guides: [Automations](https://nan.builders/docs/automations), [Webhooks and schedules](https://nan.builders/docs/webhooks)."
+      "description": "Your automations: saved agent tasks that webhooks, schedules or your own calls start. Reading needs a platform token with `automations:read`, running one `automations:run` (or your API key). Creating, changing and deleting automations and their triggers needs a CLI session (`nan auth login`) or a platform token with `automations:write`; API keys (`sk-...`) cannot. Where the write API is not yet available for your account, those routes answer `403 browser_session_required` and you make the change in the portal. Approving stays in the portal. Webhooks themselves arrive at `https://api.nan.builders/hooks/<token>`, signed by the sender. Guides: [Automations](https://nan.builders/docs/automations), [Webhooks and schedules](https://nan.builders/docs/webhooks)."
+    },
+    {
+      "name": "Secrets",
+      "description": "The tokens and keys your automations receive, and your own provider keys. The API never returns a value: it lists metadata, creates secrets, replaces values, changes descriptions and base URLs, and deletes. Reading needs a CLI session (`nan auth login`) or a platform token with `secrets:read`; writing, a CLI session or a token with `secrets:write`. API keys (`sk-...`) never read or write secrets. Where the write API is not yet available for your account, these routes answer `404`. Guide: [Secrets](https://nan.builders/docs/automations#secrets)."
     },
     {
       "name": "Approvals",
@@ -1551,16 +1555,6 @@
               }
             }
           },
-          "500": {
-            "description": "Something failed on our side (`server_error`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
           "429": {
             "description": "Too many usage queries: 30 requests per minute per member (`rate_limit_exceeded`).",
             "headers": {
@@ -1571,6 +1565,16 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Something failed on our side (`server_error`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1664,8 +1668,8 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "The run was created (`state: queued`).",
+          "200": {
+            "description": "Idempotent replay: the run already created with this `Idempotency-Key` and body.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1704,8 +1708,8 @@
               }
             }
           },
-          "200": {
-            "description": "Idempotent replay: the run already created with this `Idempotency-Key` and body.",
+          "201": {
+            "description": "The run was created (`state: queued`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2450,46 +2454,6 @@
           }
         ],
         "responses": {
-          "202": {
-            "description": "Cancellation accepted (`cancel_requested: true`). Follow the run to see it end.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Run"
-                },
-                "example": {
-                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
-                  "object": "run",
-                  "workspace": {
-                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
-                    "name": "develop"
-                  },
-                  "agent": "pi",
-                  "model": null,
-                  "trigger": "api",
-                  "state": "running",
-                  "queue_position": null,
-                  "prompt_preview": "add tests for the date parser and make them pass",
-                  "cwd": "/home/nan/projects/api",
-                  "git_isolation": null,
-                  "timeout_seconds": 1800,
-                  "cancel_requested": true,
-                  "exit_code": null,
-                  "error_code": null,
-                  "result": null,
-                  "usage": {
-                    "tokens_in": null,
-                    "tokens_out": null,
-                    "source": null
-                  },
-                  "last_seq": 0,
-                  "created_at": "2026-10-10T12:00:00Z",
-                  "started_at": "2026-10-10T12:00:02Z",
-                  "finished_at": null
-                }
-              }
-            }
-          },
           "200": {
             "description": "The run had already ended: nothing changed.",
             "content": {
@@ -2533,6 +2497,46 @@
                   "created_at": "2026-10-10T12:00:00Z",
                   "started_at": "2026-10-10T12:00:02Z",
                   "finished_at": "2026-10-10T12:03:41Z"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Cancellation accepted (`cancel_requested: true`). Follow the run to see it end.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                },
+                "example": {
+                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                  "object": "run",
+                  "workspace": {
+                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                    "name": "develop"
+                  },
+                  "agent": "pi",
+                  "model": null,
+                  "trigger": "api",
+                  "state": "running",
+                  "queue_position": null,
+                  "prompt_preview": "add tests for the date parser and make them pass",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": null,
+                  "timeout_seconds": 1800,
+                  "cancel_requested": true,
+                  "exit_code": null,
+                  "error_code": null,
+                  "result": null,
+                  "usage": {
+                    "tokens_in": null,
+                    "tokens_out": null,
+                    "source": null
+                  },
+                  "last_seq": 0,
+                  "created_at": "2026-10-10T12:00:00Z",
+                  "started_at": "2026-10-10T12:00:02Z",
+                  "finished_at": null
                 }
               }
             }
@@ -2660,7 +2664,8 @@
                       "updated_at": "2026-10-11T09:00:00Z",
                       "checkout": "workspace",
                       "sticky_pr_comment": false,
-                      "checkout_untrusted_heads": false
+                      "checkout_untrusted_heads": false,
+                      "updated_by": "browser_session"
                     }
                   ]
                 }
@@ -2712,6 +2717,280 @@
             "source": "curl https://api.nan.builders/v1/automations \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
           }
         ]
+      },
+      "post": {
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "tags": [
+          "Automations"
+        ],
+        "operationId": "createAutomation",
+        "summary": "Create an automation",
+        "description": "Creates an automation. Leave a field out to take its default: with a template, its instructions and concurrency; `approval_kinds` absent means every kind of action waits for your approval; `enabled` is `true`. The workspace must have the agent installed.\n\nThere is no idempotency key: names are unique, so a retry after a lost answer gets `409 name_taken`; list your automations to find it. Add its triggers with [Create a trigger](#tag/automations/POST/automations/{id}/triggers).\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `automations:write` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAutomationRequest"
+              },
+              "example": {
+                "name": "PR review api",
+                "template": "pr_review",
+                "workspace": "dev",
+                "agent": "pi",
+                "github_repo": "acme/api",
+                "secrets": [
+                  {
+                    "secret": "GITHUB_READ_TOKEN",
+                    "env": "GITHUB_TOKEN",
+                    "exposure": "agent"
+                  },
+                  {
+                    "secret": "GITHUB_WRITE_TOKEN",
+                    "env": "GITHUB_TOKEN",
+                    "exposure": "actions"
+                  }
+                ],
+                "approval_kinds": [
+                  "git_push",
+                  "github_create_pr"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Automation"
+                },
+                "example": {
+                  "id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                  "object": "automation",
+                  "name": "PR review api",
+                  "description": "Reviews every pull request of acme/api.",
+                  "template": "pr_review",
+                  "workspace": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                  "agent": "pi",
+                  "model": null,
+                  "instructions": "Review the pull request described in the input for correctness, security and maintainability.",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": true,
+                  "timeout_seconds": 1800,
+                  "approval_kinds": [
+                    "git_push",
+                    "github_create_pr",
+                    "github_pr_comment",
+                    "github_pr_review",
+                    "github_issue_comment",
+                    "github_add_labels"
+                  ],
+                  "approval_ttl_seconds": 259200,
+                  "inference": {
+                    "source": "nan"
+                  },
+                  "github_repo": "acme/api",
+                  "secrets": [
+                    {
+                      "secret": "GITHUB_READ_TOKEN",
+                      "env": "GITHUB_TOKEN",
+                      "exposure": "agent"
+                    },
+                    {
+                      "secret": "GITHUB_WRITE_TOKEN",
+                      "env": "GITHUB_TOKEN",
+                      "exposure": "actions"
+                    }
+                  ],
+                  "max_runs_per_hour": 30,
+                  "concurrency_policy": "skip_if_active",
+                  "max_trigger_depth": 2,
+                  "enabled": true,
+                  "disabled_reason": null,
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "updated_at": "2026-10-11T09:00:00Z",
+                  "checkout": "workspace",
+                  "sticky_pr_comment": false,
+                  "checkout_untrusted_heads": false,
+                  "updated_by": "cli_session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A field that does not pass validation (`param` names it) or an unknown field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "github_repo": {
+                    "summary": "A GitHub template without a repository.",
+                    "value": {
+                      "error": {
+                        "message": "this template acts on a GitHub repository: set owner/name",
+                        "type": "invalid_request_error",
+                        "param": "github_repo",
+                        "code": "invalid_request"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:write` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`). Until your account has the write API, every credential but the portal gets `browser_session_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:write` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:write\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"automations:write\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  },
+                  "browser_session_required": {
+                    "summary": "The write API is not yet available for your account: the change is made in the portal.",
+                    "value": {
+                      "error": {
+                        "message": "This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs or create tokens with automations or secrets scopes.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "browser_session_required"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The workspace, a secret or the provider key is not yours (`not_found`), or automations are not available for your account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "workspace not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken (`name_taken`), you have 50 automations (`too_many_automations`), the agent is not installed in the workspace (`agent_not_installed`), or the secrets of a run would exceed 48 KiB (`secrets_too_large`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "name_taken": {
+                    "summary": "An automation with this name exists.",
+                    "value": {
+                      "error": {
+                        "message": "an automation with this name already exists",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "name_taken"
+                      }
+                    }
+                  },
+                  "too_many_automations": {
+                    "summary": "50 automations already.",
+                    "value": {
+                      "error": {
+                        "message": "you have reached the maximum of 50 automations",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "too_many_automations"
+                      }
+                    }
+                  },
+                  "agent_not_installed": {
+                    "summary": "The agent is not in the workspace.",
+                    "value": {
+                      "error": {
+                        "message": "Hermes is not installed in this workspace",
+                        "type": "invalid_request_error",
+                        "param": "agent",
+                        "code": "agent_not_installed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many automation changes (`rate_limited`): every write to a member's automations and their triggers shares one budget of 30 at once, then 300 per hour. Wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Too many automation changes recently. Try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "rate_limited"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/automations/templates": {
@@ -2934,7 +3213,8 @@
                   "updated_at": "2026-10-11T09:00:00Z",
                   "checkout": "workspace",
                   "sticky_pr_comment": false,
-                  "checkout_untrusted_heads": false
+                  "checkout_untrusted_heads": false,
+                  "updated_by": "browser_session"
                 }
               }
             }
@@ -3002,6 +3282,387 @@
             "source": "curl https://api.nan.builders/v1/automations/$AUTOMATION_ID \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
           }
         ]
+      },
+      "patch": {
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "tags": [
+          "Automations"
+        ],
+        "operationId": "updateAutomation",
+        "summary": "Change an automation",
+        "description": "Changes the fields you send, including `enabled` to switch it off or on. A run keeps the settings it started with: a change never affects a run already queued or working.\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `automations:write` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The automation id. A malformed id answers `404`."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAutomationRequest"
+              },
+              "examples": {
+                "disable": {
+                  "summary": "Switch it off.",
+                  "value": {
+                    "enabled": false
+                  }
+                },
+                "approvals": {
+                  "summary": "Let comments apply without asking.",
+                  "value": {
+                    "approval_kinds": [
+                      "git_push",
+                      "github_create_pr"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The automation, changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Automation"
+                },
+                "example": {
+                  "id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                  "object": "automation",
+                  "name": "PR review api",
+                  "description": "Reviews every pull request of acme/api.",
+                  "template": "pr_review",
+                  "workspace": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                  "agent": "pi",
+                  "model": null,
+                  "instructions": "Review the pull request described in the input for correctness, security and maintainability.",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": true,
+                  "timeout_seconds": 1800,
+                  "approval_kinds": [
+                    "git_push",
+                    "github_create_pr",
+                    "github_pr_comment",
+                    "github_pr_review",
+                    "github_issue_comment",
+                    "github_add_labels"
+                  ],
+                  "approval_ttl_seconds": 259200,
+                  "inference": {
+                    "source": "nan"
+                  },
+                  "github_repo": "acme/api",
+                  "secrets": [
+                    {
+                      "secret": "GITHUB_READ_TOKEN",
+                      "env": "GITHUB_TOKEN",
+                      "exposure": "agent"
+                    },
+                    {
+                      "secret": "GITHUB_WRITE_TOKEN",
+                      "env": "GITHUB_TOKEN",
+                      "exposure": "actions"
+                    }
+                  ],
+                  "max_runs_per_hour": 30,
+                  "concurrency_policy": "skip_if_active",
+                  "max_trigger_depth": 2,
+                  "enabled": true,
+                  "disabled_reason": null,
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "updated_at": "2026-10-11T09:00:00Z",
+                  "checkout": "workspace",
+                  "sticky_pr_comment": false,
+                  "checkout_untrusted_heads": false,
+                  "updated_by": "cli_session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A field that does not pass validation (`param` names it), an unknown field, or `inference: null`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "timeout": {
+                    "summary": "A timeout out of range.",
+                    "value": {
+                      "error": {
+                        "message": "must be between 60 and 7200",
+                        "type": "invalid_request_error",
+                        "param": "timeout_seconds",
+                        "code": "invalid_request"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:write` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`). Until your account has the write API, every credential but the portal gets `browser_session_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:write` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:write\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"automations:write\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  },
+                  "browser_session_required": {
+                    "summary": "The write API is not yet available for your account: the change is made in the portal.",
+                    "value": {
+                      "error": {
+                        "message": "This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs or create tokens with automations or secrets scopes.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "browser_session_required"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No automation with that id among yours (another member's is also `404`, and so is a malformed id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "automation not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken (`name_taken`), the agent is not installed in the workspace (`agent_not_installed`), or the secrets of a run would exceed 48 KiB (`secrets_too_large`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "an automation with this name already exists",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "name_taken"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many automation changes (`rate_limited`): every write to a member's automations and their triggers shares one budget of 30 at once, then 300 per hour. Wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Too many automation changes recently. Try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "rate_limited"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "tags": [
+          "Automations"
+        ],
+        "operationId": "deleteAutomation",
+        "summary": "Delete an automation",
+        "description": "Deletes the automation: its triggers stop at once and its queued runs are cancelled. Runs already working finish, actions already approved or applying automatically still complete, past runs stay in the history, and a proposal waiting for your approval can still be approved or rejected.\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `automations:write` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The automation id. A malformed id answers `404`."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:write` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`). Until your account has the write API, every credential but the portal gets `browser_session_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:write` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:write\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"automations:write\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  },
+                  "browser_session_required": {
+                    "summary": "The write API is not yet available for your account: the change is made in the portal.",
+                    "value": {
+                      "error": {
+                        "message": "This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs or create tokens with automations or secrets scopes.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "browser_session_required"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No automation with that id among yours (another member's is also `404`, and so is a malformed id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "automation not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many automation changes (`rate_limited`): every write to a member's automations and their triggers shares one budget of 30 at once, then 300 per hour. Wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Too many automation changes recently. Try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "rate_limited"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/automations/{id}/triggers": {
@@ -3019,7 +3680,7 @@
             "platformToken": []
           }
         ],
-        "description": "The webhooks and schedules of an automation. A webhook shows only the start of its URL: the full URL and the signing secret are shown once, in the portal, when they are created or rotated.\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:read` scope.",
+        "description": "The webhooks and schedules of an automation. A webhook shows only the start of its URL: the full URL and the signing secret are shown once, when they are created or rotated (in the portal, or in the answer of the API and the CLI).\n\nAuthentication: a member API key (`sk-...`) or a platform token (`nan_pat_...`) with the `automations:read` scope.",
         "parameters": [
           {
             "name": "id",
@@ -3079,7 +3740,8 @@
                       "last_fired_at": null,
                       "last_outcome": null,
                       "created_at": "2026-10-11T09:01:00Z",
-                      "updated_at": "2026-10-11T09:01:00Z"
+                      "updated_at": "2026-10-11T09:01:00Z",
+                      "updated_by": "browser_session"
                     },
                     {
                       "id": "4c6e8a0b-2d4f-4a6c-9e0b-1d3f5a7c9e2b",
@@ -3098,7 +3760,8 @@
                       "last_fired_at": "2026-10-11T07:00:21Z",
                       "last_outcome": "run_created",
                       "created_at": "2026-10-11T09:02:00Z",
-                      "updated_at": "2026-10-11T09:02:00Z"
+                      "updated_at": "2026-10-11T09:02:00Z",
+                      "updated_by": "browser_session"
                     }
                   ]
                 }
@@ -3168,6 +3831,289 @@
             "source": "curl https://api.nan.builders/v1/automations/$AUTOMATION_ID/triggers \\\n  -H \"Authorization: Bearer $NAN_TOKEN\""
           }
         ]
+      },
+      "post": {
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "tags": [
+          "Automations"
+        ],
+        "operationId": "createAutomationTrigger",
+        "summary": "Create a trigger",
+        "description": "Adds a webhook or a schedule. For a webhook, the answer carries its full URL and, for `github` and `nan`, its signing secret: **the only time they are returned**, with `Cache-Control: no-store`. Store them before anything else; afterwards only the start of the URL is shown. If you lose them, rotate.\n\nCreating a trigger is not idempotent (the URL is stored only as a hash): after a lost answer, list the triggers and rotate or delete the one you did not see.\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `automations:write` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The automation id. A malformed id answers `404`."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTriggerRequest"
+              },
+              "examples": {
+                "github": {
+                  "summary": "A GitHub webhook for pull requests.",
+                  "value": {
+                    "kind": "webhook",
+                    "signature_scheme": "github",
+                    "event_filter": {
+                      "events": [
+                        "pull_request"
+                      ],
+                      "actions": [
+                        "opened",
+                        "synchronize",
+                        "reopened",
+                        "ready_for_review"
+                      ],
+                      "exclude_drafts": true
+                    }
+                  }
+                },
+                "schedule": {
+                  "summary": "Every weekday at 9:00 in Madrid.",
+                  "value": {
+                    "kind": "schedule",
+                    "cron": "0 9 * * 1-5",
+                    "timezone": "Europe/Madrid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created. The only time the webhook URL and signing secret are returned.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always `no-store`.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerCreated"
+                },
+                "example": {
+                  "trigger": {
+                    "id": "9e2b4d6f-1a3c-4e5b-8d7f-6c0a2b4e6f81",
+                    "object": "trigger",
+                    "automation_id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                    "kind": "webhook",
+                    "enabled": true,
+                    "token_prefix": "nan_whk_Q3vX",
+                    "signature_scheme": "github",
+                    "event_filter": {
+                      "events": [
+                        "pull_request"
+                      ],
+                      "actions": [
+                        "opened",
+                        "synchronize",
+                        "reopened",
+                        "ready_for_review"
+                      ],
+                      "exclude_drafts": true
+                    },
+                    "actor_filter": {
+                      "logins": [],
+                      "author_associations": [
+                        "OWNER",
+                        "MEMBER",
+                        "COLLABORATOR"
+                      ],
+                      "exclude_bots": true
+                    },
+                    "prev_secret_until": null,
+                    "cron": null,
+                    "timezone": null,
+                    "next_fire_at": null,
+                    "last_fired_at": null,
+                    "last_outcome": null,
+                    "created_at": "2026-10-14T09:01:00Z",
+                    "updated_at": "2026-10-14T09:01:00Z",
+                    "updated_by": "cli_session"
+                  },
+                  "webhook_url": "https://api.nan.builders/hooks/nan_whk_Q3vXexampleexampleexampleexampleexample",
+                  "signing_secret": "nan_whsec_Xy7kQ2mN9pR4tV6wZ1aB3cD5eF8gH0jL"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A field that does not pass validation (`param` names it) or an unknown field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "signing_secret": {
+                    "summary": "A signing secret for a scheme where NaN generates it.",
+                    "value": {
+                      "error": {
+                        "message": "NaN generates the signing secret for this scheme",
+                        "type": "invalid_request_error",
+                        "param": "signing_secret",
+                        "code": "invalid_request"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:write` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`). Until your account has the write API, every credential but the portal gets `browser_session_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:write` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:write\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"automations:write\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  },
+                  "browser_session_required": {
+                    "summary": "The write API is not yet available for your account: the change is made in the portal.",
+                    "value": {
+                      "error": {
+                        "message": "This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs or create tokens with automations or secrets scopes.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "browser_session_required"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No automation with that id among yours (another member's is also `404`, and so is a malformed id).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "automation not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The automation has 5 triggers (`too_many_triggers`), or you have 10 schedules (`too_many_schedules`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "too_many_triggers": {
+                    "summary": "5 triggers already.",
+                    "value": {
+                      "error": {
+                        "message": "an automation has at most 5 triggers",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "too_many_triggers"
+                      }
+                    }
+                  },
+                  "too_many_schedules": {
+                    "summary": "10 schedules already.",
+                    "value": {
+                      "error": {
+                        "message": "you have reached the maximum of 10 schedules",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "too_many_schedules"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many automation changes (`rate_limited`): every write to a member's automations and their triggers shares one budget of 30 at once, then 300 per hour. Wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Too many automation changes recently. Try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "rate_limited"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/automations/{id}/deliveries": {
@@ -3370,74 +4316,6 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "The run was created.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Run"
-                },
-                "example": {
-                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
-                  "object": "run",
-                  "workspace": {
-                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
-                    "name": "develop"
-                  },
-                  "agent": "pi",
-                  "model": null,
-                  "trigger": "api",
-                  "state": "queued",
-                  "queue_position": 1,
-                  "prompt_preview": "Review the pull request described in the input for correctness, security and maintainability.",
-                  "cwd": "/home/nan/projects/api",
-                  "git_isolation": true,
-                  "timeout_seconds": 1800,
-                  "cancel_requested": false,
-                  "exit_code": null,
-                  "error_code": null,
-                  "result": null,
-                  "usage": {
-                    "tokens_in": null,
-                    "tokens_out": null,
-                    "source": null
-                  },
-                  "last_seq": 0,
-                  "created_at": "2026-10-11T09:00:00Z",
-                  "started_at": null,
-                  "finished_at": null,
-                  "phase": "propose",
-                  "inference": {
-                    "source": "nan"
-                  },
-                  "automation_id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
-                  "parent_run_id": null,
-                  "apply_run_ids": [],
-                  "approval": null,
-                  "approval_kinds": [
-                    "git_push",
-                    "github_create_pr",
-                    "github_pr_comment",
-                    "github_pr_review",
-                    "github_issue_comment",
-                    "github_add_labels"
-                  ],
-                  "github_repo": "acme/api",
-                  "trigger_depth": 0,
-                  "secrets": [
-                    {
-                      "env": "GITHUB_TOKEN",
-                      "exposure": "agent"
-                    }
-                  ],
-                  "agent_finished_at": null,
-                  "checkout": null,
-                  "superseded_by": null,
-                  "sticky_pr_comment": false
-                }
-              }
-            }
-          },
           "200": {
             "description": "A retry with the same `Idempotency-Key`: the run created the first time.",
             "content": {
@@ -3473,6 +4351,74 @@
                   "last_seq": 0,
                   "created_at": "2026-10-11T09:00:00Z",
                   "started_at": "2026-10-11T09:00:02Z",
+                  "finished_at": null,
+                  "phase": "propose",
+                  "inference": {
+                    "source": "nan"
+                  },
+                  "automation_id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                  "parent_run_id": null,
+                  "apply_run_ids": [],
+                  "approval": null,
+                  "approval_kinds": [
+                    "git_push",
+                    "github_create_pr",
+                    "github_pr_comment",
+                    "github_pr_review",
+                    "github_issue_comment",
+                    "github_add_labels"
+                  ],
+                  "github_repo": "acme/api",
+                  "trigger_depth": 0,
+                  "secrets": [
+                    {
+                      "env": "GITHUB_TOKEN",
+                      "exposure": "agent"
+                    }
+                  ],
+                  "agent_finished_at": null,
+                  "checkout": null,
+                  "superseded_by": null,
+                  "sticky_pr_comment": false
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The run was created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                },
+                "example": {
+                  "id": "6f1c2a9b-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+                  "object": "run",
+                  "workspace": {
+                    "id": "3b0e8f52-1c7a-4d29-9e61-0a4f2b7c8d15",
+                    "name": "develop"
+                  },
+                  "agent": "pi",
+                  "model": null,
+                  "trigger": "api",
+                  "state": "queued",
+                  "queue_position": 1,
+                  "prompt_preview": "Review the pull request described in the input for correctness, security and maintainability.",
+                  "cwd": "/home/nan/projects/api",
+                  "git_isolation": true,
+                  "timeout_seconds": 1800,
+                  "cancel_requested": false,
+                  "exit_code": null,
+                  "error_code": null,
+                  "result": null,
+                  "usage": {
+                    "tokens_in": null,
+                    "tokens_out": null,
+                    "source": null
+                  },
+                  "last_seq": 0,
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "started_at": null,
                   "finished_at": null,
                   "phase": "propose",
                   "inference": {
@@ -4476,6 +5422,1767 @@
           }
         ]
       }
+    },
+    "/secrets": {
+      "get": {
+        "operationId": "listSecrets",
+        "tags": [
+          "Secrets"
+        ],
+        "summary": "List secrets",
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Your secrets' metadata: names, kinds, hints, descriptions and the automations that use each one. Never a value.\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `secrets:read` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "responses": {
+          "200": {
+            "description": "Your secrets, newest first.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always `no-store`.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretList"
+                },
+                "example": {
+                  "object": "list",
+                  "data": [
+                    {
+                      "id": "5b7d9f1a-3c5e-4a7b-9d1f-2e4a6c8e0b13",
+                      "object": "secret",
+                      "name": "GITHUB_TOKEN",
+                      "kind": "generic",
+                      "provider": null,
+                      "base_url": null,
+                      "hint": "…a1b2",
+                      "value_bytes": 93,
+                      "description": "fine-grained, repo acme/api",
+                      "used_by": [
+                        {
+                          "id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                          "name": "PR review api"
+                        }
+                      ],
+                      "created_at": "2026-10-11T09:00:00Z",
+                      "updated_at": "2026-10-14T10:30:00Z",
+                      "last_used_at": "2026-10-14T11:02:00Z",
+                      "updated_by": "cli_session"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `secrets:read` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `secrets:read` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"secrets:read\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"secrets:read\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Secrets through the API are not available for your account yet (`404 Not found.`): the write API is being opened gradually.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Not found.",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSecret",
+        "tags": [
+          "Secrets"
+        ],
+        "summary": "Create a secret",
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Saves a new secret. The value is encrypted and can never be read back, by anyone. Up to 100 secrets per member.\n\nWithout an `Idempotency-Key`, a retry after a lost answer gets `409 name_taken`: list your secrets to check it was created.\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `secrets:write` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+            },
+            "description": "Optional. A retry with the same key, `name`, `kind` and `provider` returns the secret the first request created (`200`); the value of the retry is ignored, not compared. The same key with a different `name`, `kind` or `provider` is `409 idempotency_key_reused`. Deleting the secret frees its key."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSecretRequest"
+              },
+              "examples": {
+                "generic": {
+                  "summary": "A token for your automations.",
+                  "value": {
+                    "name": "GITHUB_TOKEN",
+                    "value": "github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz",
+                    "description": "fine-grained, repo acme/api"
+                  }
+                },
+                "provider_key": {
+                  "summary": "Your own key with an OpenAI-compatible provider.",
+                  "value": {
+                    "name": "TOGETHER_KEY",
+                    "value": "tgp_v1_0123456789abcdef",
+                    "kind": "provider_key",
+                    "provider": "openai_compatible",
+                    "base_url": "https://api.together.xyz/v1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A retry with the same `Idempotency-Key`: the secret the first request created.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always `no-store`.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Secret"
+                },
+                "example": {
+                  "id": "5b7d9f1a-3c5e-4a7b-9d1f-2e4a6c8e0b13",
+                  "object": "secret",
+                  "name": "GITHUB_TOKEN",
+                  "kind": "generic",
+                  "provider": null,
+                  "base_url": null,
+                  "hint": "…a1b2",
+                  "value_bytes": 93,
+                  "description": "fine-grained, repo acme/api",
+                  "used_by": [],
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "updated_at": "2026-10-11T09:00:00Z",
+                  "last_used_at": null,
+                  "updated_by": "cli_session"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always `no-store`.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Secret"
+                },
+                "example": {
+                  "id": "5b7d9f1a-3c5e-4a7b-9d1f-2e4a6c8e0b13",
+                  "object": "secret",
+                  "name": "GITHUB_TOKEN",
+                  "kind": "generic",
+                  "provider": null,
+                  "base_url": null,
+                  "hint": "…a1b2",
+                  "value_bytes": 93,
+                  "description": "fine-grained, repo acme/api",
+                  "used_by": [],
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "updated_at": "2026-10-11T09:00:00Z",
+                  "last_used_at": null,
+                  "updated_by": "cli_session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A field that does not pass validation (`param` names it, never echoing the value), an unknown field, a body over 32 KiB, or a malformed `Idempotency-Key`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "name": {
+                    "summary": "A name that is not an environment variable name.",
+                    "value": {
+                      "error": {
+                        "message": "must match ^[A-Z][A-Z0-9_]{0,63}$ (an environment variable name)",
+                        "type": "invalid_request_error",
+                        "param": "name",
+                        "code": "invalid_request"
+                      }
+                    }
+                  },
+                  "value": {
+                    "summary": "A value that ends with a line break.",
+                    "value": {
+                      "error": {
+                        "message": "must not start or end with a line break",
+                        "type": "invalid_request_error",
+                        "param": "value",
+                        "code": "invalid_request"
+                      }
+                    }
+                  },
+                  "base_url": {
+                    "summary": "An OpenAI-compatible key without its base URL.",
+                    "value": {
+                      "error": {
+                        "message": "base_url is required for an openai_compatible provider key",
+                        "type": "invalid_request_error",
+                        "param": "base_url",
+                        "code": "invalid_request"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `secrets:write` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`). Also `platform_access_required` without an active membership.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `secrets:write` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"secrets:write\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"secrets:write\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  },
+                  "platform_access_required": {
+                    "summary": "No active membership.",
+                    "value": {
+                      "error": {
+                        "message": "secrets require an active membership",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "platform_access_required"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Secrets through the API are not available for your account yet (`404 Not found.`): the write API is being opened gradually.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Not found.",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken (`name_taken`), you have 100 secrets (`too_many_secrets`), or the `Idempotency-Key` was used for a different secret (`idempotency_key_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "name_taken": {
+                    "summary": "A secret with this name exists.",
+                    "value": {
+                      "error": {
+                        "message": "a secret with this name already exists",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "name_taken"
+                      }
+                    }
+                  },
+                  "too_many_secrets": {
+                    "summary": "100 secrets already.",
+                    "value": {
+                      "error": {
+                        "message": "you have reached the maximum of 100 secrets",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "too_many_secrets"
+                      }
+                    }
+                  },
+                  "idempotency_key_reused": {
+                    "summary": "The key was used for another secret.",
+                    "value": {
+                      "error": {
+                        "message": "this Idempotency-Key was already used to create a different secret",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "idempotency_key_reused"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many secret changes (`rate_limited`): every create, value replacement, change and delete of a member shares one budget of 30 at once, then 120 per hour, together with the changes made in the portal. Wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Too many secret changes recently. Try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "rate_limited"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Secrets are temporarily unavailable (`secrets_unavailable`). Retry shortly.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "secrets are temporarily unavailable, try again shortly",
+                    "type": "server_error",
+                    "param": null,
+                    "code": "secrets_unavailable"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/secrets/{id}": {
+      "get": {
+        "operationId": "getSecret",
+        "tags": [
+          "Secrets"
+        ],
+        "summary": "Get a secret",
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "One secret's metadata. Never the value.\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `secrets:read` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The secret id. A malformed id answers `404`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The secret.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always `no-store`.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Secret"
+                },
+                "example": {
+                  "id": "5b7d9f1a-3c5e-4a7b-9d1f-2e4a6c8e0b13",
+                  "object": "secret",
+                  "name": "GITHUB_TOKEN",
+                  "kind": "generic",
+                  "provider": null,
+                  "base_url": null,
+                  "hint": "…a1b2",
+                  "value_bytes": 93,
+                  "description": "fine-grained, repo acme/api",
+                  "used_by": [
+                    {
+                      "id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                      "name": "PR review api"
+                    }
+                  ],
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "updated_at": "2026-10-14T10:30:00Z",
+                  "last_used_at": "2026-10-14T11:02:00Z",
+                  "updated_by": "cli_session"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `secrets:read` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `secrets:read` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"secrets:read\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"secrets:read\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No secret with that id among yours (another member's is also `404`, and so is a malformed id), or secrets are not available for your account (`404 Not found.`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "secret not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateSecret",
+        "tags": [
+          "Secrets"
+        ],
+        "summary": "Change a secret description or base URL",
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Changes the description and, for an `openai_compatible` provider key, the base URL. The value is changed with [Replace a secret value](#tag/secrets/PUT/secrets/{id}/value); the name, kind and provider never change.\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `secrets:write` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The secret id. A malformed id answers `404`."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSecretRequest"
+              },
+              "example": {
+                "description": "fine-grained, repo acme/api, expires in December"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The secret, changed.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always `no-store`.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Secret"
+                },
+                "example": {
+                  "id": "5b7d9f1a-3c5e-4a7b-9d1f-2e4a6c8e0b13",
+                  "object": "secret",
+                  "name": "GITHUB_TOKEN",
+                  "kind": "generic",
+                  "provider": null,
+                  "base_url": null,
+                  "hint": "…a1b2",
+                  "value_bytes": 93,
+                  "description": "fine-grained, repo acme/api",
+                  "used_by": [
+                    {
+                      "id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                      "name": "PR review api"
+                    }
+                  ],
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "updated_at": "2026-10-14T10:30:00Z",
+                  "last_used_at": "2026-10-14T11:02:00Z",
+                  "updated_by": "cli_session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No field, an unknown field, or a field that does not pass validation (`param` names it).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "empty": {
+                    "summary": "Neither field.",
+                    "value": {
+                      "error": {
+                        "message": "description or base_url is required",
+                        "type": "invalid_request_error",
+                        "param": "description",
+                        "code": "invalid_request"
+                      }
+                    }
+                  },
+                  "base_url": {
+                    "summary": "A base URL on a secret that is not an OpenAI-compatible key.",
+                    "value": {
+                      "error": {
+                        "message": "only an openai_compatible provider key has a base_url",
+                        "type": "invalid_request_error",
+                        "param": "base_url",
+                        "code": "invalid_request"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `secrets:write` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `secrets:write` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"secrets:write\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"secrets:write\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No secret with that id among yours (another member's is also `404`, and so is a malformed id), or secrets are not available for your account (`404 Not found.`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "secret not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many secret changes (`rate_limited`): every create, value replacement, change and delete of a member shares one budget of 30 at once, then 120 per hour, together with the changes made in the portal. Wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Too many secret changes recently. Try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "rate_limited"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSecret",
+        "tags": [
+          "Secrets"
+        ],
+        "summary": "Delete a secret",
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Deletes the secret and its value for good. Refused while an automation uses it, as one of its secrets or as its provider key: change those automations first.\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `secrets:write` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The secret id. A malformed id answers `404`."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `secrets:write` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `secrets:write` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"secrets:write\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"secrets:write\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No secret with that id among yours (another member's is also `404`, and so is a malformed id), or secrets are not available for your account (`404 Not found.`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "secret not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An automation uses it (`secret_in_use`): `error.automations` lists them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretConflictError"
+                },
+                "example": {
+                  "error": {
+                    "message": "the secret is assigned to automations",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "secret_in_use",
+                    "automations": [
+                      {
+                        "id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                        "name": "PR review api"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many secret changes (`rate_limited`): every create, value replacement, change and delete of a member shares one budget of 30 at once, then 120 per hour, together with the changes made in the portal. Wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Too many secret changes recently. Try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "rate_limited"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/secrets/{id}/value": {
+      "put": {
+        "operationId": "replaceSecretValue",
+        "tags": [
+          "Secrets"
+        ],
+        "summary": "Replace a secret value",
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "description": "Replaces the value. The new one is used by every run that starts from then on, including runs already queued; the old one cannot be recovered.\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `secrets:write` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The secret id. A malformed id answers `404`."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceSecretValueRequest"
+              },
+              "example": {
+                "value": "github_pat_11ABCDEFG0123456789_zyxwvutsrqponmlkjihgfedcba"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The secret, with its new hint and size.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always `no-store`.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Secret"
+                },
+                "example": {
+                  "id": "5b7d9f1a-3c5e-4a7b-9d1f-2e4a6c8e0b13",
+                  "object": "secret",
+                  "name": "GITHUB_TOKEN",
+                  "kind": "generic",
+                  "provider": null,
+                  "base_url": null,
+                  "hint": "…a1b2",
+                  "value_bytes": 93,
+                  "description": "fine-grained, repo acme/api",
+                  "used_by": [
+                    {
+                      "id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                      "name": "PR review api"
+                    }
+                  ],
+                  "created_at": "2026-10-11T09:00:00Z",
+                  "updated_at": "2026-10-14T10:30:00Z",
+                  "last_used_at": "2026-10-14T11:02:00Z",
+                  "updated_by": "cli_session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A value that does not pass validation (`param: value`, never echoing it).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "value": {
+                    "summary": "A value that starts with a line break.",
+                    "value": {
+                      "error": {
+                        "message": "must not start or end with a line break",
+                        "type": "invalid_request_error",
+                        "param": "value",
+                        "code": "invalid_request"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `secrets:write` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`). Also `platform_access_required` without an active membership.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `secrets:write` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"secrets:write\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"secrets:write\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  },
+                  "platform_access_required": {
+                    "summary": "No active membership.",
+                    "value": {
+                      "error": {
+                        "message": "secrets require an active membership",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "platform_access_required"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No secret with that id among yours (another member's is also `404`, and so is a malformed id), or secrets are not available for your account (`404 Not found.`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "secret not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "With the new value, the secrets of a run of some automation would add up to more than 48 KiB (`secrets_too_large`): `error.automations` lists them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretConflictError"
+                },
+                "example": {
+                  "error": {
+                    "message": "the secrets of a run would exceed 48 KiB",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "secrets_too_large",
+                    "automations": [
+                      {
+                        "id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                        "name": "PR review api"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many secret changes (`rate_limited`): every create, value replacement, change and delete of a member shares one budget of 30 at once, then 120 per hour, together with the changes made in the portal. Wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Too many secret changes recently. Try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "rate_limited"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Secrets are temporarily unavailable (`secrets_unavailable`). Retry shortly.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "secrets are temporarily unavailable, try again shortly",
+                    "type": "server_error",
+                    "param": null,
+                    "code": "secrets_unavailable"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/automations/{id}/triggers/{trigger_id}": {
+      "patch": {
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "tags": [
+          "Automations"
+        ],
+        "operationId": "updateAutomationTrigger",
+        "summary": "Change a trigger",
+        "description": "Pauses or resumes a trigger (`enabled`), or changes its filters or its schedule. The kind and the signature scheme never change: delete it and create another.\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `automations:write` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The automation id. A malformed id answers `404`."
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The trigger id, from the trigger list. A malformed id answers `404`."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTriggerRequest"
+              },
+              "example": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The trigger, changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trigger"
+                },
+                "example": {
+                  "id": "9e2b4d6f-1a3c-4e5b-8d7f-6c0a2b4e6f81",
+                  "object": "trigger",
+                  "automation_id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+                  "kind": "webhook",
+                  "enabled": false,
+                  "token_prefix": "nan_whk_Q3vX",
+                  "signature_scheme": "github",
+                  "event_filter": {
+                    "events": [
+                      "pull_request"
+                    ],
+                    "actions": [
+                      "opened",
+                      "synchronize",
+                      "reopened",
+                      "ready_for_review"
+                    ],
+                    "exclude_drafts": true
+                  },
+                  "actor_filter": {
+                    "logins": [],
+                    "author_associations": [
+                      "OWNER",
+                      "MEMBER",
+                      "COLLABORATOR"
+                    ],
+                    "exclude_bots": true
+                  },
+                  "prev_secret_until": null,
+                  "cron": null,
+                  "timezone": null,
+                  "next_fire_at": null,
+                  "last_fired_at": null,
+                  "last_outcome": null,
+                  "created_at": "2026-10-14T09:01:00Z",
+                  "updated_at": "2026-10-14T09:01:00Z",
+                  "updated_by": "cli_session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A field that does not pass validation, or one that does not apply to the kind of trigger.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "cron": {
+                    "summary": "A schedule on a webhook.",
+                    "value": {
+                      "error": {
+                        "message": "a webhook trigger has no schedule",
+                        "type": "invalid_request_error",
+                        "param": "cron",
+                        "code": "invalid_request"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:write` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`). Until your account has the write API, every credential but the portal gets `browser_session_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:write` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:write\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"automations:write\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  },
+                  "browser_session_required": {
+                    "summary": "The write API is not yet available for your account: the change is made in the portal.",
+                    "value": {
+                      "error": {
+                        "message": "This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs or create tokens with automations or secrets scopes.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "browser_session_required"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No automation or trigger with that id among yours (another member's is also `404`, and so is a malformed id). The message names the automation either way.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "automation not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many automation changes (`rate_limited`): every write to a member's automations and their triggers shares one budget of 30 at once, then 300 per hour. Wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Too many automation changes recently. Try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "rate_limited"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "tags": [
+          "Automations"
+        ],
+        "operationId": "deleteAutomationTrigger",
+        "summary": "Delete a trigger",
+        "description": "Deletes the trigger: its webhook URL stops working, or its schedule stops, at once.\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `automations:write` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The automation id. A malformed id answers `404`."
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The trigger id, from the trigger list. A malformed id answers `404`."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:write` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`). Until your account has the write API, every credential but the portal gets `browser_session_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:write` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:write\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"automations:write\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  },
+                  "browser_session_required": {
+                    "summary": "The write API is not yet available for your account: the change is made in the portal.",
+                    "value": {
+                      "error": {
+                        "message": "This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs or create tokens with automations or secrets scopes.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "browser_session_required"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No automation or trigger with that id among yours (another member's is also `404`, and so is a malformed id). The message names the automation either way.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "automation not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many automation changes (`rate_limited`): every write to a member's automations and their triggers shares one budget of 30 at once, then 300 per hour. Wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Too many automation changes recently. Try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "rate_limited"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/automations/{id}/triggers/{trigger_id}/rotate": {
+      "post": {
+        "security": [
+          {
+            "cliSession": []
+          },
+          {
+            "platformToken": []
+          }
+        ],
+        "tags": [
+          "Automations"
+        ],
+        "operationId": "rotateAutomationTrigger",
+        "summary": "Rotate a webhook URL or signing secret",
+        "description": "Gives a webhook a new URL, a new signing secret, or both. A new URL replaces the old one at once. A new signing secret keeps the old one working for 24 hours unless `grace` is `false`. The answer carries the new values, **the only time they are returned**, with `Cache-Control: no-store`. For `stripe`, roll the secret in Stripe first and send it as `signing_secret` (required with `secret`, `400` without it).\n\nAuthentication: a CLI session (`nan auth login`) or a platform token (`nan_pat_...`) with the `automations:write` scope. An API key (`sk-...`) is refused (`403 credential_not_allowed`), and so is the key that lives inside a workspace (`403 workspace_key_not_allowed`).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The automation id. A malformed id answers `404`."
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The trigger id, from the trigger list. A malformed id answers `404`."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateTriggerRequest"
+              },
+              "examples": {
+                "nan_or_github": {
+                  "summary": "A new signing secret, the old one valid for 24 hours.",
+                  "value": {
+                    "rotate": [
+                      "secret"
+                    ],
+                    "grace": true
+                  }
+                },
+                "stripe": {
+                  "summary": "Stripe: the new secret you rolled in Stripe.",
+                  "value": {
+                    "rotate": [
+                      "secret"
+                    ],
+                    "signing_secret": "whsec_9f8e7d6c5b4a39281706f5e4d3c2b1a0"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rotated. The only time the new values are returned.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Always `no-store`.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerRotated"
+                },
+                "example": {
+                  "signing_secret": "nan_whsec_Pq3rS5tU7vW9xY2zA4bC6dE8fG1hJ0kM"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`rotate` empty or with something other than `url` and `secret`, a schedule (no URL or secret), or a `signing_secret` without `secret`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "rotate": {
+                    "summary": "Nothing to rotate.",
+                    "value": {
+                      "error": {
+                        "message": "rotate must list \"url\" and/or \"secret\"",
+                        "type": "invalid_request_error",
+                        "param": "rotate",
+                        "code": "invalid_request"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RunsUnauthorized"
+          },
+          "403": {
+            "description": "A platform token without the `automations:write` scope (`token_scope_denied`), an API key (`sk-...`) or a session from an older client (`credential_not_allowed`), or the key that lives inside a workspace (`workspace_key_not_allowed`). Until your account has the write API, every credential but the portal gets `browser_session_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "token_scope_denied": {
+                    "summary": "A platform token without the `automations:write` scope.",
+                    "value": {
+                      "error": {
+                        "message": "This platform token does not have the \"automations:write\" scope this endpoint requires. Create a token with that scope in the Tokens section of Settings at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "token_scope_denied"
+                      }
+                    }
+                  },
+                  "credential_not_allowed": {
+                    "summary": "An API key (`sk-...`), or a session the write API does not accept.",
+                    "value": {
+                      "error": {
+                        "message": "This endpoint needs a browser session, a CLI session (nan auth login) or a platform token with the \"automations:write\" scope. API keys (sk-), workspace keys and sessions from older clients are not accepted here: sign in again with the CLI or at cloud.nan.builders.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "credential_not_allowed"
+                      }
+                    }
+                  },
+                  "workspace_key_not_allowed": {
+                    "summary": "The key that lives inside a workspace.",
+                    "value": {
+                      "error": {
+                        "message": "workspace keys cannot manage runs",
+                        "type": "invalid_request_error",
+                        "param": null,
+                        "code": "workspace_key_not_allowed"
+                      }
+                    }
+                  },
+                  "browser_session_required": {
+                    "summary": "The write API is not yet available for your account: the change is made in the portal.",
+                    "value": {
+                      "error": {
+                        "message": "This action needs a browser session: sign in at cloud.nan.builders in your browser and try again from there. CLI sessions, API keys and platform tokens cannot approve runs or create tokens with automations or secrets scopes.",
+                        "type": "permission_error",
+                        "param": null,
+                        "code": "browser_session_required"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No automation or trigger with that id among yours (another member's is also `404`, and so is a malformed id). The message names the automation either way.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "automation not found",
+                    "type": "invalid_request_error",
+                    "param": null,
+                    "code": "not_found"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many automation changes (`rate_limited`): every write to a member's automations and their triggers shares one budget of 30 at once, then 300 per hour. Wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Too many automation changes recently. Try again later.",
+                    "type": "rate_limit_exceeded",
+                    "param": null,
+                    "code": "rate_limited"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4489,7 +7196,12 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "nan_pat_...",
-        "description": "Platform token (`nan_pat_...`), from \"Tokens\" in your settings on the platform. Send it as `Authorization: Bearer <token>`. It works only on the platform API: Runs (`/v1/runs...`), Automations (`/v1/automations...`), Approvals and the two Workspaces endpoints, and only where it carries the scope the endpoint names: `runs`, `workspaces:read`, `automations:read` or `automations:run`. A missing scope answers `403 token_scope_denied`. New tokens get `runs` and `workspaces:read` by default; a token with an `automations:` scope can only be created from a browser sign-in. It never works for inference: inference endpoints refuse it with `401 token_not_valid_for_inference`. It can never approve a run or change automations or secrets. Shown once when you create it; up to 10 active; expires after 30, 90 or 365 days, or never; revocable at any time. Any member with an active subscription can create one; creating runs still needs a plan with inference."
+        "description": "Platform token (`nan_pat_...`), from \"Tokens\" in your settings on the platform. Send it as `Authorization: Bearer <token>`. It works only on the platform API: Runs (`/v1/runs...`), Automations (`/v1/automations...`), Approvals, Secrets (`/v1/secrets...`) and the two Workspaces endpoints, and only where it carries the scope the endpoint names: `runs`, `workspaces:read`, `automations:read`, `automations:run`, `automations:write`, `secrets:read` or `secrets:write`. A missing scope answers `403 token_scope_denied`. New tokens get `runs` and `workspaces:read` by default; a token with an `automations:` or `secrets:` scope can only be created from a browser sign-in. It never works for inference: inference endpoints refuse it with `401 token_not_valid_for_inference`. It can never approve a run, and it changes automations or secrets only with `automations:write` or `secrets:write`. Shown once when you create it; up to 10 active; expires after 30, 90 or 365 days, or never; revocable at any time. Any member with an active subscription can create one; creating runs still needs a plan with inference."
+      },
+      "cliSession": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The session the [NaN CLI](https://nan.builders/docs/nan-cli) saves when you sign in with `nan auth login`, sent as `Authorization: Bearer <session>`. It manages your secrets and automations where the write API is available for your account, and it can do everything you can do signed in, except approve. Sign in on your own machine: a session saved inside a workspace can be read by the agents that run there."
       }
     },
     "schemas": {
@@ -7091,6 +9803,15 @@
             "type": "boolean",
             "default": false,
             "description": "Only with `checkout: \"fresh\"`. `false` (the default): pull requests from forks, pull requests whose author has no write access to the repository (not an owner, member or collaborator) and `workflow_run` events from forks are ignored (delivery outcome `ignored`), because the agent and the tests it runs would execute that code with the automation's agent secrets in your workspace. `true`: they run too. Your decision."
+          },
+          "updated_by": {
+            "type": "string",
+            "enum": [
+              "browser_session",
+              "cli_session",
+              "platform_token"
+            ],
+            "description": "The kind of credential that made the last change: `browser_session` (the portal), `cli_session` (the NaN CLI after `nan auth login`) or `platform_token` (a `nan_pat_...` token). Objects last changed before the write API read `browser_session`."
           }
         }
       },
@@ -7245,7 +9966,7 @@
       },
       "Trigger": {
         "type": "object",
-        "description": "What starts an automation: a webhook or a schedule. The webhook URL and its signing secret are never returned after they are created or rotated.",
+        "description": "What starts an automation: a webhook or a schedule. The webhook URL and its signing secret are returned only once, in the answer to creating or rotating the trigger, and never afterwards.",
         "properties": {
           "id": {
             "type": "string",
@@ -7384,6 +10105,15 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "updated_by": {
+            "type": "string",
+            "enum": [
+              "browser_session",
+              "cli_session",
+              "platform_token"
+            ],
+            "description": "The kind of credential that made the last change: `browser_session` (the portal), `cli_session` (the NaN CLI after `nan auth login`) or `platform_token` (a `nan_pat_...` token). Objects last changed before the write API read `browser_session`."
           }
         }
       },
@@ -7612,7 +10342,7 @@
         }
       },
       "CreateRunInference": {
-        "description": "The inference of the run. Leave it out (or send `{\"source\":\"nan\"}`) for NaN inference. `{\"source\":\"byok\",\"secret\":\"<NAME>\",\"model\":\"<id>\"}` uses your own provider key: `secret` is the name of a secret of kind `provider_key` (created in the portal; the secrets API is portal-only) and `model` the model id your provider serves. With `byok`, leave the top-level `model` out. A run with `byok` needs a signed-in session: an API key or a platform token gets `403 session_required` (they can run an automation that uses your key). Guide: [Use your own provider key](https://nan.builders/docs/runs#use-your-own-provider-key-byok).",
+        "description": "The inference of the run. Leave it out (or send `{\"source\":\"nan\"}`) for NaN inference. `{\"source\":\"byok\",\"secret\":\"<NAME>\",\"model\":\"<id>\"}` uses your own provider key: `secret` is the name of a secret of kind `provider_key` (created in the portal, with `nan secrets set` or through [Secrets](#tag/secrets)) and `model` the model id your provider serves. With `byok`, leave the top-level `model` out. A run with `byok` needs a signed-in session: an API key or a platform token gets `403 session_required` (they can run an automation that uses your key). Guide: [Use your own provider key](https://nan.builders/docs/runs#use-your-own-provider-key-byok).",
         "oneOf": [
           {
             "type": "object",
@@ -7661,6 +10391,834 @@
             }
           }
         ]
+      },
+      "Secret": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "A secret's metadata. No field ever carries the value: once saved, nobody can read it back. Guide: [Secrets](https://nan.builders/docs/automations#secrets).",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "secret"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+            "description": "Unique among your secrets. The variable name automations see by default."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "generic",
+              "provider_key"
+            ],
+            "description": "`generic`: a token or key your automations receive. `provider_key`: your own key with an AI provider, used as the inference of runs and automations ([BYOK](https://nan.builders/docs/runs#use-your-own-provider-key-byok))."
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "openai_compatible",
+              "anthropic",
+              "openai",
+              "gemini",
+              null
+            ],
+            "description": "A provider key's provider; `null` for a generic secret."
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An `openai_compatible` provider key's base URL; `null` otherwise. It is not a secret: it is shown as it is."
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The last 4 characters of the value, after `…`, when the value is at least 20 bytes and they are letters, digits, `_` or `-`; `null` otherwise."
+          },
+          "value_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16384,
+            "description": "The size of the value, in bytes."
+          },
+          "description": {
+            "type": "string",
+            "description": "Up to 256 characters; `\"\"` when there is none."
+          },
+          "used_by": {
+            "type": "array",
+            "description": "The automations that use it, as one of their secrets or as their provider key.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a run last received it (updated at most once a minute)."
+          },
+          "updated_by": {
+            "type": "string",
+            "enum": [
+              "browser_session",
+              "cli_session",
+              "platform_token"
+            ],
+            "description": "The kind of credential that made the last change: `browser_session` (the portal), `cli_session` (the NaN CLI after `nan auth login`) or `platform_token` (a `nan_pat_...` token). Objects last changed before the write API read `browser_session`."
+          }
+        },
+        "example": {
+          "id": "5b7d9f1a-3c5e-4a7b-9d1f-2e4a6c8e0b13",
+          "object": "secret",
+          "name": "GITHUB_TOKEN",
+          "kind": "generic",
+          "provider": null,
+          "base_url": null,
+          "hint": "…a1b2",
+          "value_bytes": 93,
+          "description": "fine-grained, repo acme/api",
+          "used_by": [
+            {
+              "id": "0d5a7c3e-8b21-4f6a-9c4d-2e7f1a3b5c69",
+              "name": "PR review api"
+            }
+          ],
+          "created_at": "2026-10-11T09:00:00Z",
+          "updated_at": "2026-10-14T10:30:00Z",
+          "last_used_at": "2026-10-14T11:02:00Z",
+          "updated_by": "cli_session"
+        }
+      },
+      "SecretList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Secret"
+            }
+          }
+        }
+      },
+      "CreateSecretRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+            "description": "Capitals, digits and `_`, starting with a letter, up to 64 characters. Unique among your secrets (`409 name_taken`)."
+          },
+          "value": {
+            "type": "string",
+            "description": "The value, sent once and never returned. A `generic` secret: 1 to 16384 bytes of UTF-8 text, without control characters other than tab and line breaks, and it must not start or end with a line break (values are never trimmed). A `provider_key`: 8 to 4096 printable ASCII characters without spaces or line breaks. Errors name the field (`param: value`), never the value."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "generic",
+              "provider_key"
+            ],
+            "default": "generic",
+            "description": "Fixed once created. `provider_key` needs your own provider keys to be available for your account."
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "openai_compatible",
+              "anthropic",
+              "openai",
+              "gemini",
+              null
+            ],
+            "description": "Required for a `provider_key`, `null` or absent for a `generic` secret. Fixed once created."
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required for an `openai_compatible` provider key, and only for it: an `https` URL with a public host, without `user:password@`, query string or fragment. See [the base URL rules](https://nan.builders/docs/runs#save-your-key-as-a-provider-key)."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional, up to 256 characters without control characters."
+          }
+        }
+      },
+      "UpdateSecretRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "description": "At least one field. The whole change applies, or none of it.",
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Up to 256 characters without control characters. `\"\"` clears it."
+          },
+          "base_url": {
+            "type": "string",
+            "description": "Only for an `openai_compatible` provider key (`400` on any other secret), with the rules of create. `null` is refused."
+          }
+        }
+      },
+      "ReplaceSecretValueRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "The value, sent once and never returned. A `generic` secret: 1 to 16384 bytes of UTF-8 text, without control characters other than tab and line breaks, and it must not start or end with a line break (values are never trimmed). A `provider_key`: 8 to 4096 printable ASCII characters without spaces or line breaks. Errors name the field (`param: value`), never the value."
+          }
+        }
+      },
+      "SecretConflictError": {
+        "type": "object",
+        "description": "The OpenAI error envelope, with the automations involved inside `error` (`secret_in_use`, `secrets_too_large`).",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "param": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "automations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "CreateAutomationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "workspace",
+          "agent"
+        ],
+        "description": "The automation to create. Fields left out take their defaults. Unknown fields are refused (`400`).",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "1 to 64 characters, unique among your automations regardless of case (`409 name_taken`)."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional, up to 1024 characters."
+          },
+          "template": {
+            "type": "string",
+            "enum": [
+              "custom",
+              "pr_review",
+              "issue_triage",
+              "ci_failure",
+              "generic_webhook"
+            ],
+            "description": "Default `custom`. A template fills in its instructions, approval settings and concurrency when you leave them out. Fixed once created."
+          },
+          "workspace": {
+            "type": "string",
+            "description": "The workspace, by id or by name."
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "pi",
+              "pi_gentle",
+              "hermes"
+            ],
+            "description": "The agent: `pi` (Pi), `pi_gentle` (Pi + Gentle Shell: Pi started through gentle-shell) or `hermes` (Hermes). Creating an automation, moving it to another workspace, changing its agent or switching it back on needs the agent installed in the workspace (`409 agent_not_installed`). If the agent is removed from the workspace later, the automation keeps it and its runs are refused with `agent_not_installed`."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model of its runs, or `null` for the agent's default. With `byok` inference it is `inference.model` and is never `null`."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "What the agent does on every run, 1 to 16384 bytes. Optional with a template, which brings its own."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "The folder the agent works in: `/home/nan` (the default) or a folder inside it."
+          },
+          "git_isolation": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Separate branch: `true` on, `false` off, `null` auto."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 7200,
+            "description": "Default 1800."
+          },
+          "approval_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "git_push",
+                "github_create_pr",
+                "github_pr_comment",
+                "github_pr_review",
+                "github_issue_comment",
+                "github_add_labels"
+              ]
+            },
+            "description": "The kinds of action that wait for your approval. Absent: every kind. `[]`: none, every action applies without asking."
+          },
+          "approval_ttl_seconds": {
+            "type": "integer",
+            "minimum": 3600,
+            "maximum": 604800,
+            "description": "How long a proposal waits for you. Default 259200 (72 hours)."
+          },
+          "inference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CreateRunInference"
+              }
+            ],
+            "description": "The inference of its runs: absent or `{\"source\":\"nan\"}` for NaN inference, `{\"source\":\"byok\",\"secret\",\"model\"}` for your own provider key."
+          },
+          "github_repo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`owner/name`: the repository the actions act on."
+          },
+          "secrets": {
+            "type": "array",
+            "description": "The secrets its runs receive, up to 20: each one by name, the variable name the run sees and who receives it. The secrets of one run add up to 48 KiB at most (`409 secrets_too_large`).",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "secret",
+                "env",
+                "exposure"
+              ],
+              "properties": {
+                "secret": {
+                  "type": "string",
+                  "description": "The name of your secret."
+                },
+                "env": {
+                  "type": "string",
+                  "description": "The variable name the run sees."
+                },
+                "exposure": {
+                  "type": "string",
+                  "enum": [
+                    "agent",
+                    "actions"
+                  ],
+                  "description": "`agent`: the agent receives it. `actions`: only the step that applies actions."
+                }
+              }
+            }
+          },
+          "max_runs_per_hour": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120,
+            "description": "Default 30."
+          },
+          "concurrency_policy": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "skip_if_active",
+              "supersede"
+            ],
+            "description": "What happens when a new event arrives for the same pull request, issue, branch or schedule while a run for it is active, including one awaiting approval. `queue`: a new run is queued. `skip_if_active`: the new event is skipped. `supersede`: the new event starts a run and cancels the active runs of this automation for the same pull request, issue, branch or Stripe object (they end `cancelled`, with `superseded_by` set); events without such a subject (schedules, manual runs, NaN senders) behave as `queue`."
+          },
+          "max_trigger_depth": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5,
+            "description": "Default 2."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Default `true`. `false` creates it switched off."
+          },
+          "checkout": {
+            "type": "string",
+            "enum": [
+              "workspace",
+              "fresh"
+            ],
+            "default": "workspace",
+            "description": "Where the agent works. `workspace`: in `cwd`, in your workspace, as any run. `fresh`: NaN clones `github_repo` for each run into a folder of its own, at the event's exact commit (the pull request's head commit for a `pull_request` event on that repository, the run's head commit for a `workflow_run` event on that repository, the latest commit of the default branch otherwise), and deletes it when the run ends, whatever the outcome; `cwd` is not used and `git_isolation` must be `null` or `false`. A `git_push` is refused in `fresh` mode. Needs `github_repo`."
+          },
+          "sticky_pr_comment": {
+            "type": "boolean",
+            "default": false,
+            "description": "`true`: the automation keeps one comment per pull request. Each run's `github_pr_comment` edits the comment NaN posted before for this automation instead of adding a new one. NaN only edits a comment it posted itself and marked for this automation; issue comments are never edited."
+          },
+          "checkout_untrusted_heads": {
+            "type": "boolean",
+            "default": false,
+            "description": "Only with `checkout: \"fresh\"`. `false` (the default): pull requests from forks, pull requests whose author has no write access to the repository (not an owner, member or collaborator) and `workflow_run` events from forks are ignored (delivery outcome `ignored`), because the agent and the tests it runs would execute that code with the automation's agent secrets in your workspace. `true`: they run too. Your decision."
+          }
+        }
+      },
+      "UpdateAutomationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Only the fields you send change. `null` clears `model`, `git_isolation` and `github_repo`; `inference` cannot be `null`. The template cannot change.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "1 to 64 characters, unique among your automations regardless of case."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional, up to 1024 characters."
+          },
+          "workspace": {
+            "type": "string",
+            "description": "The workspace, by id or by name."
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "pi",
+              "pi_gentle",
+              "hermes"
+            ],
+            "description": "The agent: `pi` (Pi), `pi_gentle` (Pi + Gentle Shell: Pi started through gentle-shell) or `hermes` (Hermes). Creating an automation, moving it to another workspace, changing its agent or switching it back on needs the agent installed in the workspace (`409 agent_not_installed`). If the agent is removed from the workspace later, the automation keeps it and its runs are refused with `agent_not_installed`."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model of its runs, or `null` for the agent's default. With `byok` inference it is `inference.model` and is never `null`."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "1 to 16384 bytes."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "`/home/nan` or a folder inside it."
+          },
+          "git_isolation": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Separate branch: `true` on, `false` off, `null` auto."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 7200
+          },
+          "approval_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "git_push",
+                "github_create_pr",
+                "github_pr_comment",
+                "github_pr_review",
+                "github_issue_comment",
+                "github_add_labels"
+              ]
+            },
+            "description": "Replaces the list. `[]`: nothing waits for your approval, every action applies without asking."
+          },
+          "approval_ttl_seconds": {
+            "type": "integer",
+            "minimum": 3600,
+            "maximum": 604800
+          },
+          "inference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CreateRunInference"
+              }
+            ],
+            "description": "Replaces the inference. `null` is refused."
+          },
+          "github_repo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`owner/name`: the repository the actions act on."
+          },
+          "secrets": {
+            "type": "array",
+            "description": "Replaces every assignment with this list (`[]` removes them all). Up to 20, 48 KiB per run.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "secret",
+                "env",
+                "exposure"
+              ],
+              "properties": {
+                "secret": {
+                  "type": "string",
+                  "description": "The name of your secret."
+                },
+                "env": {
+                  "type": "string",
+                  "description": "The variable name the run sees."
+                },
+                "exposure": {
+                  "type": "string",
+                  "enum": [
+                    "agent",
+                    "actions"
+                  ],
+                  "description": "`agent`: the agent receives it. `actions`: only the step that applies actions."
+                }
+              }
+            }
+          },
+          "max_runs_per_hour": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120
+          },
+          "concurrency_policy": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "skip_if_active",
+              "supersede"
+            ],
+            "description": "What happens when a new event arrives for the same pull request, issue, branch or schedule while a run for it is active, including one awaiting approval. `queue`: a new run is queued. `skip_if_active`: the new event is skipped. `supersede`: the new event starts a run and cancels the active runs of this automation for the same pull request, issue, branch or Stripe object (they end `cancelled`, with `superseded_by` set); events without such a subject (schedules, manual runs, NaN senders) behave as `queue`."
+          },
+          "max_trigger_depth": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "`false` switches it off (its triggers stop starting runs), `true` switches it back on."
+          },
+          "checkout": {
+            "type": "string",
+            "enum": [
+              "workspace",
+              "fresh"
+            ],
+            "default": "workspace",
+            "description": "Where the agent works. `workspace`: in `cwd`, in your workspace, as any run. `fresh`: NaN clones `github_repo` for each run into a folder of its own, at the event's exact commit (the pull request's head commit for a `pull_request` event on that repository, the run's head commit for a `workflow_run` event on that repository, the latest commit of the default branch otherwise), and deletes it when the run ends, whatever the outcome; `cwd` is not used and `git_isolation` must be `null` or `false`. A `git_push` is refused in `fresh` mode. Needs `github_repo`."
+          },
+          "sticky_pr_comment": {
+            "type": "boolean",
+            "default": false,
+            "description": "`true`: the automation keeps one comment per pull request. Each run's `github_pr_comment` edits the comment NaN posted before for this automation instead of adding a new one. NaN only edits a comment it posted itself and marked for this automation; issue comments are never edited."
+          },
+          "checkout_untrusted_heads": {
+            "type": "boolean",
+            "default": false,
+            "description": "Only with `checkout: \"fresh\"`. `false` (the default): pull requests from forks, pull requests whose author has no write access to the repository (not an owner, member or collaborator) and `workflow_run` events from forks are ignored (delivery outcome `ignored`), because the agent and the tests it runs would execute that code with the automation's agent secrets in your workspace. `true`: they run too. Your decision."
+          }
+        }
+      },
+      "CreateTriggerRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind"
+        ],
+        "description": "A webhook (`kind: webhook`, with `signature_scheme`) or a schedule (`kind: schedule`, with `cron` and `timezone`). Up to 5 triggers per automation (`409 too_many_triggers`) and 10 schedules per member (`409 too_many_schedules`).",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "webhook",
+              "schedule"
+            ]
+          },
+          "signature_scheme": {
+            "type": "string",
+            "enum": [
+              "github",
+              "stripe",
+              "nan"
+            ],
+            "description": "Webhook: how the sender signs. See [Webhooks and schedules](https://nan.builders/docs/webhooks)."
+          },
+          "signing_secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only for `stripe`: the endpoint's signing secret from the Stripe dashboard (`whsec_...`). For `github` and `nan`, NaN generates it and returns it once."
+          },
+          "event_filter": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EventFilter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actor_filter": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "GitHub only. `null`: every sender.",
+            "properties": {
+              "logins": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "author_associations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "exclude_bots": {
+                "type": "boolean"
+              }
+            }
+          },
+          "cron": {
+            "type": "string",
+            "description": "Schedule: a five-field cron expression, for example `0 9 * * 1-5`."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Schedule: an IANA time zone, for example `Europe/Madrid`."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Default `true`."
+          }
+        }
+      },
+      "UpdateTriggerRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Only the fields you send change. The kind and the signature scheme cannot change. `null` clears the event or actor filter.",
+        "properties": {
+          "event_filter": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EventFilter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actor_filter": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "GitHub only. `null`: every sender.",
+            "properties": {
+              "logins": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "author_associations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "exclude_bots": {
+                "type": "boolean"
+              }
+            }
+          },
+          "cron": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "`false` pauses it, `true` resumes it."
+          }
+        }
+      },
+      "RotateTriggerRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rotate"
+        ],
+        "description": "Webhooks only.",
+        "properties": {
+          "rotate": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "url",
+                "secret"
+              ]
+            },
+            "description": "`url`: a new webhook URL; the current one stops working at once. `secret`: a new signing secret."
+          },
+          "grace": {
+            "type": "boolean",
+            "default": true,
+            "description": "With `secret`: the old signing secret keeps working for 24 hours (`true`), or stops at once (`false`, for a leaked secret)."
+          },
+          "signing_secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only for `stripe`, with `secret`: the new `whsec_...` you rolled in Stripe."
+          }
+        }
+      },
+      "TriggerCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The new trigger, and for a webhook its full URL and signing secret. This is the only time they are returned: store them now.",
+        "properties": {
+          "trigger": {
+            "$ref": "#/components/schemas/Trigger"
+          },
+          "webhook_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Webhook: the full URL, `https://api.nan.builders/hooks/nan_whk_...`. `null` for a schedule."
+          },
+          "signing_secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Webhook with `github` or `nan`: the signing secret NaN generated (`nan_whsec_...`). `null` for a schedule, and for `stripe` (you sent it)."
+          }
+        }
+      },
+      "TriggerRotated": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "What the rotation created, returned only this once: the new URL when `rotate` had `url`, the new signing secret when it had `secret` (except for `stripe`, whose secret you sent).",
+        "properties": {
+          "webhook_url": {
+            "type": "string",
+            "description": "The new full webhook URL."
+          },
+          "signing_secret": {
+            "type": "string",
+            "description": "The new signing secret NaN generated (`nan_whsec_...`). Absent for `stripe`, whose new secret you sent."
+          }
+        }
       }
     },
     "responses": {
