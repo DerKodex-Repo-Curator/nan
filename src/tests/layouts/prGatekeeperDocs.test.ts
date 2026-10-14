@@ -154,9 +154,10 @@ describe.each(Object.entries(pages))('PR gatekeeper guide (%s)', (_locale, page)
     expect((fm as { parent?: string }).parent).toBe('automations');
     const order = (f: string) => (parseFrontmatter(read(page.dir + f)).frontmatter as { order: number }).order;
     expect(fm.order).toBe(order('automations.mdx') + 1);
-    // The Secrets page is the second sub-item of Automations, then Webhooks.
+    // Secrets and Notifications are the next sub-items of Automations, then Webhooks.
     expect(order('secrets.mdx')).toBe(fm.order + 1);
-    expect(order('webhooks.mdx')).toBe(fm.order + 2);
+    expect(order('notifications.mdx')).toBe(fm.order + 2);
+    expect(order('webhooks.mdx')).toBe(fm.order + 3);
     expect(order('examples.md')).toBe(order('webhooks.mdx') + 1);
     expect(order('apps.md')).toBe(order('examples.md') + 1);
   });
