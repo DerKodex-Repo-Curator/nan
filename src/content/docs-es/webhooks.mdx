@@ -13,7 +13,7 @@ import Callout from '../../components/docs/Callout.astro';
 
 Un **trigger** lanza una [automatización](/es/docs/automations) sin ti: un **webhook** cuando GitHub, Stripe o uno de tus sistemas envía un evento, o una **programación** a las horas que elijas. Cada arranque crea un run en tu workspace con los ajustes de la automatización, exactamente igual que **Run now**.
 
-Una automatización puede tener hasta **5 triggers**, de cualquiera de los dos tipos. Los gestionas en su pestaña **Triggers**, en [cloud.nan.builders/automations](https://cloud.nan.builders/automations): **+ Webhook**, **+ Schedule** y, en cada trigger, **Pause** / **Resume**, **Rotate** (webhooks) y el icono de la papelera para borrarlo. Añadir, cambiar y borrar triggers exige una [sesión en el navegador](/es/docs/automations#por-qué-algunas-acciones-necesitan-el-navegador).
+Una automatización puede tener hasta **5 triggers**, de cualquiera de los dos tipos. Los gestionas en su pestaña **Triggers**, en [cloud.nan.builders/automations](https://cloud.nan.builders/automations): **+ Webhook**, **+ Schedule** y, en cada trigger, **Pause** / **Resume**, **Rotate** (webhooks) y el icono de la papelera para borrarlo. Si tu cuenta tiene la API de escritura, también puedes gestionarlos desde la CLI (`nan automations triggers`) y la API: consulta [Triggers desde la CLI](/es/docs/automations#triggers-desde-la-cli). Si no, añadir, cambiar y borrar triggers exige una [sesión en el navegador](/es/docs/automations#por-qué-algunas-acciones-necesitan-el-navegador).
 
 ## Añade un webhook
 
@@ -45,6 +45,8 @@ Pulsa **Add webhook**. El portal te muestra, **una sola vez**:
 - **Signing secret** (GitHub y NaN): con lo que el emisor firma cada evento. Para Stripe solo se muestra la URL: el secreto es el que pegaste.
 
 Cópialos y pulsa **I've saved them**. Después, el portal solo muestra el principio de la URL. Si los pierdes, [rótalos](#rota-la-url-o-el-secreto) para conseguir unos nuevos.
+
+Desde la CLI, `nan automations triggers add <automatización> -f webhook.yaml` imprime esos dos mismos valores **una sola vez**, con un aviso para que los guardes en ese momento; `--json` los imprime en JSON para un script. A través de la API, `POST /v1/automations/{id}/triggers` los devuelve una sola vez en `webhook_url` y `signing_secret`, con `Cache-Control: no-store`. Nada vuelve a devolverlos: ni el portal, ni `nan automations triggers ls`, ni la API.
 
 ### Configúralo en el emisor
 
@@ -251,7 +253,7 @@ Desde la terminal: `nan automations deliveries <automation>`. Desde la API: [`GE
 - **New webhook URL**: la URL actual deja de funcionar al momento.
 - **New signing secret** (marcado por defecto): por defecto, el secreto anterior sigue funcionando 24 horas, para que puedas actualizar el emisor sin perder eventos. Desmarca **Keep the old secret valid for 24 hours** si el anterior se ha filtrado: deja de funcionar al momento. Para Stripe, rota antes el secreto en Stripe y pega el nuevo `whsec_...`.
 
-Los valores nuevos se muestran una sola vez, como cuando añadiste el webhook.
+Los valores nuevos se muestran una sola vez, como cuando añadiste el webhook. Desde la CLI, `nan automations triggers rotate <automatización> <trigger-id>` hace lo mismo e imprime los valores nuevos una sola vez; a través de la API, `POST /v1/automations/{id}/triggers/{trigger_id}/rotate` con `{"rotate": ["url", "secret"], "grace": true}`.
 
 ## Bucles
 

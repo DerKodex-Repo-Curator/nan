@@ -182,7 +182,25 @@ nan runs reject <run-id>
 nan secrets ls
 ```
 
-Crear o editar automatizaciones y triggers, escribir secretos y aprobar propuestas solo se hace en el portal, con sesión iniciada en tu navegador: si lo intentas, la CLI te dice dónde. Un run que espera aprobación hace que `nan run`, `nan runs logs -f` y `nan automations run` salgan con código 10. Los detalles están en [Automatizaciones](/es/docs/automations#desde-la-terminal).
+Desde la v0.1.33, si tu cuenta tiene la API de escritura (se está abriendo poco a poco), la CLI también crea y cambia tus secretos, automatizaciones y triggers:
+
+```bash
+nan secrets set GITHUB_TOKEN --value-file ./token.txt     # lo añade, o reemplaza su valor
+gh auth token | nan secrets set GITHUB_READ_TOKEN --value-stdin
+nan secrets show GITHUB_TOKEN
+nan secrets edit GITHUB_TOKEN --description "repo acme/api"
+nan secrets rm GITHUB_TOKEN
+nan automations create -f automation.yaml
+nan automations edit "PR review" -f changes.yaml
+nan automations disable "PR review"
+nan automations triggers add "PR review" -f webhook.yaml  # imprime la URL y el secreto una vez
+```
+
+El valor de un secreto se lee de un archivo o de una tubería, nunca de la línea de comandos, y nada lo vuelve a imprimir. Mientras tu cuenta no tenga la API de escritura, estos comandos te lo dicen y te mandan al portal. Aprobar propuestas siempre se hace en el portal, con sesión iniciada en tu navegador.
+
+Estos comandos usan tu sesión de `nan auth login`, o un token de plataforma con el scope `secrets:` o `automations:write` que corresponda. Inicia sesión en tu propia máquina, nunca dentro de un workspace: los agentes de ahí podrían leer la sesión y cambiar tus secretos. Todos los comandos, los archivos YAML y los avisos están en [Gestiónalas desde la CLI o la API](/es/docs/automations#gestiónalas-desde-la-cli-o-la-api).
+
+Un run que espera aprobación hace que `nan run`, `nan runs logs -f` y `nan automations run` salgan con código 10. Los detalles están en [Automatizaciones](/es/docs/automations#desde-la-terminal).
 
 ## Actualizar
 

@@ -13,7 +13,7 @@ import Callout from '../../components/docs/Callout.astro';
 
 A **trigger** starts an [automation](/docs/automations) without you: a **webhook** when GitHub, Stripe or one of your systems sends an event, or a **schedule** at the times you pick. Each start creates a run in your workspace with the automation's settings, exactly like **Run now**.
 
-An automation can have up to **5 triggers**, of either kind. You manage them in its **Triggers** tab, at [cloud.nan.builders/automations](https://cloud.nan.builders/automations): **+ Webhook**, **+ Schedule**, and on each trigger **Pause** / **Resume**, **Rotate** (webhooks) and the bin icon to delete it. Adding, changing and deleting triggers needs a [browser sign-in](/docs/automations#why-some-actions-need-the-browser).
+An automation can have up to **5 triggers**, of either kind. You manage them in its **Triggers** tab, at [cloud.nan.builders/automations](https://cloud.nan.builders/automations): **+ Webhook**, **+ Schedule**, and on each trigger **Pause** / **Resume**, **Rotate** (webhooks) and the bin icon to delete it. Where your account has the write API, you can also manage them from the CLI (`nan automations triggers`) and the API: see [Triggers from the CLI](/docs/automations#triggers-from-the-cli). Otherwise, adding, changing and deleting triggers needs a [browser sign-in](/docs/automations#why-some-actions-need-the-browser).
 
 ## Add a webhook
 
@@ -45,6 +45,8 @@ Press **Add webhook**. The portal shows, **only once**:
 - **Signing secret** (GitHub and NaN): what the sender signs each event with. For Stripe only the URL is shown: the secret is the one you pasted.
 
 Copy them, then press **I've saved them**. Afterwards the portal only shows the start of the URL. If you lose them, [rotate](#rotate-the-url-or-the-secret) to get new ones.
+
+From the CLI, `nan automations triggers add <automation> -f webhook.yaml` prints the same two values **once**, with a reminder to store them now; `--json` prints them as JSON for a script. Through the API, `POST /v1/automations/{id}/triggers` returns them once in `webhook_url` and `signing_secret`, with `Cache-Control: no-store`. Nothing returns them again: not the portal, not `nan automations triggers ls`, not the API.
 
 ### Set it up on the sender
 
@@ -251,7 +253,7 @@ From the terminal: `nan automations deliveries <automation>`. From the API: [`GE
 - **New webhook URL**: the current URL stops working at once.
 - **New signing secret** (ticked by default): by default the old secret keeps working for 24 hours, so you can update the sender without losing events. Untick **Keep the old secret valid for 24 hours** if the old one leaked: it stops working at once. For Stripe, roll the secret in Stripe first and paste the new `whsec_...`.
 
-The new values are shown once, like when you added the webhook.
+The new values are shown once, like when you added the webhook. From the CLI, `nan automations triggers rotate <automation> <trigger-id>` does the same and prints the new values once; through the API, `POST /v1/automations/{id}/triggers/{trigger_id}/rotate` with `{"rotate": ["url", "secret"], "grace": true}`.
 
 ## Loops
 

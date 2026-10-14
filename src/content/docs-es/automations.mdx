@@ -25,7 +25,7 @@ El agente de una automatización no hace push ni publica nada por su cuenta. **P
 
 - **Un workspace encendido**, con el agente que quieras instalado (Pi, Pi + Gentle Shell o Hermes), como para cualquier [run](/es/docs/runs#elige-el-agente).
 - **Un plan con inferencia, o tu propia clave de proveedor.** Con la inferencia de NaN, los runs de una automatización usan la clave de inferencia de tu workspace y cuentan para el uso de tu plan como cualquier otro run. Con [tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok), los factura tu proveedor y basta con un workspace propio activo.
-- **Una sesión en el navegador.** Crear o cambiar automatizaciones, escribir secretos y aprobar acciones exige que hayas iniciado sesión en [cloud.nan.builders](https://cloud.nan.builders/) desde tu navegador, con el enlace por correo. Una sesión de la CLI, una API key o un token pueden listar automatizaciones y lanzarlas, pero nunca cambiarlas. Consulta [Por qué algunas acciones necesitan el navegador](#por-qué-algunas-acciones-necesitan-el-navegador).
+- **Dónde hacer los cambios.** Crea y cambia automatizaciones y secretos en el portal, en [cloud.nan.builders](https://cloud.nan.builders/), con sesión iniciada mediante el enlace por correo. Si tu cuenta tiene la API de escritura (se está abriendo poco a poco), también puedes hacerlo desde la CLI y la API: consulta [Gestiónalas desde la CLI o la API](#gestiónalas-desde-la-cli-o-la-api). Aprobar acciones siempre necesita el portal. Una API key nunca cambia automatizaciones ni secretos. Consulta [Por qué algunas acciones necesitan el navegador](#por-qué-algunas-acciones-necesitan-el-navegador).
 - **Para las plantillas de GitHub, un token de GitHub guardado como secreto.** Sin él la automatización no se puede guardar, así que créalo antes: consulta [Un token de GitHub para las acciones](#un-token-de-github-para-las-acciones).
 
 ## Crea una automatización
@@ -104,6 +104,8 @@ Los secretos son de **solo escritura**: una vez guardados, nadie puede volver a 
 
 Puedes guardar hasta 100 secretos. Mejor tokens de vida corta, limitados a lo que necesita la automatización.
 
+Cada secreto muestra desde dónde se cambió por última vez (**Last changed from**: **Browser**, **CLI** o **API token**), así que un cambio que no hiciste tú salta a la vista. Desde la CLI: `nan secrets set`, `nan secrets edit` y `nan secrets rm`, en [Gestiónalas desde la CLI o la API](#gestiónalas-desde-la-cli-o-la-api).
+
 ### Asigna secretos a una automatización
 
 En la tarjeta **Secrets** de la automatización, **Add a secret** y elige, para cada uno:
@@ -146,7 +148,7 @@ Una automatización puede usar **tu propia clave** con un proveedor de IA en lug
 
 En los ajustes de la automatización, pon **Inference** en **My own key**, elige la **Provider key** y escribe el **Model**, tal como lo llama tu proveedor. A partir de ahí todos los runs de la automatización usan esa clave y ese modelo, los lance quien los lance: un webhook, una programación, **Run now**, la CLI o la API. Si vuelves a poner **Inference** en **NaN (included in your plan)**, vuelve a la inferencia de NaN, con el modelo de NaN que elijas o, si no eliges ninguno, el predeterminado del agente.
 
-- **Quién puede usarla.** Sin un plan con inferencia de NaN, una automatización con tu propia clave funciona con un workspace propio activo. Crearla y cambiarla necesitan el navegador, como cualquier automatización.
+- **Quién puede usarla.** Sin un plan con inferencia de NaN, una automatización con tu propia clave funciona con un workspace propio activo. Crearla y cambiarla funciona como en cualquier automatización: el portal, o la CLI y la API si tu cuenta tiene la API de escritura.
 - **Cualquier credencial puede lanzarla.** A diferencia de [un run suelto con tu clave](/es/docs/runs#quién-puede-usarla), una automatización con tu clave se puede lanzar con una API key o con un token de plataforma con `automations:run`, por ejemplo desde CI: sus instrucciones son las que tú guardaste, y quien la lanza solo añade la entrada.
 - **Facturación.** Sus runs los factura tu proveedor; NaN no los mide. La clave cuenta para los 48 KiB de secretos que puede recibir un run.
 - **Límites.** Hasta 8 runs con tus propias claves a la vez entre todos tus workspaces, además de los límites de todos los runs. Consulta [Límites](/es/docs/runs#límites).
@@ -351,7 +353,7 @@ nan secrets ls                    # nombres y metadatos, nunca valores
 
 `nan run`, `nan runs logs -f` y `nan automations run` salen con código **10** cuando el run se para esperando aprobación, e imprimen los comandos para leer y rechazar la propuesta y el enlace para aprobarla.
 
-No hay ningún comando para crear o cambiar automatizaciones, escribir secretos o aprobar: la CLI te dice dónde hacerlo en el portal. `nan secrets ls` necesita tu sesión de `nan auth login`; el resto de comandos también aceptan un token de plataforma, igual que `nan run` ([Autenticación](/es/docs/runs#autenticación)).
+Para crear y cambiar automatizaciones, triggers y secretos desde la terminal, consulta [Gestiónalas desde la CLI o la API](#gestiónalas-desde-la-cli-o-la-api). No hay ningún comando para aprobar: la CLI te dice dónde hacerlo en el portal. Los comandos aceptan tu sesión de `nan auth login` o un token de plataforma, igual que `nan run` ([Autenticación](/es/docs/runs#autenticación)). `nan secrets` acepta tu sesión o, si tu cuenta tiene la API de escritura, un token con `secrets:read` (y `secrets:write` para cambiarlos).
 
 ### Desde la API
 
@@ -366,6 +368,113 @@ curl https://api.nan.builders/v1/automations/$AUTOMATION_ID/runs \
 
 La respuesta es el run, que sigues como cualquier otro ([Crea un run y síguelo](/es/docs/runs#crea-un-run-y-síguelo)). La referencia completa está en [Referencia de la API → Automations](/es/docs/api#tag/automations) y [Referencia de la API → Approvals](/es/docs/api#tag/approvals).
 
+## Gestiónalas desde la CLI o la API
+
+Si tu cuenta tiene la **API de escritura**, puedes crear y cambiar automatizaciones, sus triggers y tus secretos desde la [CLI de NaN](/es/docs/nan-cli) (**0.1.33** o posterior) y la API, no solo desde el portal. Se está abriendo poco a poco: mientras tu cuenta no la tenga, la CLI te dice que uses el portal (código de salida 64), las escrituras de automatizaciones responden `403 browser_session_required` y `/v1/secrets` responde `404`. Aprobar una propuesta sigue siendo siempre cosa del portal.
+
+Qué puede hacer estos cambios:
+
+- **Tu sesión de la CLI**, la de `nan auth login` en tu propia máquina.
+- **Un token de plataforma** con el scope `automations:write` o `secrets:write`, para scripts y CI. Consulta [Tokens para automatizaciones](#tokens-para-automatizaciones).
+- Nunca una API key (`sk-...`), la clave de dentro de un workspace ni una sesión de una CLI antigua: reciben `403 credential_not_allowed` (`workspace_key_not_allowed` en el caso de la clave del workspace).
+
+<Callout title="Una credencial que escribe vale tanto como tus secretos" variant="warning">
+Quien tenga una credencial que pueda escribir puede reemplazar cualquiera de tus secretos (por ejemplo, cambiar el token de GitHub con el que hace push una automatización) o crear una automatización que reciba todos tus secretos, con sus instrucciones y sin nada esperando tu aprobación: eso equivale a leer todos tus secretos. Así que:
+
+- Ejecuta `nan auth login` en tu propia máquina, **nunca dentro de un workspace**: los agentes que se ejecutan ahí pueden leer la sesión que guarda.
+- Para un agente, un script o CI, usa un token solo con los scopes que necesita su trabajo y con caducidad corta, y revócalo cuando acabes.
+</Callout>
+
+Cada secreto, automatización y trigger registra de dónde vino su último cambio (`updated_by`: `browser_session`, `cli_session` o `platform_token`); el portal lo muestra como **Last changed from**.
+
+### Secretos desde la CLI
+
+```bash
+nan secrets ls
+nan secrets show GITHUB_TOKEN                            # metadatos, nunca el valor
+nan secrets set GITHUB_WRITE_TOKEN --value-file ./token.txt --description "repo acme/api, write"
+gh auth token | nan secrets set GITHUB_READ_TOKEN --value-stdin
+nan secrets set TOGETHER_KEY --value-file key.txt --kind provider_key \
+  --provider openai_compatible --base-url https://api.together.xyz/v1
+nan secrets edit GITHUB_WRITE_TOKEN --description "expires in December"
+nan secrets rm GITHUB_READ_TOKEN
+```
+
+- **El valor nunca va en la línea de comandos**, donde se quedaría en el historial de tu shell y otros programas podrían verlo: `--value-file PATH` lo lee de un archivo y `--value-stdin` de una tubería. `--value-stdin` se niega a leer de la terminal, así que nunca se teclea un valor a la vista.
+- Se quita un salto de línea al final (los archivos suelen acabar en uno). Aparte de eso, el valor no puede empezar ni terminar con un salto de línea.
+- `set` crea el secreto o **reemplaza el valor** del que tenga ese nombre. El tipo, el proveedor y el nombre quedan fijos al crearlo.
+- `edit` cambia la descripción, o la base URL de una provider key compatible con OpenAI.
+- `rm` pregunta antes de borrar; `--yes` se salta la pregunta en scripts. Se rechaza mientras una automatización use el secreto, y la CLI te dice cuáles.
+- `--json` imprime los metadatos en JSON.
+
+### Automatizaciones desde la CLI
+
+```bash
+nan automations create -f pr-review.yaml
+nan automations edit "PR review api" -f changes.yaml
+nan automations disable "PR review api"
+nan automations enable "PR review api"
+nan automations rm "PR review api"
+```
+
+El archivo es YAML o JSON con los campos de la API (`-f -` lo lee de stdin): los mismos ajustes que el formulario del portal, con sus nombres en la API. Por ejemplo:
+
+```yaml
+name: PR review api
+template: pr_review
+workspace: dev
+agent: pi
+github_repo: acme/api
+secrets:
+  - { secret: GITHUB_READ_TOKEN, env: GITHUB_TOKEN, exposure: agent }
+  - { secret: GITHUB_WRITE_TOKEN, env: GITHUB_TOKEN, exposure: actions }
+approval_kinds: [git_push, github_create_pr]
+```
+
+Los campos que no pongas toman su valor por defecto; con una plantilla, sus instrucciones y su configuración de aprobación. Sin `approval_kinds`, todos los tipos de acción esperan tu aprobación; con `[]`, ninguno. `edit` cambia solo los campos del archivo, y `secrets` ahí reemplaza todas las asignaciones. La lista completa de campos está en [Referencia de la API → Create an automation](/es/docs/api#tag/automations/POST/automations).
+
+### Triggers desde la CLI
+
+```bash
+nan automations triggers ls "PR review api"
+nan automations triggers add "PR review api" -f github-webhook.yaml
+nan automations triggers edit "PR review api" <trigger-id> -f filter.yaml
+nan automations triggers rotate "PR review api" <trigger-id>
+nan automations triggers rm "PR review api" <trigger-id>
+```
+
+```yaml
+# github-webhook.yaml
+kind: webhook
+signature_scheme: github
+event_filter:
+  events: [pull_request]
+  actions: [opened, synchronize, reopened, ready_for_review]
+  exclude_drafts: true
+```
+
+`add` y `rotate` imprimen la URL del webhook y el secreto de firma **una sola vez**: guárdalos en ese momento, por ejemplo directamente en los ajustes del webhook en GitHub o en tu gestor de contraseñas. No se vuelven a mostrar; si los pierdes, rótalos. `--json` los imprime en JSON, para que un script los pase a otro sitio. El detalle de cada campo está en [Webhooks y programaciones](/es/docs/webhooks).
+
+### A través de la API
+
+Las mismas operaciones están en la API, en `/v1/secrets` y `/v1/automations`, con un token que tenga el scope (o una sesión de la CLI):
+
+```bash
+jq -n --rawfile v token.txt '{name: "GITHUB_WRITE_TOKEN", value: ($v | rtrimstr("\n"))}' |
+  curl https://api.nan.builders/v1/secrets \
+    -H "Authorization: Bearer $NAN_TOKEN" \
+    -H "Content-Type: application/json" \
+    -H "Idempotency-Key: create-github-write-token-1" \
+    --data-binary @-
+```
+
+- Ninguna ruta devuelve nunca el valor. Leer da solo metadatos.
+- `Idempotency-Key` hace seguro repetir una creación: la misma clave devuelve el secreto ya creado (`200`). Sin ella, un reintento recibe `409 name_taken`.
+- Crear un trigger devuelve la URL del webhook y el secreto de firma una sola vez, con `Cache-Control: no-store`; rotarlo, igual. Crear un trigger no es idempotente: si se pierde la respuesta, lista los triggers y rota o borra el que no llegaste a ver.
+- Demasiados cambios reciben `429 rate_limited`: consulta [Límites](#límites).
+
+Todas las rutas, cuerpos y errores están en [Referencia de la API → Secrets](/es/docs/api#tag/secrets) y [Referencia de la API → Automations](/es/docs/api#tag/automations).
+
 ## Tokens para automatizaciones
 
 Un token de plataforma lleva **scopes**: lo que puede hacer. Los eliges al crearlo, en **Settings → Tokens**:
@@ -376,8 +485,15 @@ Un token de plataforma lleva **scopes**: lo que puede hacer. Los eliges al crear
 | `workspaces:read` | Listar tus workspaces y leer uno por su id. |
 | `automations:read` | Leer tus automatizaciones, plantillas, triggers y entregas. Nunca los valores de los secretos. |
 | `automations:run` | Lanzar una automatización existente, por ejemplo desde CI. No puede crear ni cambiar automatizaciones, ni aprobar. |
+| `automations:write` | Crear, cambiar, desactivar y borrar automatizaciones y sus triggers. **Puede darle cualquiera de tus secretos a un agente.** |
+| `secrets:read` | Leer los metadatos de tus secretos: nombres, pistas, descripciones y qué automatizaciones los usan. Nunca los valores. |
+| `secrets:write` | Crear secretos, reemplazar sus valores, cambiar sus descripciones y borrarlos. **Puede reemplazar cualquiera de tus secretos.** |
 
-Los tokens nuevos llevan `runs` y `workspaces:read` por defecto. Un token con `automations:read` o `automations:run` solo se puede crear desde una sesión en el navegador. Un token sin el scope que necesita un endpoint recibe `403 token_scope_denied`.
+Los tokens nuevos llevan `runs` y `workspaces:read` por defecto. Un token con un scope `automations:` o `secrets:` solo se puede crear en el portal, con sesión iniciada en el navegador, no desde la CLI. Los tres últimos scopes aparecen ahí solo si tu cuenta tiene la API de escritura, con un aviso. Los scopes son independientes: `secrets:write` no incluye `secrets:read`, ni `automations:write` incluye `automations:read`, así que un token que gestiona secretos desde la CLI suele llevar los dos. Un token sin el scope que necesita un endpoint recibe `403 token_scope_denied`.
+
+<Callout title="Lo que puede hacer un token de escritura" variant="warning">
+Un agente o un script con un token con `secrets:write` o `automations:write` puede cambiar tus secretos o tus automatizaciones. Con `automations:write` puede crear una automatización que reciba cualquiera de tus secretos y se ejecute sin esperar tu aprobación, lo que equivale a leerlos todos. Da estos scopes solo a los tokens que los necesiten, mantenlos fuera de los workspaces, ponles caducidad y revócalos cuando acabes.
+</Callout>
 
 Para CI, dale al token `automations:run` y `runs` (para seguir el run y conocer su resultado), y además `automations:read` si llamas a la automatización por su nombre. Por ejemplo: `nan automations run <id>` en un paso con `NAN_TOKEN` definido, como en [Usa la CLI en CI o en un servidor](/es/docs/runs#usa-la-cli-en-ci-o-en-un-servidor).
 
@@ -393,23 +509,25 @@ Para CI, dale al token `automations:run` y `runs` (para seguir el run y conocer 
 | Secretos | 100 por miembro, 20 por automatización, 48 KiB por run |
 | Instrucciones | 16 KiB |
 | Input de un run | Un objeto JSON de hasta 48 KiB, con 8 niveles de anidamiento como mucho |
+| Cambios en secretos | 30 seguidos, luego 120 por hora, sumando el portal, la CLI y la API |
+| Cambios en automatizaciones y triggers | 30 seguidos, luego 300 por hora |
 
 Los runs de las automatizaciones comparten los límites de todos los runs: cuántos trabajan a la vez en cada workspace, como mucho 5 a la vez entre todos tus workspaces (8 con Premium), y la cola. Consulta [Cuántos runs a la vez](/es/docs/runs#cuántos-runs-a-la-vez). Las automatizaciones con la inferencia de NaN necesitan un plan con inferencia: sin él, el portal te ofrece **My own key** (consulta [Usa tu propia clave de proveedor](#usa-tu-propia-clave-de-proveedor-byok)), y los webhooks de una automatización con la inferencia de NaN se responden sin lanzar ningún run. Los runs con tus propias claves tienen su propio límite: hasta 8 a la vez entre todos tus workspaces.
 
 ## Cambia o borra una automatización
 
-Cambia cualquier ajuste en la pestaña **Settings** y pulsa **Save changes**. Un run conserva los ajustes con los que arrancó: editar una automatización nunca cambia un run que ya está en cola o trabajando.
+Cambia cualquier ajuste en la pestaña **Settings** y pulsa **Save changes**, o usa `nan automations edit`, `enable`, `disable` y `rm` (consulta [Gestiónalas desde la CLI o la API](#gestiónalas-desde-la-cli-o-la-api)). Un run conserva los ajustes con los que arrancó: editar una automatización nunca cambia un run que ya está en cola o trabajando.
 
 Al borrarla con **Delete**, sus triggers se detienen al momento y se cancelan sus runs en cola. Los runs que ya están trabajando terminan, y las acciones que ya aprobaste, o que se aplican solas, se completan igualmente. Los runs pasados se quedan en el historial del workspace, y un run que ya espera tu aprobación todavía se puede aprobar o rechazar.
 
 ## Por qué algunas acciones necesitan el navegador
 
-Una automatización decide cuáles de tus secretos recibe un agente y qué puede hacer en tu repositorio sin preguntar. Si cualquier cosa capaz de leer una sesión de la CLI o un token pudiera cambiarla, también podría hacerlo un agente en un workspace o un job de CI. Por eso estas acciones te necesitan a ti, con sesión iniciada en el navegador:
+Una automatización decide cuáles de tus secretos recibe un agente y qué puede hacer en tu repositorio sin preguntar. Estas acciones siempre te necesitan a ti, con sesión iniciada en el navegador:
 
-- Crear, cambiar o borrar una automatización o sus triggers.
-- Añadir, reemplazar o borrar secretos.
-- Aprobar una propuesta.
-- Crear un token con `automations:read` o `automations:run`.
+- **Aprobar una propuesta.** Aprobar es tu revisión de un cambio concreto que hizo un agente. Si una credencial que puede tener un script o un agente pudiera aprobar, un agente podría aprobar su propia propuesta.
+- **Crear un token con un scope `automations:` o `secrets:`.** Así una sesión de la CLI robada no puede convertirse en un token de larga duración, y cada uno de esos tokens lo creaste tú, después del aviso.
+
+Crear, cambiar o borrar automatizaciones, triggers y secretos también necesita el navegador mientras tu cuenta no tenga la API de escritura. Con ella, tu sesión de la CLI y los tokens con los scopes de escritura también pueden hacerlo: quién tiene esas credenciales lo decides tú, así que dalas solo donde confíes en quien las tiene (consulta [Gestiónalas desde la CLI o la API](#gestiónalas-desde-la-cli-o-la-api)).
 
 Rechazar siempre es seguro, así que cualquier credencial que pueda leer tus runs puede rechazar. Si el portal te dice que tienes que volver a iniciar sesión, cierra sesión y entra con el enlace por correo desde el mismo navegador.
 
@@ -539,7 +657,7 @@ Caduca tras el tiempo que hayas puesto (72 horas por defecto) y el run termina c
 
 <Details summary="¿Puedo crear automatizaciones desde la CLI o la API?">
 
-Todavía no. Desde la CLI y la API puedes listarlas, consultarlas y lanzarlas, y leer y rechazar propuestas. Crearlas y editarlas se hace en el portal.
+Sí, si tu cuenta tiene la API de escritura (se está abriendo poco a poco): `nan automations create`, `edit`, `rm` y `nan automations triggers`, o la API con un token que tenga `automations:write`. Consulta [Gestiónalas desde la CLI o la API](#gestiónalas-desde-la-cli-o-la-api). Mientras tanto, la CLI te dice que uses el portal. Aprobar sigue siendo cosa del portal.
 
 </Details>
 

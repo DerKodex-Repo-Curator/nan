@@ -174,7 +174,7 @@ Type the model id exactly as your provider names it. NaN does not check it again
 
 ### Save your key as a provider key
 
-Open your settings on the portal, **Secrets**, and press **Add secret** (saving a secret needs you signed in through the browser). Fill in:
+Open your settings on the portal, **Secrets**, and press **Add secret**. Fill in:
 
 - **Name**: how runs and automations refer to it, for example `ANTHROPIC_KEY`. Capitals, digits and `_`, starting with a letter.
 - **Kind**: **Provider key**.
@@ -184,6 +184,8 @@ Open your settings on the portal, **Secrets**, and press **Add secret** (saving 
 - **Description (optional)**.
 
 Like every secret, a provider key is **write-only**: nobody can read it back, not even you. The list shows it as **Provider key · Anthropic** (or its provider) usually with its last 4 characters, and, for an OpenAI-compatible key, its base URL, which you can change with **Base URL**. **Replace value** changes the key for every run that starts from then on. `nan secrets ls` shows it with **KIND** `provider_key`, its **PROVIDER** and its **BASE URL**.
+
+Where your account has the write API, you can also save it from the CLI, reading the key from a file or a pipe: `nan secrets set ANTHROPIC_KEY --value-file key.txt --kind provider_key --provider anthropic`. See [Secrets from the CLI](/docs/automations#secrets-from-the-cli).
 
 **Base URL rules.** NaN checks the base URL when you save it, and never connects to it: only the agent in your workspace does.
 

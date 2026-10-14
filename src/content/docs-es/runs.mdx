@@ -174,7 +174,7 @@ Escribe el id del modelo tal como lo llama tu proveedor. NaN no lo comprueba con
 
 ### Guarda tu clave como provider key
 
-Abre tus ajustes en el portal, **Secrets**, y pulsa **Add secret** (guardar un secreto necesita que hayas iniciado sesión en el navegador). Rellena (el portal está en inglés):
+Abre tus ajustes en el portal, **Secrets**, y pulsa **Add secret**. Rellena (el portal está en inglés):
 
 - **Name**: cómo la nombran los runs y las automatizaciones, por ejemplo `ANTHROPIC_KEY`. Mayúsculas, dígitos y `_`, empezando por una letra.
 - **Kind**: **Provider key**.
@@ -184,6 +184,8 @@ Abre tus ajustes en el portal, **Secrets**, y pulsa **Add secret** (guardar un s
 - **Description (optional)**.
 
 Como todo secreto, una provider key es de **solo escritura**: nadie puede volver a leerla, ni siquiera tú. La lista la muestra como **Provider key · Anthropic** (o su proveedor) normalmente con sus 4 últimos caracteres y, en una clave OpenAI-compatible, su URL base, que puedes cambiar con **Base URL**. **Replace value** cambia la clave para todos los runs que arranquen a partir de ese momento. `nan secrets ls` la muestra con **KIND** `provider_key`, su **PROVIDER** y su **BASE URL**.
+
+Si tu cuenta tiene la API de escritura, también puedes guardarla desde la CLI, leyendo la clave de un archivo o de una tubería: `nan secrets set ANTHROPIC_KEY --value-file key.txt --kind provider_key --provider anthropic`. Consulta [Secretos desde la CLI](/es/docs/automations#secretos-desde-la-cli).
 
 **Reglas de la URL base.** NaN comprueba la URL base al guardarla y nunca se conecta a ella: solo lo hace el agente de tu workspace.
 
