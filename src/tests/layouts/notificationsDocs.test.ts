@@ -3,6 +3,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { parseFrontmatter } from '@astrojs/markdown-remark';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mdxToText } from '../../lib/mdxToText';
 import openapi from '../../data/openapi.json';
 
@@ -76,7 +78,7 @@ const DEFAULT_EVENTS = EVENTS.slice(0, 4);
 
 /** notifications.APICode plus the credential and gate refusals of the handler. */
 const ERROR_CODES = [
-  '400 invalid_request', '400 invalid_url', '403 credential_not_allowed', '403 token_scope_denied',
+  '400 invalid_request', '400 invalid_url', '403 credential_not_allowed', '403 token_scope_denied', '403 workspace_key_not_allowed',
   '403 browser_session_required', '404 not_found', '404 automation_not_found', '409 name_taken',
   '409 too_many_channels', '409 channel_disabled', '409 signing_not_supported', '429 rate_limited',
   '503 notifications_unavailable',
@@ -210,16 +212,43 @@ describe.each(Object.entries(pages))('Notifications page (%s)', (_locale, page) 
     expect(code).toMatch(/> 300/);
   });
 
-  test('the examples compute the HMAC the way signing.go does', async () => {
-    const { createHmac } = await import('node:crypto');
-    const g = golden('https_test');
-    const raw = Buffer.from(JSON.stringify(g));
-    const ts = '1760436000';
+  test('the published test vector is the one signing_test.go pins', () => {
+    // cloud-api internal/notifications/signing_test.go: secret "nan_nsec_test", timestamp 1700000000, body {"a":1}.
+    const hex = createHmac('sha256', 'nan_nsec_test').update('1700000000.{"a":1}').digest('hex');
+    expect(hex).toBe('5c39c853e058b14c0d0e29bbdeb6d0dc325318231d07d1df377a284c89ad4e01');
+    expect(body).toContain(`\`v1=${hex}\``);
+    expect(body).toContain('`nan_nsec_test`');
+    expect(body).toContain('`1700000000`');
+  });
+
+  test('the Node example verifies: any v1= matches, wrong or stale signatures and junk timestamps fail', () => {
+    const js = codeBlocks(body).find((c) => c.startsWith('```js'))!;
+    const fn = js.slice(js.indexOf('function verify'), js.indexOf('createServer((req'));
     const secret = 'nan_nsec_example';
-    const expected = createHmac('sha256', secret).update(`${ts}.`).update(raw).digest('hex');
-    // The Node example: update(`${timestamp}.`).update(body), key = the whole secret string.
-    expect(code).toContain("createHmac('sha256', secret).update(`${timestamp}.`).update(body).digest('hex')");
-    expect(createHmac('sha256', secret).update(Buffer.concat([Buffer.from(`${ts}.`), raw])).digest('hex')).toBe(expected);
+    const verify = new Function('createHmac', 'timingSafeEqual', 'secret', `${fn}; return verify;`)(createHmac, timingSafeEqual, secret);
+    const raw = Buffer.from(JSON.stringify(golden('https_test')));
+    const now = String(Math.floor(Date.now() / 1000));
+    const sig = (key: string, ts: string) => 'v1=' + createHmac('sha256', key).update(`${ts}.`).update(raw).digest('hex');
+    expect(verify(raw, now, sig(secret, now))).toBe(true);
+    expect(verify(raw, now, `${sig('nan_nsec_new', now)},${sig(secret, now)}`)).toBe(true);
+    expect(verify(raw, now, sig('nan_nsec_other', now))).toBe(false);
+    const old = String(Number(now) - 301);
+    expect(verify(raw, old, sig(secret, old))).toBe(false);
+    expect(verify(raw, undefined, sig(secret, now))).toBe(false);
+    expect(verify(raw, 'soon', sig(secret, now))).toBe(false);
+    expect(verify(Buffer.concat([raw, Buffer.from(' ')]), now, sig(secret, now))).toBe(false);
+  });
+
+  test('the Python example verifies the same way', () => {
+    const py = codeBlocks(body).find((c) => c.startsWith('```python'))!.replace(/^```python\n|```$/g, '');
+    const now = Math.floor(Date.now() / 1000);
+    const raw = '{"a":1}';
+    const good = createHmac('sha256', 'nan_nsec_...').update(`${now}.${raw}`).digest('hex');
+    const script = `${py}
+b = b'{"a":1}'
+print(verify(b, "${now}", "v1=${good}"), verify(b, "${now}", "v1=00,v1=${good}"), verify(b, "${now}", "v1=${'0'.repeat(64)}"), verify(b, "${now - 301}", "v1=${good}"), verify(b, None, "v1=${good}"))`;
+    const out = execFileSync('python3', ['-c', script], { encoding: 'utf-8' }).trim();
+    expect(out).toBe('True True False False False');
   });
 
   test('payload: the documented bodies match the golden files', () => {
@@ -276,7 +305,7 @@ describe.each(Object.entries(pages))('Notifications page (%s)', (_locale, page) 
     }
     expect(flat).toMatch(/`notifications:write` (does not include|no incluye) `notifications:read`/);
     expect(flat).toMatch(/30,? (then|y luego) 120 (per hour|por hora)/);
-    expect(flat).toMatch(/5 (at once, then 1 a minute|seguidas y luego 1 por minuto)/);
+    expect(flat).toMatch(/(up to 5 in a row, then 1 a minute|hasta 5 seguidas y luego 1 por minuto)/);
     const channel = jsonBlocks(body).find((b) => b.object === 'notification_channel');
     expect(Object.keys(channel)).toEqual([
       'id', 'object', 'name', 'kind', 'url_hint', 'enabled', 'disabled_reason', 'consecutive_failures', 'last_delivery_at',
