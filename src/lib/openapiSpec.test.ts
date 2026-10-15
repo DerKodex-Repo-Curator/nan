@@ -673,7 +673,9 @@ describe('getting-started guides: /usage parity', () => {
 /**
  * THE GATEWAY REJECTS TWO REQUEST SHAPES WITH A 400 BEFORE ROUTING: a tool
  * name outside ^[a-zA-Z0-9_-]{1,64}$ (any model) and `response_format`
- * `json_schema` on `deepseek-v4-flash` (`json_object` still works there).
+ * `json_schema` on `deepseek-v4-flash` on api.nan.builders (`json_object` still
+ * works there). On api.helmcode.com the same model accepts `json_schema` (and
+ * `json_object` without the word JSON), measured live 2026-10-15.
  * A member who hits either should find it in the reference and on the model
  * card, in both locales, not learn it from the error.
  */
@@ -699,12 +701,14 @@ describe('documented 400s: tool names and structured output', () => {
     }
   });
 
-  it('says json_schema is rejected on deepseek-v4-flash and json_object works there', () => {
+  it('says json_schema on deepseek-v4-flash depends on the host, and json_object works on both', () => {
     const description: string = schemas.ResponseFormat.description;
     expect(description).toContain(
-      'On `deepseek-v4-flash` it is rejected with a `400` before the request reaches the model; `json_object` still works there.',
+      'On `deepseek-v4-flash` it depends on the host: on the enterprise base URL (see the overview) it is accepted; on `api.nan.builders` it is rejected with a `400` before the request reaches the model, and `json_object` still works there.',
     );
-    expect(description).toContain('On `deepseek-v4-flash` the prompt must also contain the word JSON, otherwise `400`.');
+    expect(description).toContain('On `deepseek-v4-flash` on `api.nan.builders` the prompt must also contain the word JSON, otherwise `400`.');
+    // "accepted", never a strictness promise for that host.
+    expect(description).not.toMatch(/enterprise base URL[^.]*(guarantee|constrained)/);
     const works = /`json_schema` works on (.+?)\.(?:\s|$)/.exec(description)!;
     expect(works[1]).not.toContain('deepseek-v4-flash');
   });
@@ -720,13 +724,15 @@ describe('documented 400s: tool names and structured output', () => {
       return page.slice(start, page.indexOf('/>', start));
     };
     const en = card('');
-    expect(en).toContain('json_object is supported (the prompt must contain the word JSON, otherwise it is rejected with a 400), json_schema is not and is rejected with a 400');
+    expect(en).toContain('Structured output depends on the host: on api.helmcode.com, response_format json_schema and json_object are accepted; on api.nan.builders, json_object is supported (the prompt must contain the word JSON, otherwise it is rejected with a 400) and json_schema is rejected with a 400.');
     expect(en).toContain('use qwen3.6 or gemma4');
-    expect(en).toContain('<code>json_schema</code> not supported (400)');
+    expect(en).toContain('<code>json_schema</code>: 400 on api.nan.builders, accepted on api.helmcode.com');
+    expect(en).not.toMatch(/not supported \(400\)|json_schema is not and/);
     const es = card('-es');
-    expect(es).toContain('json_object es compatible (el prompt debe contener la palabra JSON; si no, se rechaza con un 400), json_schema no y se rechaza con un 400');
+    expect(es).toContain('La salida estructurada depende del host: en api.helmcode.com se aceptan response_format json_schema y json_object; en api.nan.builders, json_object es compatible (el prompt debe contener la palabra JSON; si no, se rechaza con un 400) y json_schema se rechaza con un 400.');
     expect(es).toContain('usa qwen3.6 o gemma4');
-    expect(es).toContain('<code>json_schema</code> no soportado (400)');
+    expect(es).toContain('<code>json_schema</code>: 400 en api.nan.builders, aceptado en api.helmcode.com');
+    expect(es).not.toMatch(/no soportado \(400\)|json_schema no y/);
   });
 });
 
@@ -897,7 +903,8 @@ describe('documented 400s: tool parameters and context overflow', () => {
   it('explains the deepseek-v4-flash 16384 floor on max_tokens, in the spec and on both cards', () => {
     const maxTokens = (spec.paths as any)['/chat/completions'].post.requestBody.content['application/json']
       .schema.properties.max_tokens.description;
-    expect(maxTokens).toContain('On `deepseek-v4-flash` a smaller value is raised to 16384');
+    expect(maxTokens).toContain('On `deepseek-v4-flash`, while reasoning is on, a smaller value is raised to 16384');
+    expect(maxTokens).toContain('with reasoning off (`reasoning_effort: "none"` or an alias) the value is used as sent');
     expect(maxTokens).toContain('1,048,576-token window');
     // Not promised as the exact text on deepseek-v4-flash: measured generic there.
     expect(maxTokens).not.toMatch(/deepseek-v4-flash[^.]*Context length exceeded/);
@@ -911,9 +918,9 @@ describe('documented 400s: tool parameters and context overflow', () => {
       const start = page.indexOf('id="deepseek-v4-flash"');
       return page.slice(start, page.indexOf('/>', start));
     };
-    expect(card('')).toContain('A max_tokens below 16384 is raised to 16384 so the reasoning fits');
+    expect(card('')).toContain('While reasoning is on, a max_tokens below 16384 is raised to 16384 so the reasoning fits');
     expect(card('')).toContain('rejected with a 400 even with a small max_tokens (usually Context length exceeded, sometimes a generic Invalid request)');
-    expect(card('-es')).toContain('Un max_tokens por debajo de 16384 se sube a 16384');
+    expect(card('-es')).toContain('Con el razonamiento activado, un max_tokens por debajo de 16384 se sube a 16384');
     expect(card('-es')).toContain('se rechaza con un 400 aunque pidas un max_tokens pequeño (normalmente Context length exceeded, a veces un Invalid request genérico)');
   });
 });
@@ -933,7 +940,7 @@ describe('documented structured output: guarantees and the deepseek-v4-flash rec
 
   it('ResponseFormat states what json_object and json_schema each guarantee', () => {
     expect(rf).toContain('`json_object`: syntactically valid JSON only, NOT its shape. Describe the schema you want in the prompt.');
-    expect(rf).toContain('On `deepseek-v4-flash` the prompt must also contain the word JSON');
+    expect(rf).toContain('On `deepseek-v4-flash` on `api.nan.builders` the prompt must also contain the word JSON');
     expect(rf).toContain('`json_schema` with `strict: true`: the output is constrained to the schema (fields, types and required keys).');
     expect(rf).toMatch(/force it with `tool_choice: \{"type": "function", "function": \{"name": "\.\.\."\}\}`/);
     expect(rf).toContain('`choices[0].message.tool_calls[0].function.arguments`');
@@ -993,6 +1000,9 @@ describe('documented structured output: guarantees and the deepseek-v4-flash rec
       expect(section).toMatch(locale ? /devuelve argumentos que siguen el esquema/ : /returns arguments that follow the schema/);
       expect(section).toMatch(locale ? /donde el modelo admite decodificación estricta/ : /where the model supports strict decoding/);
       expect(section).not.toMatch(/guaranteed|garantizad/);
+      // The 400 is host-specific: api.helmcode.com accepts json_schema on this model.
+      expect(section).toContain(locale ? 'En `api.nan.builders`, `deepseek-v4-flash` rechaza' : 'On `api.nan.builders`, `deepseek-v4-flash` rejects');
+      expect(section).toContain(locale ? 'en `api.helmcode.com` se acepta' : 'on `api.helmcode.com` it is accepted');
     });
   }
 });
