@@ -33,7 +33,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (function calling)',
-    'Control del razonamiento (`reasoning_effort`: de `minimal` a `max`; siempre razona, `none` se aplica como `minimal`)',
+    'Control del razonamiento (<code>reasoning_effort</code>: de <code>minimal</code> a <code>max</code>; siempre razona, <code>none</code> se aplica como <code>minimal</code>) · <a href="#controlar-el-razonamiento">detalles</a>',
     'Visión (entrada de imagen)',
     'Audio (entrada de audio)',
     'Vídeo (entrada de vídeo)',
@@ -50,7 +50,7 @@ OpenAI y la misma `base URL`.
   tag="305B MoE"
   leftLabel="generación de texto, chat y visión"
   rightLabel="capacidades"
-  description="Modelo MoE de 305B parámetros, servido en su variante Vision-Exp: acepta imágenes de entrada. Contexto de 1M tokens. Tool calling y razonamiento. Cuota de 3B tokens al mes por miembro. Salida estructurada: response_format json_object es compatible (el prompt debe contener la palabra JSON; si no, se rechaza con un 400), json_schema no y se rechaza con un 400. json_object solo garantiza JSON sintácticamente válido, no su forma: describe el esquema en el prompt. Para salida restringida a un esquema, usa qwen3.6 o gemma4, donde json_schema con strict restringe campos, tipos y claves obligatorias; o, en este modelo, fuerza una única herramienta de tipo función cuyo parameters sea tu esquema (ver Ejemplos). Un max_tokens por debajo de 16384 se sube a 16384 para que quepa el razonamiento, así que un prompt a menos de 16384 tokens de la ventana de 1.048.576 se rechaza con un 400 aunque pidas un max_tokens pequeño (normalmente Context length exceeded, a veces un Invalid request genérico)."
+  description={'Modelo MoE de 305B parámetros, servido en su variante Vision-Exp: acepta imágenes de entrada. Contexto de 1M tokens. Tool calling y razonamiento. Cuota de 3B tokens al mes por miembro. Salida estructurada: response_format json_object es compatible (el prompt debe contener la palabra JSON; si no, se rechaza con un 400), json_schema no y se rechaza con un 400. json_object solo garantiza JSON sintácticamente válido, no su forma: describe el esquema en el prompt. Para salida restringida a un esquema, usa qwen3.6 o gemma4, donde json_schema con strict restringe campos, tipos y claves obligatorias; o, en este modelo, fuerza una única herramienta de tipo función cuyo parameters sea tu esquema (ver Ejemplos). Con el razonamiento activado, un max_tokens por debajo de 16384 se sube a 16384 para que quepa el razonamiento, así que un prompt a menos de 16384 tokens de la ventana de 1.048.576 se rechaza con un 400 aunque pidas un max_tokens pequeño (normalmente Context length exceeded, a veces un Invalid request genérico). Con el razonamiento apagado (reasoning_effort "none" o cualquiera de sus alias) tu max_tokens se usa tal cual.'}
   specs={[
     { label: 'Tipo', value: 'MoE (305B total)' },
     { label: 'Cuantización', value: 'FP8' },
@@ -61,7 +61,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling',
-    'Control del razonamiento (`reasoning_effort`: `none` lo apaga · de `minimal` a `max`)',
+    'Control del razonamiento (<code>reasoning_effort</code>: <code>none</code> lo apaga · de <code>minimal</code> a <code>max</code>) · <a href="#controlar-el-razonamiento">detalles</a>',
     'Visión (entrada de imagen)',
     'Modo JSON (<code>json_object</code>, el prompt debe mencionar JSON) · <code>json_schema</code> no soportado (400)',
     'Contexto de 1M tokens',
@@ -87,7 +87,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (function calling)',
-    'Control del razonamiento (`reasoning_effort`: de `minimal` a `max`; siempre razona, `none` se aplica como `minimal`)',
+    'Control del razonamiento (<code>reasoning_effort</code>: de <code>minimal</code> a <code>max</code>; siempre razona, <code>none</code> se aplica como <code>minimal</code>) · <a href="#controlar-el-razonamiento">detalles</a>',
     'Visión (entrada de imagen)',
     'Contexto de 1M tokens',
     'Generación en streaming (SSE)',
@@ -112,7 +112,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (formato XML)',
-    'Razonamiento activado por defecto (`reasoning_effort`: `none` lo apaga · de `minimal` a `max`)',
+    'Razonamiento activado por defecto (<code>reasoning_effort</code>: <code>none</code> lo apaga · de <code>minimal</code> a <code>max</code>) · <a href="#controlar-el-razonamiento">detalles</a>',
     'Visión (entrada de imagen)',
     'Contexto de 1M tokens',
     'Generación en streaming (SSE)',
@@ -134,7 +134,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (function calling)',
-    'Control del razonamiento (`reasoning_effort`: `none` lo apaga · de `low` a `max`; se recomienda <code>max_tokens &ge; 300</code>)',
+    'Control del razonamiento (<code>reasoning_effort</code>: <code>none</code> lo apaga · de <code>low</code> a <code>max</code>; se recomienda <code>max_tokens &ge; 300</code>) · <a href="#controlar-el-razonamiento">detalles</a>',
     'Visión (entrada de imagen)',
     'Audio (entrada de audio)',
     'Contexto de 1M tokens',
@@ -158,7 +158,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (formato XML)',
-    'Control del razonamiento (`reasoning_effort`: `none` lo apaga · `low` · `medium` · `high` · `xhigh` · `max`)',
+    'Control del razonamiento (<code>reasoning_effort</code>: <code>none</code> o <code>minimal</code> lo apagan · de <code>low</code> a <code>max</code>) · <a href="#controlar-el-razonamiento">detalles</a>',
     'Multimodal (visión / imágenes)',
     'Generación en streaming (SSE)',
   ]}
@@ -182,7 +182,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (formato XML)',
-    'Control del razonamiento (`reasoning_effort`: `none` lo apaga · `low` · `medium` · `high` · `xhigh` · `max`)',
+    'Control del razonamiento (<code>reasoning_effort</code>: <code>none</code> o <code>minimal</code> lo apagan · de <code>low</code> a <code>max</code>) · <a href="#controlar-el-razonamiento">detalles</a>',
     'Multimodal (visión / imágenes)',
     'Generación en streaming (SSE)',
   ]}
@@ -355,7 +355,7 @@ en el primer nivel del cuerpo o dentro de `extra_body`. Cada uno significa
 exactamente `none`. Si una petición lleva un valor y además uno de estos, gana
 el valor.
 
-| Modelo | `none` | El resto de valores |
+| Modelo | Para apagar (`none`) | El resto de valores |
 | --- | --- | --- |
 | `deepseek-v4-flash` | Apagado. Sin tokens de razonamiento. | De `minimal` a `max` orientan cuánto razona. Son indicaciones que el modelo sigue, no topes estrictos. |
 | `qwen3.8-flash` | Apagado. Sin tokens de razonamiento. | El razonamiento está activado por defecto; de `minimal` a `max` orientan su profundidad (indicaciones, no topes). |
@@ -366,6 +366,8 @@ el valor.
 Sin parámetro, todos los modelos razonan (`qwen3.6` y `gemma4` con un
 presupuesto de 16.384 tokens). El razonamiento cuesta latencia y sus tokens
 cuentan dentro de `max_tokens`. Usa solo los valores de esta página.
+Cualquier otro valor se envía tal cual y queda fuera de este contrato: según el modelo,
+se rechaza con un `400` o se ignora.
 
 ```bash
 curl https://api.nan.builders/v1/chat/completions \
@@ -378,20 +380,79 @@ curl https://api.nan.builders/v1/chat/completions \
   }'
 ```
 
-Con el SDK de OpenAI, en las dos APIs:
+En Helmcode, usa `https://api.helmcode.com/v1` como base URL; todo lo demás es idéntico.
+
+Con el SDK de OpenAI, en Chat Completions y en Responses:
 
 ```python
-client.chat.completions.create(
+# pip install openai
+import os
+from openai import OpenAI
+
+client = OpenAI(
+    api_key=os.environ["NAN_API_KEY"],
+    base_url="https://api.nan.builders/v1",  # Helmcode: https://api.helmcode.com/v1
+)
+
+chat = client.chat.completions.create(
     model="deepseek-v4-flash",
     reasoning_effort="none",
     messages=[{"role": "user", "content": "Write a one-line summary of the CAP theorem."}],
 )
+print(chat.choices[0].message.content)
 
-client.responses.create(
+resp = client.responses.create(
     model="deepseek-v4-flash",
     reasoning={"effort": "none"},
     input="Write a one-line summary of the CAP theorem.",
 )
+print(resp.output_text)
+```
+
+Si tu versión del SDK de Python todavía no conoce el parámetro (lanza `TypeError: ... unexpected keyword argument`), envíalo dentro de `extra_body`; llega a la API exactamente igual:
+
+```python
+chat = client.chat.completions.create(
+    model="deepseek-v4-flash",
+    extra_body={"reasoning_effort": "none"},
+    messages=[{"role": "user", "content": "Write a one-line summary of the CAP theorem."}],
+)
+```
+
+En Node, con los mismos nombres que la API HTTP:
+
+```javascript
+// npm install openai
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  apiKey: process.env.NAN_API_KEY,
+  baseURL: 'https://api.nan.builders/v1', // Helmcode: https://api.helmcode.com/v1
+});
+
+const chat = await client.chat.completions.create({
+  model: 'deepseek-v4-flash',
+  reasoning_effort: 'none',
+  messages: [{ role: 'user', content: 'Write a one-line summary of the CAP theorem.' }],
+});
+console.log(chat.choices[0].message.content);
+
+const resp = await client.responses.create({
+  model: 'deepseek-v4-flash',
+  reasoning: { effort: 'none' },
+  input: 'Write a one-line summary of the CAP theorem.',
+});
+console.log(resp.output_text);
+```
+
+TypeScript: si tu versión del SDK tipa el parámetro como una unión a la que le falta un valor que envías (por ejemplo `max`), añade `// @ts-expect-error` en la línea de encima, o haz un cast del objeto de parámetros. La API acepta todos los valores de la tabla.
+
+```typescript
+const chat = await client.chat.completions.create({
+  model: 'deepseek-v4-flash',
+  reasoning_effort: 'max' as any, // older SDK types do not list 'max'
+  messages: [{ role: 'user', content: 'Write a one-line summary of the CAP theorem.' }],
+});
 ```
 
 ## Límite de stream solo-razonamiento.
@@ -421,7 +482,7 @@ Dos cosas que conviene saber:
   cualquier tool call lo desarma por el resto del turno: las respuestas que
   escriben sobre la marcha nunca se cortan, por largas que sean.
 - Si un turno se cierra así, el modelo seguía planificando cuando tocó el
-  techo. Bajá `reasoning_effort` donde el modelo lo soporte (tabla de
+  techo. Baja `reasoning_effort` donde el modelo lo soporte (tabla de
   arriba), o reestructurá el prompt para que empiece a escribir temprano.
 
 El límite existe para acotar un modo de fallo conocido de los modelos con

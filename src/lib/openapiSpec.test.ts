@@ -897,7 +897,8 @@ describe('documented 400s: tool parameters and context overflow', () => {
   it('explains the deepseek-v4-flash 16384 floor on max_tokens, in the spec and on both cards', () => {
     const maxTokens = (spec.paths as any)['/chat/completions'].post.requestBody.content['application/json']
       .schema.properties.max_tokens.description;
-    expect(maxTokens).toContain('On `deepseek-v4-flash` a smaller value is raised to 16384');
+    expect(maxTokens).toContain('On `deepseek-v4-flash`, while reasoning is on, a smaller value is raised to 16384');
+    expect(maxTokens).toContain('with reasoning off (`reasoning_effort: "none"` or an alias) the value is used as sent');
     expect(maxTokens).toContain('1,048,576-token window');
     // Not promised as the exact text on deepseek-v4-flash: measured generic there.
     expect(maxTokens).not.toMatch(/deepseek-v4-flash[^.]*Context length exceeded/);
@@ -911,9 +912,9 @@ describe('documented 400s: tool parameters and context overflow', () => {
       const start = page.indexOf('id="deepseek-v4-flash"');
       return page.slice(start, page.indexOf('/>', start));
     };
-    expect(card('')).toContain('A max_tokens below 16384 is raised to 16384 so the reasoning fits');
+    expect(card('')).toContain('While reasoning is on, a max_tokens below 16384 is raised to 16384 so the reasoning fits');
     expect(card('')).toContain('rejected with a 400 even with a small max_tokens (usually Context length exceeded, sometimes a generic Invalid request)');
-    expect(card('-es')).toContain('Un max_tokens por debajo de 16384 se sube a 16384');
+    expect(card('-es')).toContain('Con el razonamiento activado, un max_tokens por debajo de 16384 se sube a 16384');
     expect(card('-es')).toContain('se rechaza con un 400 aunque pidas un max_tokens pequeño (normalmente Context length exceeded, a veces un Invalid request genérico)');
   });
 });

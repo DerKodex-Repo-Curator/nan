@@ -73,7 +73,35 @@ describe('API reference: one documented way to turn reasoning off', () => {
   it('names the one switch for both APIs', () => {
     expect(reasoning).toContain('"reasoning_effort": "none"');
     expect(reasoning).toContain('"reasoning": {"effort": "none"}');
-    expect(reasoning).toMatch(/every chat model/);
+    // The hook normalises only catalogue models; off-catalogue models get no alias rewriting.
+    expect(reasoning).toMatch(/every model in the catalogue/);
+    for (const d of [
+      reasoning,
+      chatBody.reasoning_effort.description,
+      chatBody.chat_template_kwargs.description,
+      respBody.reasoning.description,
+    ]) {
+      expect(d).not.toMatch(/every chat model/);
+    }
+  });
+
+  it('says what happens with a value outside the list', () => {
+    expect(reasoning).toMatch(/Any other value is passed through unchanged/);
+  });
+
+  it('the model catalog agrees: qwen3.6 and gemma4 reason by default', () => {
+    const catalog = desc.slice(desc.indexOf('## Model catalog'), desc.indexOf('\n## ', desc.indexOf('## Model catalog') + 3));
+    expect(catalog).not.toMatch(/opt-in|opt-out/);
+    for (const model of ['qwen3.6', 'gemma4']) {
+      const line = catalog.split('\n').find((l) => l.startsWith(`| \`${model}\``)) ?? '';
+      expect(line, model).toContain('reasoning (on by default; `reasoning_effort: "none"` turns it off)');
+    }
+  });
+
+  it('max_tokens: the deepseek floor applies only while reasoning is on', () => {
+    expect(chatBody.max_tokens.description).toContain(
+      'On `deepseek-v4-flash`, while reasoning is on, a smaller value is raised to 16384 so the reasoning fits, so a prompt within 16384 tokens of its 1,048,576-token window is rejected with a `400` even with a small `max_tokens`; with reasoning off (`reasoning_effort: "none"` or an alias) the value is used as sent.',
+    );
   });
 
   it('lists the accepted aliases and says the explicit value wins', () => {
@@ -150,6 +178,36 @@ describe('models page: the per-model table is the contract (en + es)', () => {
       expect(text).toContain('"reasoning_effort": "none"');
       expect(text).toContain('reasoning={"effort": "none"}');
     });
+
+    it(`${locale || 'en'}: SDK examples are copy-pasteable in Python and Node, on both hosts`, () => {
+      // Each example builds its own client.
+      expect(text).toContain('client = OpenAI(');
+      expect(text).toContain('const client = new OpenAI({');
+      expect(text).toContain('base_url="https://api.nan.builders/v1"');
+      expect(text).toContain("baseURL: 'https://api.nan.builders/v1'");
+      expect(text).toContain('https://api.helmcode.com/v1');
+      // Older Python SDKs do not know the parameter.
+      expect(text).toContain('extra_body={"reasoning_effort": "none"}');
+      // Node, both APIs.
+      expect(text).toContain("reasoning_effort: 'none'");
+      expect(text).toContain("reasoning: { effort: 'none' }");
+      // TypeScript: typed unions may lack a value.
+      expect(text).toContain('// @ts-expect-error');
+    });
+
+    it(`${locale || 'en'}: names the APIs, not "both", and says what an unlisted value does`, () => {
+      expect(text).not.toMatch(/both APIs|las dos APIs/);
+      expect(text).toMatch(locale === '' ? /on Chat Completions and on Responses/ : /en Chat Completions y en Responses/);
+      expect(text).toMatch(locale === '' ? /Any other value is passed through unchanged/ : /Cualquier otro valor se env[ií]a tal cual/);
+    });
+
+    it(`${locale || 'en'}: the table header does not render as a shouted NONE`, () => {
+      expect(text).toContain(locale === '' ? '| Model | Off switch (`none`) |' : '| Modelo | Para apagar (`none`) |');
+    });
+
+    it(`${locale || 'en'}: names no upstream provider`, () => {
+      expect(text).not.toMatch(/OpenRouter|Novita|DashScope|Z\.AI|vLLM/);
+    });
   }
 });
 
@@ -162,8 +220,49 @@ describe('model cards agree with the table (en + es)', () => {
         const joined = lines.join(' ');
         expect(joined, model).toContain('reasoning_effort');
         if (model.startsWith('glm')) expect(joined, model).toMatch(/always reasons|siempre razona/);
-        else expect(joined, model).toContain('`none`');
+        else expect(joined, model).toContain('<code>none</code>');
+      }
+    });
+
+    it(`${locale || 'en'}: card bullets use <code>, never literal backticks, and link to the section`, () => {
+      const anchor = locale === '' ? '#controlling-reasoning' : '#controlar-el-razonamiento';
+      for (const model of CHAT_MODELS) {
+        const joined = cardReasoning(locale, model).join(' ');
+        expect(joined, model).not.toContain('`');
+        expect(joined, model).toContain(`<a href="${anchor}">`);
+      }
+    });
+
+    it(`${locale || 'en'}: qwen3.6 and gemma4 cards agree with the table on minimal`, () => {
+      for (const model of ['qwen3.6', 'gemma4']) {
+        expect(cardReasoning(locale, model).join(' '), model).toContain('<code>none</code>');
+        expect(cardReasoning(locale, model).join(' '), model).toContain('<code>minimal</code>');
       }
     });
   }
+});
+
+describe('deepseek-v4-flash card: the max_tokens floor only applies while reasoning is on (en + es)', () => {
+  const card = (locale: '' | '-es') => {
+    const text = page(locale);
+    const start = text.indexOf('name="deepseek-v4-flash"');
+    return text.slice(start, text.indexOf('/>', start));
+  };
+
+  it('en', () => {
+    expect(card('')).toContain(
+      'While reasoning is on, a max_tokens below 16384 is raised to 16384 so the reasoning fits, so a prompt within 16384 tokens of the 1,048,576-token window is rejected with a 400 even with a small max_tokens (usually Context length exceeded, sometimes a generic Invalid request). With reasoning off (reasoning_effort "none" or any of its aliases) your max_tokens is used as sent.',
+    );
+  });
+
+  it('es', () => {
+    expect(card('-es')).toContain('Con el razonamiento activado, un max_tokens por debajo de 16384 se sube a 16384');
+    expect(card('-es')).toContain('Con el razonamiento apagado (reasoning_effort "none" o cualquiera de sus alias) tu max_tokens se usa tal cual.');
+  });
+});
+
+describe('es: no voseo', () => {
+  it('uses "Baja", not "Bajá"', () => {
+    expect(page('-es')).not.toContain('Bajá');
+  });
 });
