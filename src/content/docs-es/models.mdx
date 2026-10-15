@@ -33,7 +33,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (function calling)',
-    'Modo razonamiento (traza de razonamiento)',
+    'Control del razonamiento (`reasoning_effort`: de `minimal` a `max`; siempre razona, `none` se aplica como `minimal`)',
     'Visión (entrada de imagen)',
     'Audio (entrada de audio)',
     'Vídeo (entrada de vídeo)',
@@ -61,7 +61,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling',
-    'Modo razonamiento',
+    'Control del razonamiento (`reasoning_effort`: `none` lo apaga · de `minimal` a `max`)',
     'Visión (entrada de imagen)',
     'Modo JSON (<code>json_object</code>, el prompt debe mencionar JSON) · <code>json_schema</code> no soportado (400)',
     'Contexto de 1M tokens',
@@ -87,7 +87,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (function calling)',
-    'Modo razonamiento',
+    'Control del razonamiento (`reasoning_effort`: de `minimal` a `max`; siempre razona, `none` se aplica como `minimal`)',
     'Visión (entrada de imagen)',
     'Contexto de 1M tokens',
     'Generación en streaming (SSE)',
@@ -112,7 +112,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (formato XML)',
-    'Modo razonamiento (activado por defecto)',
+    'Razonamiento activado por defecto (`reasoning_effort`: `none` lo apaga · de `minimal` a `max`)',
     'Visión (entrada de imagen)',
     'Contexto de 1M tokens',
     'Generación en streaming (SSE)',
@@ -134,7 +134,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (function calling)',
-    'Modo razonamiento (se recomienda <code>max_tokens &ge; 300</code>)',
+    'Control del razonamiento (`reasoning_effort`: `none` lo apaga · de `low` a `max`; se recomienda <code>max_tokens &ge; 300</code>)',
     'Visión (entrada de imagen)',
     'Audio (entrada de audio)',
     'Contexto de 1M tokens',
@@ -158,7 +158,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (formato XML)',
-    'Modo razonamiento',
+    'Control del razonamiento (`reasoning_effort`: `none` lo apaga · `low` · `medium` · `high` · `xhigh` · `max`)',
     'Multimodal (visión / imágenes)',
     'Generación en streaming (SSE)',
   ]}
@@ -182,7 +182,7 @@ OpenAI y la misma `base URL`.
   ]}
   items={[
     'Tool calling (formato XML)',
-    'Modo razonamiento',
+    'Control del razonamiento (`reasoning_effort`: `none` lo apaga · `low` · `medium` · `high` · `xhigh` · `max`)',
     'Multimodal (visión / imágenes)',
     'Generación en streaming (SSE)',
   ]}
@@ -331,34 +331,67 @@ OpenAI y la misma `base URL`.
 
 ## Controlar el razonamiento.
 
-Todos los modelos de chat de arriba razonan antes de responder, y el
-razonamiento llega separado de la respuesta, en `message.reasoning_content`.
-Cuánto puede pensar cada modelo se elige por petición con el parámetro
-`reasoning_effort`, y cada modelo lo aplica distinto: la tabla es el contrato.
-Un valor que un modelo no puede aplicar nunca es un error.
+Todos los modelos de chat de arriba razonan antes de responder. El
+razonamiento llega separado de la respuesta: en `message.reasoning_content` en
+Chat Completions y como un elemento de salida `reasoning` en Responses. Lo
+controla un único parámetro, igual en todos los modelos:
 
-| Modelo | valores de `reasoning_effort` | Qué hace |
+| API | Parámetro |
+| --- | --- |
+| Chat Completions (`/v1/chat/completions`) | `reasoning_effort` |
+| Responses (`/v1/responses`) | `reasoning: {"effort": ...}` |
+
+Los valores, de sin razonamiento al más profundo: `none`, `minimal`, `low`,
+`medium`, `high`, `xhigh`, `max`.
+
+**Para apagar el razonamiento, envía `none`.** No hace falta nada más.
+Funciona en todos los modelos salvo GLM, que no puede dejar de razonar (ver la
+tabla).
+
+El código escrito para otro proveedor sigue funcionando: también aceptamos
+`thinking: {"type": "disabled"}`, `reasoning: {"enabled": false}`,
+`enable_thinking: false` y `chat_template_kwargs: {"enable_thinking": false}`,
+en el primer nivel del cuerpo o dentro de `extra_body`. Cada uno significa
+exactamente `none`. Si una petición lleva un valor y además uno de estos, gana
+el valor.
+
+| Modelo | `none` | El resto de valores |
 | --- | --- | --- |
-| `glm5.3` · `glm5.3-flash` | `low`, `medium`, `high`, `max` | Control total. Valores más altos dejan que el modelo razone más antes de responder; `max` es el más profundo. |
-| `qwen3.6` | `none`, `minimal`, `low`, `medium`, `high`, `max` | `none` y `minimal` se saltan por completo la fase de razonamiento. Los otros cuatro la acotan: low 2.048, medium 8.192, high 16.384, max 32.768 tokens. |
-| `gemma4` | `none`, `minimal`, `low`, `medium`, `high`, `max` | Igual que `qwen3.6`: apagado, o un presupuesto de razonamiento entre 2.048 y 32.768 tokens. |
-| `deepseek-v4-flash` | cualquier valor (sin efecto) | El modelo decide por petición cuánto razona; el parámetro nunca cambia eso. |
-| `qwen3.8-flash` · `mimo-v2.6-flash` | aceptado, profundidad no ajustable | El parámetro se acepta y nunca se rechaza, pero estos modelos gestionan su propia profundidad de razonamiento. |
+| `deepseek-v4-flash` | Apagado. Sin tokens de razonamiento. | De `minimal` a `max` orientan cuánto razona. Son indicaciones que el modelo sigue, no topes estrictos. |
+| `qwen3.8-flash` | Apagado. Sin tokens de razonamiento. | El razonamiento está activado por defecto; de `minimal` a `max` orientan su profundidad (indicaciones, no topes). |
+| `mimo-v2.6-flash` | Apagado. Sin tokens de razonamiento. | `low`, `medium`, `high`, `max`. `minimal` se aplica como `low` y `xhigh` como `max`. |
+| `qwen3.6` · `gemma4` | Apagado. `minimal` también lo apaga. | En Chat Completions acotan la fase de razonamiento: `low` 2.048, `medium` 8.192, `high` 16.384, `xhigh` y `max` 32.768 tokens. En Responses solo hay encendido y apagado: cualquier valor que no sea `none` o `minimal` razona con el presupuesto por defecto de 16.384 tokens. |
+| `glm5.3` · `glm5.3-flash` | No es posible: GLM siempre razona. `none` se aplica como `minimal`, su razonamiento más corto (unos pocos tokens). | De `minimal` a `max`; los valores más altos razonan más antes de responder. |
 
-Sin parámetro, cada modelo usa su propio valor por defecto (razonamiento
-activo en `qwen3.6` y `gemma4`, con presupuesto de 16.384 tokens). Más
-razonamiento cuesta latencia y cuenta dentro de `max_tokens`; nunca cuesta
-configuración adicional.
+Sin parámetro, todos los modelos razonan (`qwen3.6` y `gemma4` con un
+presupuesto de 16.384 tokens). El razonamiento cuesta latencia y sus tokens
+cuentan dentro de `max_tokens`. Usa solo los valores de esta página.
 
 ```bash
 curl https://api.nan.builders/v1/chat/completions \
   -H "Authorization: Bearer $NAN_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "glm5.3-flash",
-    "reasoning_effort": "low",
+    "model": "deepseek-v4-flash",
+    "reasoning_effort": "none",
     "messages": [{"role": "user", "content": "Write a one-line summary of the CAP theorem."}]
   }'
+```
+
+Con el SDK de OpenAI, en las dos APIs:
+
+```python
+client.chat.completions.create(
+    model="deepseek-v4-flash",
+    reasoning_effort="none",
+    messages=[{"role": "user", "content": "Write a one-line summary of the CAP theorem."}],
+)
+
+client.responses.create(
+    model="deepseek-v4-flash",
+    reasoning={"effort": "none"},
+    input="Write a one-line summary of the CAP theorem.",
+)
 ```
 
 ## Límite de stream solo-razonamiento.
