@@ -455,6 +455,24 @@ const chat = await client.chat.completions.create({
 });
 ```
 
+## Respuestas largas: usa streaming.
+
+Una petición sin `stream: true` no devuelve nada hasta que la respuesta
+completa está lista, y tiene que estar lista en **120 segundos**. Pasado
+ese tiempo la conexión se cierra con un `524` (o con un error unos segundos
+antes), sea cual sea el modelo. A la velocidad de `deepseek-v4-flash` eso
+son unos 10.000 a 15.000 tokens de salida; los modelos más lentos, y los
+modelos con razonamiento, que piensan antes de responder, caben en menos.
+
+Si pides respuestas largas (un `max_tokens` grande, ficheros de código
+largos, agentes que escriben documentos enteros), usa `stream: true`. Un
+stream no tiene límite de tiempo total mientras siga produciendo: los tokens
+te llegan a medida que se generan, dure lo que dure la respuesta. La única
+excepción es un turno que solo produce razonamiento durante mucho tiempo,
+mira el [límite de stream solo-razonamiento](#límite-de-stream-solo-razonamiento)
+más abajo. Todos los modelos de chat soportan streaming en los dos endpoints
+(`/v1/chat/completions` y `/v1/responses`).
+
 ## Límite de stream solo-razonamiento.
 
 Los prompts que exigen mucho razonamiento pueden dejar al modelo pensando
@@ -466,7 +484,7 @@ sin salida. Un turno que demuestra que está pensando — ya produjo más de
 presupuesto de caracteres de razonamiento también escala con el tamaño de
 tu prompt: unos 150.000 caracteres de margen más la mitad del tamaño del
 prompt en caracteres, con un tope de 300.000. Cuando la plataforma cierra
-el turno recibís `finish_reason: "length"` sobre un delta vacío, seguido de
+el turno recibes `finish_reason: "length"` sobre un delta vacío, seguido de
 un chunk de usage.
 
 Ese chunk de usage es una estimación de lo que consumió el intento hasta el
@@ -474,7 +492,7 @@ corte (tokens de prompt y de razonamiento), marcada con
 `"estimated": true, "billed": false` — los turnos cerrados así no se cobran
 de tu cuota — y lleva un marcador `nan_truncation` para que los clientes
 puedan distinguir este cierre de un corte real por longitud de contexto.
-Pedilo con `stream_options: {"include_usage": true}`.
+Pídelo con `stream_options: {"include_usage": true}`.
 
 Dos cosas que conviene saber:
 
@@ -483,7 +501,7 @@ Dos cosas que conviene saber:
   escriben sobre la marcha nunca se cortan, por largas que sean.
 - Si un turno se cierra así, el modelo seguía planificando cuando tocó el
   techo. Baja `reasoning_effort` donde el modelo lo soporte (tabla de
-  arriba), o reestructurá el prompt para que empiece a escribir temprano.
+  arriba), o reestructura el prompt para que empiece a escribir temprano.
 
 El límite existe para acotar un modo de fallo conocido de los modelos con
 thinking: a veces planifican sin converger durante 10–25 minutos y queman
