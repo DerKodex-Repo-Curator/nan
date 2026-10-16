@@ -709,10 +709,10 @@ describe('documented 400s: tool names and structured output', () => {
   it('says where json_schema on deepseek-v4-flash is served, where it is a 400, and that json_object works', () => {
     const description: string = schemas.ResponseFormat.description;
     expect(description).toContain(
-      'On `deepseek-v4-flash` it is accepted on non-streamed `/chat/completions` requests without `tools`: the answer is checked against your schema and, when it does not match, served by a provider that enforces it (validate it anyway if your code depends on it).',
+      'On `deepseek-v4-flash` it is accepted on non-streamed `/chat/completions` requests without `tools`: the answer is checked against your schema and, when it does not match, usually re-served by a provider that enforces it (validate it if your code depends on it).',
     );
     expect(description).toContain(
-      'Other `json_schema` requests on `deepseek-v4-flash` depend on the host: on the enterprise base URL (see the overview) they are accepted; on `api.nan.builders` a request that streams, carries `tools` or goes to `/responses` is rejected with a `400` before it reaches the model, and `json_object` still works there.',
+      'Other `json_schema` requests on `deepseek-v4-flash` depend on the host: on the enterprise base URL (see the overview) they are accepted; on `api.nan.builders` a request that streams, carries `tools`, goes to `/responses`, sets `n` above 1, or whose schema is over 16 KB, invalid or has a `$ref` outside the schema is rejected with a `400` before it reaches the model, and `json_object` still works there.',
     );
     // The old blanket "rejected on api.nan.builders" must not come back.
     expect(description).not.toContain('it depends on the host: on the enterprise base URL (see the overview) it is accepted');
@@ -734,17 +734,17 @@ describe('documented 400s: tool names and structured output', () => {
       return page.slice(start, page.indexOf('/>', start));
     };
     const en = card('');
-    expect(en).toContain('json_schema is accepted on non-streamed /chat/completions requests without tools: the answer is checked against your schema and, when it does not match, served by a provider that enforces it. On api.nan.builders a json_schema request that streams, carries tools or goes to /responses is rejected with a 400; on api.helmcode.com it is accepted.');
+    expect(en).toContain('json_schema is accepted on non-streamed /chat/completions requests without tools: the answer is checked against your schema and, when it does not match, usually re-served by a provider that enforces it (validate it if your code depends on it). On api.nan.builders other json_schema requests are rejected with a 400: streamed, with tools, on /responses, with n above 1, with a schema over 16 KB, not a valid JSON Schema, or with a $ref outside the schema; on api.helmcode.com they are accepted.');
     expect(en).toContain('on api.nan.builders the prompt must contain the word JSON, otherwise it is rejected with a 400');
     expect(en).toContain('use qwen3.6 or gemma4');
-    expect(en).toContain('<code>json_schema</code> on non-streamed chat without tools (on api.nan.builders, streamed, with tools or on /responses: 400)');
+    expect(en).toContain('<code>json_schema</code> on non-streamed chat without tools (on api.nan.builders the other cases, e.g. streamed, with tools or on /responses: 400)');
     expect(en).not.toContain('json_schema is rejected with a 400.');
     expect(en).not.toMatch(/not supported \(400\)|json_schema is not and/);
     const es = card('-es');
-    expect(es).toContain('json_schema se acepta en peticiones a /chat/completions sin streaming y sin tools: la respuesta se comprueba contra tu esquema y, si no lo cumple, la sirve un proveedor que lo impone. En api.nan.builders una petición json_schema con streaming, con tools o a /responses se rechaza con un 400; en api.helmcode.com se acepta.');
+    expect(es).toContain('json_schema se acepta en peticiones a /chat/completions sin streaming y sin tools: la respuesta se comprueba contra tu esquema y, si no lo cumple, normalmente la vuelve a servir un proveedor que lo impone (valídala si tu código depende de ella). En api.nan.builders el resto de peticiones json_schema se rechazan con un 400: con streaming, con tools, a /responses, con n mayor que 1, con un esquema de más de 16 KB, que no sea un JSON Schema válido o con un $ref fuera del esquema; en api.helmcode.com se aceptan.');
     expect(es).toContain('en api.nan.builders el prompt debe contener la palabra JSON; si no, se rechaza con un 400');
     expect(es).toContain('usa qwen3.6 o gemma4');
-    expect(es).toContain('<code>json_schema</code> en chat sin streaming y sin tools (en api.nan.builders, con streaming, con tools o en /responses: 400)');
+    expect(es).toContain('<code>json_schema</code> en chat sin streaming y sin tools (en api.nan.builders el resto, p. ej. con streaming, con tools o en /responses: 400)');
     expect(es).not.toContain('json_schema se rechaza con un 400.');
     expect(es).not.toMatch(/no soportado \(400\)|json_schema no y/);
   });
@@ -1023,7 +1023,8 @@ describe('documented structured output: guarantees and the deepseek-v4-flash rec
       expect(section).toContain(locale
         ? 'En `api.nan.builders` lo rechaza con un `400` cuando la petición usa streaming, lleva `tools` o va a `/responses`'
         : 'On `api.nan.builders` it rejects it with a `400` when the request streams, carries `tools` or goes to `/responses`');
-      expect(section).toContain(locale ? 'en `api.helmcode.com` también se acepta ahí' : 'on `api.helmcode.com` it is accepted there too');
+      expect(section).toContain(locale ? 'en `api.helmcode.com` se acepta en todos esos casos' : 'on `api.helmcode.com` it is accepted in all of them');
+      expect(section).toContain(locale ? 'un `$ref` fuera del esquema' : 'a `$ref` outside the schema');
     });
   }
 });
